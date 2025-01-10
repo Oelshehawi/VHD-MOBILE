@@ -10,8 +10,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from '@/components/useColorScheme';
 import './global.css';
-import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo'
-import { tokenCache } from '@/cache'
+import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
+import { tokenCache } from '@/cache';
 export {
   // Catch any errors thrown by the Layout component.
   ErrorBoundary,
@@ -51,16 +51,18 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
-  const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!
+  const publishableKey = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY!;
 
   if (!publishableKey) {
-    throw new Error('Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to your .env file')
+    throw new Error('Add EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY to your .env file');
   }
 
   return (
     <ClerkProvider publishableKey={publishableKey} tokenCache={tokenCache}>
       <ClerkLoaded>
-        <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <ThemeProvider
+          value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
+        >
           <Slot />
         </ThemeProvider>
       </ClerkLoaded>

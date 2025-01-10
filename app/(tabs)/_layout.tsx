@@ -12,7 +12,6 @@ function TabBarIcon(props: {
 }
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
   const { isSignedIn } = useAuth();
 
   if (!isSignedIn) {
@@ -22,17 +21,25 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#0891b2', // cyan-600
-        tabBarStyle: {
-          backgroundColor: colorScheme === 'dark' ? '#1f2937' : 'white',
+        headerStyle: {
+          backgroundColor: '#111827', // gray-900
         },
+        headerTintColor: '#e5e7eb', // gray-200
+        tabBarStyle: {
+          backgroundColor: '#111827', // gray-900
+          borderTopColor: '#1f2937', // gray-800
+        },
+        tabBarActiveTintColor: '#0ea5e9', // blue-500
+        tabBarInactiveTintColor: '#9ca3af', // gray-400
       }}
     >
       <Tabs.Screen
         name='index'
         options={{
           title: 'Dashboard',
-          tabBarIcon: ({ color }) => <TabBarIcon name='home' color={color} />,
+          tabBarIcon: ({ color }) => (
+            <FontAwesome name='home' size={24} color={color} />
+          ),
         }}
       />
       <Tabs.Screen
@@ -40,16 +47,7 @@ export default function TabLayout() {
         options={{
           title: 'Schedule',
           tabBarIcon: ({ color }) => (
-            <TabBarIcon name='calendar' color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name='invoices'
-        options={{
-          title: 'Invoices',
-          tabBarIcon: ({ color }) => (
-            <TabBarIcon name='file-text-o' color={color} />
+            <FontAwesome name='calendar' size={24} color={color} />
           ),
         }}
       />
