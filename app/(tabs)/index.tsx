@@ -6,15 +6,16 @@ import {
   TouchableOpacity,
   Linking,
 } from 'react-native';
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
 import { useDashboard } from '../../hooks/useDashboard';
-import { toLocalTime } from '../../utils/date';
+import { formatTimeUTC, formatDateReadable } from '../../utils/date';
 import { Stack } from 'expo-router';
 import { MaterialIcons } from '@expo/vector-icons';
-import { EmployeeHours } from '../../types';
+import { EmployeeHours, PayrollSchedule } from '../../types';
 
 export default function HomeScreen() {
   const { data, loading, error, refreshDashboard } = useDashboard();
+  const [showSchedules, setShowSchedules] = useState(false);
 
   const onRefresh = useCallback(() => {
     refreshDashboard();
@@ -44,6 +45,19 @@ export default function HomeScreen() {
       </View>
     );
   }
+
+  const renderPayrollSchedule = (schedule: PayrollSchedule) => (
+    <View key={schedule._id} className='border-b border-gray-800 py-3'>
+      <Text className='text-gray-200 font-medium'>{schedule.jobTitle}</Text>
+      <View className='flex-row justify-between mt-1'>
+        <Text className='text-gray-400'>
+          {formatDateReadable(schedule.date)}
+        </Text>
+        <Text className='text-gray-400'>{schedule.hours}h</Text>
+      </View>
+      <Text className='text-gray-500 text-sm mt-1'>{schedule.location}</Text>
+    </View>
+  );
 
   return (
     <ScrollView
@@ -87,21 +101,10 @@ export default function HomeScreen() {
                         {schedule.jobTitle}
                       </Text>
                       <Text className='text-gray-400 mt-1'>
-                        {toLocalTime(schedule.startDateTime).toLocaleTimeString(
-                          'en-US',
-                          {
-                            hour: 'numeric',
-                            minute: '2-digit',
-                            hour12: true,
-                            timeZone: 'UTC',
-                          }
-                        )}
+                        {formatTimeUTC(schedule.startDateTime)}
                       </Text>
                       <Text className='text-gray-400 mt-1'>
                         {schedule.location}
-                      </Text>
-                      <Text className='text-gray-400 mt-1'>
-                        Duration: {schedule.hours} hours
                       </Text>
                     </View>
                     <MaterialIcons
@@ -116,12 +119,12 @@ export default function HomeScreen() {
           )}
         </View>
 
-        {/* Hours Summary */}
-        <View className='bg-gray-900 rounded-lg p-4'>
-          <Text className='text-lg font-bold text-gray-200 mb-2'>
-            Hours Summary
-          </Text>
-          {data?.canManage ? (
+        {/* Hours Summary or Current Payroll */}
+        {data?.canManage ? (
+          <View className='bg-gray-900 rounded-lg p-4'>
+            <Text className='text-lg font-bold text-gray-200 mb-2'>
+              Hours Summary
+            </Text>
             <View className='space-y-2'>
               {data.employeeHours?.map((emp: EmployeeHours) => (
                 <View
@@ -141,15 +144,66 @@ export default function HomeScreen() {
                 </View>
               </View>
             </View>
-          ) : (
-            <View>
-              <Text className='text-3xl font-bold text-white'>
-                {data?.totalHours}h
-              </Text>
-              <Text className='text-gray-400'>Total hours today</Text>
+          </View>
+        ) : data?.currentPayroll ? (
+          <View className='bg-gray-900 rounded-lg p-4'>
+            <Text className='text-lg font-bold text-gray-200 mb-2'>
+              Current Pay Period
+            </Text>
+            <View className='bg-gray-800 rounded-lg p-3 mb-4'>
+              <View className='flex-row justify-between mb-2'>
+                <View>
+                  <Text className='text-gray-400 text-sm'>Period</Text>
+                  <Text className='text-gray-200'>
+                    {formatDateReadable(data.currentPayroll.periodStart)} -{' '}
+                    {formatDateReadable(data.currentPayroll.periodEnd)}
+                  </Text>
+                </View>
+                <View className='items-end'>
+                  <Text className='text-gray-400 text-sm'>Pay Day</Text>
+                  <Text className='text-gray-200'>
+                    {formatDateReadable(data.currentPayroll.payDay)}
+                  </Text>
+                </View>
+              </View>
+              <View className='flex-row justify-between items-center mt-2 pt-2 border-t border-gray-700'>
+                <Text className='text-gray-200 font-medium'>Total Hours</Text>
+                <Text className='text-2xl font-bold text-white'>
+                  {data.currentPayroll.totalHours}h
+                </Text>
+              </View>
             </View>
-          )}
-        </View>
+
+            <TouchableOpacity
+              onPress={() => setShowSchedules(!showSchedules)}
+              className='flex-row justify-between items-center bg-gray-800 p-3 rounded-lg mb-2'
+            >
+              <Text className='text-gray-200 font-medium'>
+                View Schedules ({data.currentPayroll.schedules.length})
+              </Text>
+              <MaterialIcons
+                name={showSchedules ? 'expand-less' : 'expand-more'}
+                size={24}
+                color='#9ca3af'
+              />
+            </TouchableOpacity>
+
+            {showSchedules && (
+              <View className='space-y-1 mt-2'>
+                {data.currentPayroll.schedules.map(renderPayrollSchedule)}
+              </View>
+            )}
+          </View>
+        ) : (
+          <View className='bg-gray-900 rounded-lg p-4'>
+            <Text className='text-lg font-bold text-gray-200 mb-2'>
+              No Active Pay Period
+            </Text>
+            <Text className='text-gray-400'>
+              There is no active payroll period at the moment.
+            </Text>
+          </View>
+        )}
       </View>
     </ScrollView>
   );

@@ -17,7 +17,7 @@ import {
   subMonths,
   isToday,
 } from 'date-fns';
-import { formatLocalTime, toLocalTime } from '../../utils/date';
+import { formatTimeUTC, toUTCDate } from '../../utils/date';
 
 interface MonthViewProps {
   currentDate: Date;
@@ -215,12 +215,7 @@ export function MonthView({
               >
                 <View className='flex-row justify-between items-center'>
                   <Text className='text-gray-200 font-medium'>
-                    {toLocalTime(apt.startTime).toLocaleTimeString('en-US', {
-                      hour: 'numeric',
-                      minute: '2-digit',
-                      hour12: true,
-                      timeZone: 'UTC',
-                    })}
+                    {formatTimeUTC(apt.startTime)}
                   </Text>
                   <View
                     className={`w-2 h-2 rounded-full ${

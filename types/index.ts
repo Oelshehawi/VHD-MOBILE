@@ -5,12 +5,33 @@ export interface DashboardSchedule {
   startDateTime: Date;
   hours: number;
   confirmed: boolean;
+  technicians?: Array<{
+    id: string;
+    name: string;
+  }>;
 }
 
 export interface EmployeeHours {
   userId: string;
   name: string;
   hours: number;
+}
+
+export interface PayrollSchedule {
+  _id: string;
+  jobTitle: string;
+  date: Date;
+  hours: number;
+  location: string;
+}
+
+export interface CurrentPayroll {
+  periodStart: Date;
+  periodEnd: Date;
+  cutoffDate: Date;
+  payDay: Date;
+  totalHours: number;
+  schedules: PayrollSchedule[];
 }
 
 export interface DashboardData {
@@ -20,6 +41,7 @@ export interface DashboardData {
   totalHours: number;
   userId: string;
   employeeHours?: EmployeeHours[];
+  currentPayroll?: CurrentPayroll;
 }
 
 export interface ClientType {

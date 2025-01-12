@@ -1,47 +1,39 @@
 import { parseISO } from 'date-fns';
-import { toZonedTime, format } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 
 /**
- * Format a date in UTC
- * @param date Date string or Date object
- * @returns Formatted date string (e.g., "January 9th, 2024")
+ * Format a date in UTC (YYYY-MM-DD)
  */
 export const formatDateUTC = (date: string | Date): string => {
   const parsedDate = typeof date === 'string' ? new Date(date) : date;
-  return format(parsedDate, 'MMMM do, yyyy', { timeZone: 'UTC' });
+  return parsedDate.toISOString().split('T')[0];
 };
 
 /**
- * Format a time in local timezone
- * @param date Date string or Date object
- * @returns Formatted time string (e.g., "9:00 AM")
+ * Format a date in readable format (e.g. Jan 12, 2025) in UTC
  */
-export const formatLocalTime = (date: string | Date): string => {
-  const parsedDate = typeof date === 'string' ? parseISO(date) : date;
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const zonedDate = toZonedTime(parsedDate, timeZone);
-  return format(zonedDate, 'h:mm a');
+export const formatDateReadable = (date: string | Date): string => {
+  const parsedDate = typeof date === 'string' ? new Date(date) : date;
+  return formatInTimeZone(parsedDate, 'UTC', 'MMM d, yyyy');
 };
 
 /**
- * Format a date and time in local timezone
- * @param date Date string or Date object
- * @returns Formatted date and time string (e.g., "January 9th, 2024 at 9:00 AM")
+ * Format time in UTC (e.g., "9:00 AM")
  */
-export const formatLocalDateTime = (date: string | Date): string => {
+export const formatTimeUTC = (date: string | Date): string => {
   const parsedDate = typeof date === 'string' ? parseISO(date) : date;
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const zonedDate = toZonedTime(parsedDate, timeZone);
-  return format(zonedDate, "MMMM do, yyyy 'at' h:mm a");
+  return parsedDate.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: 'UTC',
+  });
 };
 
 /**
- * Convert a UTC date to local timezone
- * @param date Date string or Date object
- * @returns Date object in local timezone
+ * Convert any date input to UTC Date object
  */
-export const toLocalTime = (date: string | Date): Date => {
-  const parsedDate = typeof date === 'string' ? parseISO(date) : date;
-  const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return toZonedTime(parsedDate, timeZone);
+export const toUTCDate = (date: string | Date): Date => {
+  const parsedDate = typeof date === 'string' ? new Date(date) : date;
+  return new Date(parsedDate.toISOString());
 };

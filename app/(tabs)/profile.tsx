@@ -2,7 +2,7 @@ import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { Card } from '../../components/ui/Card';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
-import { toLocalTime } from '../../utils/date';
+import { formatDateReadable } from '../../utils/date';
 
 export default function ProfileScreen() {
   const { signOut } = useAuth();
@@ -54,15 +54,7 @@ export default function ProfileScreen() {
               <Text className='text-sm text-gray-400'>Member Since</Text>
               <Text className='text-gray-200'>
                 {user.createdAt
-                  ? toLocalTime(new Date(user.createdAt)).toLocaleDateString(
-                      'en-US',
-                      {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        timeZone: 'UTC',
-                      }
-                    )
+                  ? formatDateReadable(user.createdAt)
                   : 'N/A'}
               </Text>
             </View>
@@ -70,15 +62,7 @@ export default function ProfileScreen() {
               <Text className='text-sm text-gray-400'>Last Updated</Text>
               <Text className='text-gray-200'>
                 {user.updatedAt
-                  ? toLocalTime(new Date(user.updatedAt)).toLocaleDateString(
-                      'en-US',
-                      {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        timeZone: 'UTC',
-                      }
-                    )
+                  ? formatDateReadable(user.updatedAt)
                   : 'N/A'}
               </Text>
             </View>

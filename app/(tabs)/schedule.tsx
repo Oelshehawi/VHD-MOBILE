@@ -7,7 +7,7 @@ import { MonthView } from '../../components/schedule/MonthView';
 import { ScheduleType, InvoiceType } from '../../types';
 import { InvoiceModal } from '../../components/schedule/InvoiceModal';
 import { Stack } from 'expo-router';
-import { toLocalTime } from '../../utils/date';
+import { toUTCDate } from '../../utils/date';
 import { isSameDay } from 'date-fns';
 
 export default function ScheduleScreen() {
@@ -39,7 +39,7 @@ export default function ScheduleScreen() {
   useEffect(() => {
     let mounted = true;
 
-    if (selectedInvoiceId) {
+    if (selectedInvoiceId && !selectedInvoice) {
       invoicesApi.then((api) => {
         if (!mounted || !api) return;
         api
@@ -59,14 +59,14 @@ export default function ScheduleScreen() {
     return () => {
       mounted = false;
     };
-  }, [selectedInvoiceId, invoicesApi]);
+  }, [selectedInvoiceId, invoicesApi, selectedInvoice]);
 
   const appointments = useMemo(() => {
     if (!schedules?.length) return [];
 
     return schedules
       .map((schedule) => {
-        const startDateTime = toLocalTime(new Date(schedule.startDateTime));
+        const startDateTime = toUTCDate(schedule.startDateTime);
         if (isNaN(startDateTime.getTime())) return null;
 
         return {
@@ -92,12 +92,9 @@ export default function ScheduleScreen() {
       const schedule = schedules?.find((s) => s._id === appointmentId);
       if (!schedule) return;
 
-      if (
-        isSameDay(toLocalTime(new Date(schedule.startDateTime)), new Date())
-      ) {
-        const localTime = toLocalTime(new Date(schedule.startDateTime));
+      if (isSameDay(toUTCDate(schedule.startDateTime), new Date())) {
         console.log("👆 Today's appointment pressed:", {
-          time: localTime.toLocaleTimeString('en-US', {
+          time: toUTCDate(schedule.startDateTime).toLocaleTimeString('en-US', {
             hour: 'numeric',
             minute: '2-digit',
             hour12: true,

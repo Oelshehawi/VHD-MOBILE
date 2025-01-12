@@ -1,6 +1,6 @@
 import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
-import { format } from 'date-fns';
 import { InvoiceType } from '../../types';
+import { formatDateReadable } from '../../utils/date';
 
 interface InvoiceModalProps {
   visible: boolean;
@@ -11,7 +11,12 @@ interface InvoiceModalProps {
 export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
   if (!invoice) return null;
 
-  const total = invoice.items.reduce((sum, item) => sum + (item.price || 0), 0);
+  const subtotal = invoice.items.reduce(
+    (sum, item) => sum + (item.price || 0),
+    0
+  );
+  const gst = subtotal * 0.05; // 5% GST
+  const total = subtotal + gst;
 
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
     <View className='mb-4'>
@@ -64,7 +69,7 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
                     Date Issued
                   </Text>
                   <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                    {format(new Date(invoice.dateIssued), 'MMM d, yyyy')}
+                    {formatDateReadable(invoice.dateIssued)}
                   </Text>
                 </View>
                 <View>
@@ -72,7 +77,7 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
                     Due Date
                   </Text>
                   <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                    {format(new Date(invoice.dateDue), 'MMM d, yyyy')}
+                    {formatDateReadable(invoice.dateDue)}
                   </Text>
                 </View>
               </View>
@@ -102,15 +107,33 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
                 </View>
               </View>
 
-              {/* Total */}
+              {/* Total Section */}
               <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg mt-4'>
-                <View className='flex-row justify-between items-center'>
-                  <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                    Total
-                  </Text>
-                  <Text className='text-xl font-bold text-darkGreen'>
-                    ${total.toFixed(2)}
-                  </Text>
+                <View className='space-y-2'>
+                  <View className='flex-row justify-between items-center'>
+                    <Text className='text-gray-600 dark:text-gray-400'>
+                      Subtotal
+                    </Text>
+                    <Text className='text-gray-900 dark:text-white'>
+                      ${subtotal.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View className='flex-row justify-between items-center'>
+                    <Text className='text-gray-600 dark:text-gray-400'>
+                      GST (5%)
+                    </Text>
+                    <Text className='text-gray-900 dark:text-white'>
+                      ${gst.toFixed(2)}
+                    </Text>
+                  </View>
+                  <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
+                    <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+                      Total
+                    </Text>
+                    <Text className='text-xl font-bold text-darkGreen'>
+                      ${total.toFixed(2)}
+                    </Text>
+                  </View>
                 </View>
               </View>
 
