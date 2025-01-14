@@ -53,6 +53,19 @@ export interface ClientType {
   notes?: string;
 }
 
+export interface PhotoType {
+  url: string;
+  timestamp: Date;
+  technicianId: string;
+}
+
+export interface SignatureType {
+  url: string;
+  timestamp: Date;
+  signerName: string;
+  technicianId: string;
+}
+
 export interface InvoiceType {
   _id: string;
   invoiceId: string;
@@ -68,6 +81,11 @@ export interface InvoiceType {
   notes?: string;
   status: 'pending' | 'overdue' | 'paid';
   clientId: string | ClientType;
+  signature?: SignatureType;
+  photos?: {
+    before?: PhotoType[];
+    after?: PhotoType[];
+  };
 }
 
 export interface ShiftType {
@@ -111,4 +129,9 @@ export interface DueInvoiceType {
   isScheduled: boolean;
   emailSent: boolean;
   clientId: string | ClientType;
+}
+
+export interface ScheduleResponse {
+  schedules: ScheduleType[];
+  canManage: boolean;
 }

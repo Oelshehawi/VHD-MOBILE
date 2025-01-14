@@ -11,7 +11,7 @@ import { toUTCDate } from '../../utils/date';
 import { isSameDay } from 'date-fns';
 
 export default function ScheduleScreen() {
-  const { getToken } = useAuth();
+  const { getToken, userId } = useAuth();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(
     null
   );
@@ -29,12 +29,14 @@ export default function ScheduleScreen() {
     data: schedules,
     loading,
     error,
-  } = useApi<ScheduleType>(schedulesApi);
+    canManage = false,
+  } = useApi(schedulesApi);
 
   const invoicesApi = useMemo(
     () => getToken().then((token) => createInvoicesApi(token)),
     [getToken]
   );
+
 
   useEffect(() => {
     let mounted = true;
@@ -91,18 +93,6 @@ export default function ScheduleScreen() {
     (appointmentId: string) => {
       const schedule = schedules?.find((s) => s._id === appointmentId);
       if (!schedule) return;
-
-      if (isSameDay(toUTCDate(schedule.startDateTime), new Date())) {
-        console.log("👆 Today's appointment pressed:", {
-          time: toUTCDate(schedule.startDateTime).toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-            timeZone: 'UTC',
-          }),
-          client: schedule.jobTitle,
-        });
-      }
       setSelectedInvoiceId(schedule.invoiceRef as string);
     },
     [schedules]
@@ -153,6 +143,8 @@ export default function ScheduleScreen() {
           visible={!!selectedInvoiceId}
           onClose={handleCloseModal}
           invoice={selectedInvoice}
+          canManage={canManage}
+          technicianId={userId || ''}
         />
       </View>
     </>

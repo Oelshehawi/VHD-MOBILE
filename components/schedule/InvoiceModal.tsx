@@ -1,14 +1,38 @@
-import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
-import { InvoiceType } from '../../types';
+import React, { useState } from 'react';
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  ScrollView,
+  ActivityIndicator,
+} from 'react-native';
+import { InvoiceType, PhotoType, SignatureType } from '../../types';
 import { formatDateReadable } from '../../utils/date';
+import { PhotoCapture } from './PhotoCapture';
+import { SignatureCapture } from './SignatureCapture';
 
 interface InvoiceModalProps {
   visible: boolean;
   onClose: () => void;
   invoice: InvoiceType | null;
+  canManage: boolean;
+  technicianId: string;
 }
 
-export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
+export function InvoiceModal({
+  visible,
+  onClose,
+  invoice,
+  canManage,
+  technicianId,
+}: InvoiceModalProps) {
+  const [isLoading, setIsLoading] = useState(false);
+  const [activeSection, setActiveSection] = useState<
+    'before' | 'after' | 'signature' | null
+  >(null);
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+
   if (!invoice) return null;
 
   const subtotal = invoice.items.reduce(
@@ -29,6 +53,122 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
     </View>
   );
 
+  const handlePhotosCapture = async (
+    photos: PhotoType[],
+    type: 'before' | 'after'
+  ) => {
+    try {
+      setIsLoading(true);
+      setActiveSection(type === 'before' ? 'after' : 'signature');
+    } catch (error) {
+      console.error('Error updating photos:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignatureCapture = async (signature: SignatureType) => {
+    try {
+      setIsLoading(true);
+      setActiveSection(null);
+    } catch (error) {
+      console.error('Error updating signature:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const renderWorkCompletionSection = () => {
+    const hasBeforePhotos =
+      invoice.photos?.before && invoice.photos.before.length > 0;
+    const hasAfterPhotos =
+      invoice.photos?.after && invoice.photos.after.length > 0;
+    const hasSignature = invoice.signature;
+
+    return (
+      <View className='flex flex-col gap-6 border-t border-gray-200 dark:border-gray-700 pt-6 mt-6'>
+        <Text className='text-xl font-bold text-gray-900 dark:text-white'>
+          Work Documentation
+        </Text>
+
+        {/* Step 1: Before Photos */}
+        <View className='flex flex-col gap-4'>
+          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+            Step 1: Before Photos {hasBeforePhotos && '✓'}
+          </Text>
+          <PhotoCapture
+            type='before'
+            onPhotosCapture={(photos) => handlePhotosCapture(photos, 'before')}
+            technicianId={technicianId}
+            isLoading={isLoading}
+            existingPhotos={invoice.photos?.before}
+            jobTitle={invoice.jobTitle}
+            invoiceId={invoice._id}
+          />
+        </View>
+
+        {/* Step 2: After Photos (only show if before photos exist) */}
+        {hasBeforePhotos && (
+          <View className='flex flex-col gap-4'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+              Step 2: After Photos {hasAfterPhotos && '✓'}
+            </Text>
+            <PhotoCapture
+              type='after'
+              onPhotosCapture={(photos) => handlePhotosCapture(photos, 'after')}
+              technicianId={technicianId}
+              isLoading={isLoading}
+              existingPhotos={invoice.photos?.after}
+              jobTitle={invoice.jobTitle}
+              invoiceId={invoice._id}
+            />
+          </View>
+        )}
+
+        {/* Step 3: Signature (only show if both photo sets exist) */}
+        {hasBeforePhotos && hasAfterPhotos && (
+          <View className='flex flex-col gap-6'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+              Step 3: Customer Signature {hasSignature && '✓'}
+            </Text>
+            {!hasSignature && (
+              <View className='flex flex-col gap-4'>
+                <TouchableOpacity
+                  onPress={() => setShowSignatureModal(true)}
+                  disabled={isLoading}
+                  className={`p-4 rounded-lg flex-row justify-center items-center ${
+                    isLoading ? 'bg-gray-300' : 'bg-darkGreen'
+                  }`}
+                >
+                  <Text className='text-white font-medium text-lg'>
+                    ✍️ Tap to Sign
+                  </Text>
+                </TouchableOpacity>
+                <SignatureCapture
+                  onSignatureCapture={handleSignatureCapture}
+                  technicianId={technicianId}
+                  invoice={invoice}
+                  isLoading={isLoading}
+                  visible={showSignatureModal}
+                  onClose={() => setShowSignatureModal(false)}
+                />
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Show completion status if everything is done */}
+        {hasBeforePhotos && hasAfterPhotos && hasSignature && (
+          <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg mt-4'>
+            <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+              ✓ Work Documentation Complete
+            </Text>
+          </View>
+        )}
+      </View>
+    );
+  };
+
   return (
     <Modal
       animationType='slide'
@@ -39,13 +179,13 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
       <View className='flex-1 justify-end bg-black/50'>
         <View className='bg-white dark:bg-gray-800 rounded-t-3xl min-h-[75%] max-h-[90%]'>
           {/* Header */}
-          <View className='px-6 py-4 border-b border-gray-200 dark:border-gray-700'>
+          <View className='flex flex-col gap-1 px-6 py-4 border-b border-gray-200 dark:border-gray-700'>
             <View className='flex-row justify-between items-center'>
-              <View>
+              <View className='flex flex-col gap-1'>
                 <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
                   {invoice.jobTitle}
                 </Text>
-                <Text className='text-sm text-gray-500 dark:text-gray-400 mt-1'>
+                <Text className='text-sm text-gray-500 dark:text-gray-400'>
                   Invoice #{invoice.invoiceId}
                 </Text>
               </View>
@@ -61,10 +201,10 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
           </View>
 
           <ScrollView className='flex-1 px-6 py-4'>
-            <View className='space-y-6'>
+            <View className='flex flex-col gap-6 pb-6'>
               {/* Dates Section */}
               <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                <View>
+                <View className='flex flex-col gap-1'>
                   <Text className='text-sm text-gray-500 dark:text-gray-400'>
                     Date Issued
                   </Text>
@@ -72,7 +212,7 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
                     {formatDateReadable(invoice.dateIssued)}
                   </Text>
                 </View>
-                <View>
+                <View className='flex flex-col gap-1'>
                   <Text className='text-sm text-gray-500 dark:text-gray-400'>
                     Due Date
                   </Text>
@@ -83,64 +223,75 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
               </View>
 
               {/* Location */}
-              <InfoRow label='Location' value={invoice.location} />
-
-              {/* Items Section */}
-              <View>
-                <Text className='text-lg font-semibold text-gray-900 dark:text-white mb-3'>
-                  Services
+              <View className='flex flex-col gap-1'>
+                <Text className='text-sm text-gray-500 dark:text-gray-400'>
+                  Location
                 </Text>
-                <View className='space-y-3'>
-                  {invoice.items.map((item, index) => (
-                    <View
-                      key={index}
-                      className='flex-row justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700'
-                    >
-                      <Text className='text-gray-900 dark:text-white flex-1 text-base'>
-                        {item.description}
+                <Text className='text-base text-gray-900 dark:text-white font-medium'>
+                  {invoice.location}
+                </Text>
+              </View>
+
+              {/* Items Section - Only visible to managers */}
+              {canManage && (
+                <View className='flex flex-col gap-4'>
+                  <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+                    Services
+                  </Text>
+                  <View className='flex flex-col gap-3'>
+                    {invoice.items.map((item, index) => (
+                      <View
+                        key={index}
+                        className='flex-row justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700'
+                      >
+                        <Text className='text-gray-900 dark:text-white flex-1 text-base'>
+                          {item.description}
+                        </Text>
+                        <Text className='text-gray-900 dark:text-white ml-4 font-medium'>
+                          ${item.price.toFixed(2)}
+                        </Text>
+                      </View>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Total Section - Only visible to managers */}
+              {canManage && (
+                <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                  <View className='flex flex-col gap-2'>
+                    <View className='flex-row justify-between items-center'>
+                      <Text className='text-gray-600 dark:text-gray-400'>
+                        Subtotal
                       </Text>
-                      <Text className='text-gray-900 dark:text-white ml-4 font-medium'>
-                        ${item.price.toFixed(2)}
+                      <Text className='text-gray-900 dark:text-white'>
+                        ${subtotal.toFixed(2)}
                       </Text>
                     </View>
-                  ))}
-                </View>
-              </View>
-
-              {/* Total Section */}
-              <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg mt-4'>
-                <View className='space-y-2'>
-                  <View className='flex-row justify-between items-center'>
-                    <Text className='text-gray-600 dark:text-gray-400'>
-                      Subtotal
-                    </Text>
-                    <Text className='text-gray-900 dark:text-white'>
-                      ${subtotal.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View className='flex-row justify-between items-center'>
-                    <Text className='text-gray-600 dark:text-gray-400'>
-                      GST (5%)
-                    </Text>
-                    <Text className='text-gray-900 dark:text-white'>
-                      ${gst.toFixed(2)}
-                    </Text>
-                  </View>
-                  <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
-                    <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                      Total
-                    </Text>
-                    <Text className='text-xl font-bold text-darkGreen'>
-                      ${total.toFixed(2)}
-                    </Text>
+                    <View className='flex-row justify-between items-center'>
+                      <Text className='text-gray-600 dark:text-gray-400'>
+                        GST (5%)
+                      </Text>
+                      <Text className='text-gray-900 dark:text-white'>
+                        ${gst.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
+                      <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+                        Total
+                      </Text>
+                      <Text className='text-xl font-bold text-darkGreen'>
+                        ${total.toFixed(2)}
+                      </Text>
+                    </View>
                   </View>
                 </View>
-              </View>
+              )}
 
               {/* Notes */}
               {invoice.notes && (
-                <View className='mt-6'>
-                  <Text className='text-lg font-semibold text-gray-900 dark:text-white mb-2'>
+                <View className='flex flex-col gap-2'>
+                  <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
                     Notes
                   </Text>
                   <Text className='text-gray-700 dark:text-gray-300'>
@@ -148,6 +299,9 @@ export function InvoiceModal({ visible, onClose, invoice }: InvoiceModalProps) {
                   </Text>
                 </View>
               )}
+
+              {/* Work Completion Section - Only visible to technicians */}
+              {!canManage && renderWorkCompletionSection()}
             </View>
           </ScrollView>
         </View>

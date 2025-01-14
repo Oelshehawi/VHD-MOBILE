@@ -227,7 +227,7 @@ export function MonthView({
                     }`}
                   />
                 </View>
-                <Text className='text-gray-200 text-lg'>{apt.clientName}</Text>
+                <Text className='text-gray-200 text-lg'>{apt.clientName.trim()}</Text>
                 <Text className='text-gray-400'>{apt.serviceType}</Text>
               </TouchableOpacity>
             ))}
