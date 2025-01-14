@@ -6,8 +6,38 @@ import {
   PhotoType,
   SignatureType,
 } from '@/types';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
 
-const API_URL = __DEV__ ? 'http://10.0.2.2:3000' : 'https://vhd-psi.vercel.app';
+// Development URLs for different environments
+const DEV_ANDROID_EMULATOR = 'http://10.0.2.2:3000';
+const DEV_IOS_SIMULATOR = 'http://localhost:3000';
+const DEV_PHYSICAL_DEVICE = 'http://192.168.1.128:3000';
+const PROD_URL = 'https://vhd-psi.vercel.app';
+
+// Choose the appropriate URL based on environment and platform
+const getDevelopmentUrl = () => {
+  // Check if running in Expo development client
+  const isExpoGo = Constants.appOwnership === 'expo';
+  if (isExpoGo) {
+    return DEV_PHYSICAL_DEVICE;
+  }
+
+  if (Platform.OS === 'android') {
+    // Check if running in Android Emulator
+    if (
+      Platform.constants.Model === 'sdk_gphone64_arm64' ||
+      Platform.constants.Model?.includes('google_sdk')
+    ) {
+      return DEV_ANDROID_EMULATOR;
+    }
+  }
+
+  // For all other cases (physical devices, iOS simulator)
+  return DEV_PHYSICAL_DEVICE;
+};
+
+const API_URL = __DEV__ ? getDevelopmentUrl() : PROD_URL;
 
 const fetchApi = async (
   url: string,

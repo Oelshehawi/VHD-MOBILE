@@ -98,8 +98,9 @@ export function SignatureCapture({
 
           {/* Signer Name Input */}
           <TextInput
-            className='px-4 py-3 border border-gray-200 dark:border-gray-700 rounded-lg'
+            className='px-4 py-3 text-white border border-gray-200 dark:border-gray-700 rounded-lg'
             placeholder='Signer Name'
+            placeholderTextColor='#9ca3af'
             value={signerName}
             onChangeText={setSignerName}
           />

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,8 @@ import { InvoiceType, PhotoType, SignatureType } from '../../types';
 import { formatDateReadable } from '../../utils/date';
 import { PhotoCapture } from './PhotoCapture';
 import { SignatureCapture } from './SignatureCapture';
+import { useAuth } from '@clerk/clerk-expo';
+import { createInvoicesApi } from '../../services/api';
 
 interface InvoiceModalProps {
   visible: boolean;
@@ -23,15 +25,60 @@ interface InvoiceModalProps {
 export function InvoiceModal({
   visible,
   onClose,
-  invoice,
+  invoice: initialInvoice,
   canManage,
   technicianId,
 }: InvoiceModalProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [activeSection, setActiveSection] = useState<
-    'before' | 'after' | 'signature' | null
-  >(null);
+  const [invoice, setInvoice] = useState<InvoiceType | null>(initialInvoice);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const { getToken } = useAuth();
+
+  // Update local invoice state when prop changes
+  useEffect(() => {
+    setInvoice(initialInvoice);
+  }, [initialInvoice]);
+
+  const refreshInvoice = async () => {
+    if (!invoice?._id) return;
+
+    try {
+      const token = await getToken();
+      const api = createInvoicesApi(token);
+      if (!api) return;
+
+      const updatedInvoice = await api.getById(invoice._id);
+      setInvoice(updatedInvoice);
+    } catch (error) {
+      console.error('Error refreshing invoice:', error);
+    }
+  };
+
+  const handlePhotosCapture = async (
+    photos: PhotoType[],
+    type: 'before' | 'after'
+  ) => {
+    try {
+      setIsLoading(true);
+      await refreshInvoice(); // Refresh invoice data after photos are uploaded
+    } catch (error) {
+      console.error('Error updating photos:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSignatureCapture = async (signature: SignatureType) => {
+    try {
+      setIsLoading(true);
+      await refreshInvoice(); // Refresh invoice data after signature is uploaded
+      setShowSignatureModal(false);
+    } catch (error) {
+      console.error('Error updating signature:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!invoice) return null;
 
@@ -39,7 +86,7 @@ export function InvoiceModal({
     (sum, item) => sum + (item.price || 0),
     0
   );
-  const gst = subtotal * 0.05; // 5% GST
+  const gst = subtotal * 0.05;
   const total = subtotal + gst;
 
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
@@ -52,31 +99,6 @@ export function InvoiceModal({
       </Text>
     </View>
   );
-
-  const handlePhotosCapture = async (
-    photos: PhotoType[],
-    type: 'before' | 'after'
-  ) => {
-    try {
-      setIsLoading(true);
-      setActiveSection(type === 'before' ? 'after' : 'signature');
-    } catch (error) {
-      console.error('Error updating photos:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSignatureCapture = async (signature: SignatureType) => {
-    try {
-      setIsLoading(true);
-      setActiveSection(null);
-    } catch (error) {
-      console.error('Error updating signature:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   const renderWorkCompletionSection = () => {
     const hasBeforePhotos =
@@ -127,11 +149,11 @@ export function InvoiceModal({
 
         {/* Step 3: Signature (only show if both photo sets exist) */}
         {hasBeforePhotos && hasAfterPhotos && (
-          <View className='flex flex-col gap-6'>
+          <View className='flex flex-col gap-4'>
             <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
               Step 3: Customer Signature {hasSignature && '✓'}
             </Text>
-            {!hasSignature && (
+            {!hasSignature ? (
               <View className='flex flex-col gap-4'>
                 <TouchableOpacity
                   onPress={() => setShowSignatureModal(true)}
@@ -153,16 +175,13 @@ export function InvoiceModal({
                   onClose={() => setShowSignatureModal(false)}
                 />
               </View>
+            ) : (
+              <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
+                <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+                  ✓ Work Documentation Complete
+                </Text>
+              </View>
             )}
-          </View>
-        )}
-
-        {/* Show completion status if everything is done */}
-        {hasBeforePhotos && hasAfterPhotos && hasSignature && (
-          <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg mt-4'>
-            <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
-              ✓ Work Documentation Complete
-            </Text>
           </View>
         )}
       </View>
