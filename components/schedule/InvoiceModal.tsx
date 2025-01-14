@@ -299,7 +299,7 @@ export function InvoiceModal({
                       <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
                         Total
                       </Text>
-                      <Text className='text-xl font-bold text-darkGreen'>
+                      <Text className='text-xl font-bold text-white'>
                         ${total.toFixed(2)}
                       </Text>
                     </View>

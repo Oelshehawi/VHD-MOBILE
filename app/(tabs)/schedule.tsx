@@ -1,14 +1,12 @@
 import { View, Text } from 'react-native';
 import { useCallback, useEffect, useState, useMemo } from 'react';
-import { useApi } from '../../hooks/useApi';
-import { createSchedulesApi, createInvoicesApi } from '../../services/api';
 import { useAuth } from '@clerk/clerk-expo';
+import { createSchedulesApi, createInvoicesApi } from '../../services/api';
 import { MonthView } from '../../components/schedule/MonthView';
 import { ScheduleType, InvoiceType } from '../../types';
 import { InvoiceModal } from '../../components/schedule/InvoiceModal';
 import { Stack } from 'expo-router';
 import { toUTCDate } from '../../utils/date';
-import { isSameDay } from 'date-fns';
 
 export default function ScheduleScreen() {
   const { getToken, userId } = useAuth();
@@ -19,49 +17,58 @@ export default function ScheduleScreen() {
     null
   );
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [schedules, setSchedules] = useState<ScheduleType[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
+  const [canManage, setCanManage] = useState(false);
 
-  const schedulesApi = useMemo(
-    () => getToken().then((token) => createSchedulesApi(token)),
-    [getToken]
-  );
+  const fetchSchedules = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const token = await getToken();
+      const api = createSchedulesApi(token);
+      if (!api) throw new Error('Failed to initialize API');
 
-  const {
-    data: schedules,
-    loading,
-    error,
-    canManage = false,
-  } = useApi(schedulesApi);
+      const result = await api.getAll();
+      setSchedules(result.schedules);
+      setCanManage(result.canManage);
+    } catch (err) {
+      console.error('Error fetching schedules:', err);
+      setError(err as Error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
-  const invoicesApi = useMemo(
-    () => getToken().then((token) => createInvoicesApi(token)),
-    [getToken]
-  );
-
+  useEffect(() => {
+    fetchSchedules();
+  }, []);
 
   useEffect(() => {
     let mounted = true;
 
-    if (selectedInvoiceId && !selectedInvoice) {
-      invoicesApi.then((api) => {
-        if (!mounted || !api) return;
-        api
-          .getById(selectedInvoiceId)
-          .then((invoice) => {
-            if (mounted) setSelectedInvoice(invoice);
-          })
-          .catch((error) => {
-            if (mounted) {
-              console.error('Error fetching invoice:', error);
-              setSelectedInvoice(null);
-            }
-          });
-      });
-    }
+    const fetchInvoice = async () => {
+      if (!selectedInvoiceId) return;
 
+      try {
+        const token = await getToken();
+        const api = createInvoicesApi(token);
+        if (!mounted || !api) return;
+
+        const invoice = await api.getById(selectedInvoiceId);
+        if (mounted) setSelectedInvoice(invoice);
+      } catch (error) {
+        console.error('Error fetching invoice:', error);
+        if (mounted) setSelectedInvoice(null);
+      }
+    };
+
+    fetchInvoice();
     return () => {
       mounted = false;
     };
-  }, [selectedInvoiceId, invoicesApi, selectedInvoice]);
+  }, [selectedInvoiceId]);
 
   const appointments = useMemo(() => {
     if (!schedules?.length) return [];
@@ -107,12 +114,10 @@ export default function ScheduleScreen() {
     setSelectedInvoice(null);
   }, []);
 
-  if (!schedules || loading) {
+  if (loading) {
     return (
       <View className='flex-1 bg-gray-950 justify-center items-center'>
-        <Text className='text-gray-400'>
-          {!schedules ? 'Authenticating...' : 'Loading schedules...'}
-        </Text>
+        <Text className='text-gray-400'>Loading schedules...</Text>
       </View>
     );
   }

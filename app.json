@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "VHD-App",
-    "slug": "VHD-App",
+    "name": "Vancouver Hood Doctors",
+    "slug": "VHD",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -20,7 +20,8 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "package": "com.braille71.VHDApp"
     },
     "web": {
       "bundler": "metro",
