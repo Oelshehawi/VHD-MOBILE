@@ -49,7 +49,6 @@ const getDevelopmentUrl = () => {
 
 const API_URL = getDevelopmentUrl();
 
-console.log('Using API URL:', API_URL); // Debug log to verify URL
 
 const fetchApi = async (
   url: string,
@@ -61,8 +60,6 @@ const fetchApi = async (
     throw new Error('No token provided');
   }
 
-  console.log('VHD-INFO: Making API request to:', url);
-  console.log('VHD-INFO: Request method:', options.method || 'GET');
 
   try {
     const response = await fetch(url, {
@@ -77,7 +74,6 @@ const fetchApi = async (
       },
     });
 
-    console.log('VHD-INFO: Response status:', response.status);
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -100,7 +96,6 @@ const fetchApi = async (
       throw new Error('Invalid JSON response from server');
     }
 
-    console.log('✅ API call successful');
     return data;
   } catch (error) {
     console.error('💥 API Error:', {
@@ -121,9 +116,7 @@ export const createSchedulesApi = (token: string | null) => {
   return {
     getAll: async (): Promise<ScheduleResponse> => {
       try {
-        console.log('📡 Fetching all schedules...');
         const data = await fetchApi(`${API_URL}/api/schedules`, token);
-        console.log('✅ Schedules fetched successfully');
         return {
           schedules: data.schedules || [],
           canManage: !!data.canManage,
