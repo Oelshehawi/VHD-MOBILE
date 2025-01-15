@@ -91,14 +91,30 @@ export function SignatureCapture({
             </TouchableOpacity>
           </View>
 
-          {/* Instructions */}
-          <Text className='text-gray-600 dark:text-gray-400'>
-            Please sign to confirm work completion
-          </Text>
+          {/* Consent Statement */}
+          <View className='bg-gray-100 dark:bg-gray-800 rounded-lg p-4'>
+            <Text className='text-gray-900 dark:text-white font-medium mb-3'>
+              Work Completion & Payment Authorization
+            </Text>
+            <View className='flex flex-col gap-2'>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                By signing below, I confirm that:
+              </Text>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                • All work has been completed to my satisfaction
+              </Text>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                • I have reviewed and approve all charges
+              </Text>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                • I authorize payment for the services rendered
+              </Text>
+            </View>
+          </View>
 
           {/* Signer Name Input */}
           <TextInput
-            className='px-4 py-3 text-white border border-gray-200 dark:border-gray-700 rounded-lg'
+            className='px-4 py-3 text-gray-900 dark:text-white border border-gray-200 dark:border-gray-700 rounded-lg'
             placeholder='Signer Name'
             placeholderTextColor='#9ca3af'
             value={signerName}

@@ -17,7 +17,7 @@ import {
   subMonths,
   isToday,
 } from 'date-fns';
-import { formatTimeUTC, toUTCDate } from '../../utils/date';
+import { formatTimeUTC } from '../../utils/date';
 
 interface MonthViewProps {
   currentDate: Date;
@@ -48,6 +48,13 @@ const WEEKDAYS = [
   { key: 'sat', label: 'S' },
 ];
 
+// Helper function to get current date in PT
+const getCurrentDateInPT = () => {
+  const now = new Date();
+  const ptOffset = -8; // Pacific Time UTC offset
+  return new Date(now.getTime() + ptOffset * 60 * 60 * 1000);
+};
+
 export function MonthView({
   currentDate,
   onDateChange,
@@ -55,7 +62,8 @@ export function MonthView({
   onDayPress,
   onAppointmentPress,
 }: MonthViewProps) {
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  // Initialize with current PT date
+  const [selectedDate, setSelectedDate] = useState(getCurrentDateInPT());
   const monthStart = startOfMonth(currentDate);
   const monthEnd = endOfMonth(currentDate);
   const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
@@ -82,13 +90,19 @@ export function MonthView({
     (date: Date) => {
       if (!date || !appointments?.length) return [];
 
-      return appointments.filter((apt) => {
+      const dayAppointments = appointments.filter((apt) => {
         if (!apt.startTime) return false;
         // Only compare the date part YYYY-MM-DD
         const appointmentDate = apt.startTime.toISOString().split('T')[0];
         const compareDate = date.toISOString().split('T')[0];
         return appointmentDate === compareDate;
       });
+
+      // Sort appointments by start time
+      return dayAppointments.sort(
+        (a, b) =>
+          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
+      );
     },
     [appointments]
   );
@@ -227,7 +241,9 @@ export function MonthView({
                     }`}
                   />
                 </View>
-                <Text className='text-gray-200 text-lg'>{apt.clientName.trim()}</Text>
+                <Text className='text-gray-200 text-lg'>
+                  {apt.clientName.trim()}
+                </Text>
                 <Text className='text-gray-400'>{apt.serviceType}</Text>
               </TouchableOpacity>
             ))}

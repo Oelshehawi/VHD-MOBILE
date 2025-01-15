@@ -19,20 +19,17 @@ const PROD_URL = 'https://vhd-psi.vercel.app';
 const getDevelopmentUrl = () => {
   // For production or preview builds, always use PROD_URL
   if (!__DEV__) {
-    console.log('VHD-INFO: Using production URL:', PROD_URL);
     return PROD_URL;
   }
 
   // For Expo Go development
   const isExpoGo = Constants.appOwnership === 'expo';
   if (isExpoGo) {
-    console.log('VHD-INFO: Using physical device URL:', DEV_PHYSICAL_DEVICE);
     return DEV_PHYSICAL_DEVICE;
   }
 
   // For web development
   if (Platform.OS === 'web') {
-    console.log('VHD-INFO: Using localhost URL');
     return 'http://localhost:3000';
   }
 
@@ -42,17 +39,14 @@ const getDevelopmentUrl = () => {
     (Platform.constants.Model === 'sdk_gphone64_arm64' ||
       Platform.constants.Model?.includes('google_sdk'))
   ) {
-    console.log('VHD-INFO: Using Android emulator URL:', DEV_ANDROID_EMULATOR);
     return DEV_ANDROID_EMULATOR;
   }
 
   // For all other development cases
-  console.log('VHD-INFO: Using physical device URL:', DEV_PHYSICAL_DEVICE);
   return DEV_PHYSICAL_DEVICE;
 };
 
 const API_URL = getDevelopmentUrl();
-console.log('VHD-INFO: Final API URL:', API_URL);
 
 const fetchApi = async (
   url: string,
@@ -64,9 +58,6 @@ const fetchApi = async (
     throw new Error('No token provided');
   }
 
-  console.log('VHD-INFO: Making request to:', url);
-  console.log('VHD-INFO: Request method:', options.method || 'GET');
-  console.log('VHD-INFO: Request headers:', JSON.stringify(options.headers));
 
   try {
     const response = await fetch(url, {
@@ -107,7 +98,6 @@ const fetchApi = async (
     let data;
     try {
       data = await response.json();
-      console.log('VHD-INFO: Response received successfully');
     } catch (parseError) {
       console.error('VHD-ERROR: JSON parse error:', parseError);
       throw new Error('Invalid JSON response from server');
