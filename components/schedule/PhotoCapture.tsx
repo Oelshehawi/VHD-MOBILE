@@ -68,7 +68,6 @@ export function PhotoCapture({
         mediaTypes: 'images',
         quality: 0.8,
         allowsEditing: true,
-        aspect: [4, 3],
         base64: true,
       });
 
@@ -130,12 +129,6 @@ export function PhotoCapture({
     setPendingPhotos(pendingPhotos.filter((_, i) => i !== index));
   };
 
-  const handleRemoveUploadedPhoto = (index: number) => {
-    const updatedPhotos = photos.filter((_, i) => i !== index);
-    setPhotos(updatedPhotos);
-    onPhotosCapture(updatedPhotos);
-  };
-
   return (
     <ScrollView>
       <View className='flex flex-col gap-6 pb-6'>
@@ -188,12 +181,6 @@ export function PhotoCapture({
                     source={{ uri: photo.url }}
                     className='w-28 h-28 rounded-lg'
                   />
-                  <TouchableOpacity
-                    onPress={() => handleRemoveUploadedPhoto(index)}
-                    className='absolute -top-2 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center'
-                  >
-                    <Text className='text-white text-sm'>✕</Text>
-                  </TouchableOpacity>
                 </View>
               ))}
             </View>
