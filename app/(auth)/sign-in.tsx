@@ -74,7 +74,7 @@ export default function Page() {
                   Email Address
                 </Text>
                 <TextInput
-                  className='w-full bg-lightGray px-4 py-3 rounded-lg text-darkWhite'
+                  className='w-full bg-lightGray px-4 py-3 rounded-lg text-darkGray'
                   autoCapitalize='none'
                   value={emailAddress}
                   placeholder='Enter your email'
@@ -88,7 +88,7 @@ export default function Page() {
                   Password
                 </Text>
                 <TextInput
-                  className='w-full bg-lightGray px-4 py-3 rounded-lg text-darkWhite'
+                  className='w-full bg-lightGray px-4 py-3 rounded-lg text-darkGray'
                   value={password}
                   placeholder='Enter your password'
                   placeholderTextColor='#667085'

@@ -17,6 +17,16 @@ const PROD_URL = 'https://vhd-psi.vercel.app';
 
 // Choose the appropriate URL based on environment and platform
 const getDevelopmentUrl = () => {
+  // For web in production, always use PROD_URL
+  if (Platform.OS === 'web' && !__DEV__) {
+    return PROD_URL;
+  }
+
+  // For web in development
+  if (Platform.OS === 'web') {
+    return 'http://localhost:3000';
+  }
+
   // Check if running in Expo development client
   const isExpoGo = Constants.appOwnership === 'expo';
   if (isExpoGo) {
@@ -37,14 +47,22 @@ const getDevelopmentUrl = () => {
   return DEV_PHYSICAL_DEVICE;
 };
 
-const API_URL = __DEV__ ? getDevelopmentUrl() : PROD_URL;
+const API_URL = getDevelopmentUrl();
+
+console.log('Using API URL:', API_URL); // Debug log to verify URL
 
 const fetchApi = async (
   url: string,
   token: string | null,
   options: RequestInit = {}
 ) => {
-  if (!token) throw new Error('No token provided');
+  if (!token) {
+    console.error('VHD-ERROR: No token provided for API call');
+    throw new Error('No token provided');
+  }
+
+  console.log('VHD-INFO: Making API request to:', url);
+  console.log('VHD-INFO: Request method:', options.method || 'GET');
 
   try {
     const response = await fetch(url, {
@@ -59,24 +77,61 @@ const fetchApi = async (
       },
     });
 
+    console.log('VHD-INFO: Response status:', response.status);
+
     if (!response.ok) {
-      const error = await response.text();
-      throw new Error(error);
+      const errorText = await response.text();
+      console.error('VHD-ERROR: API Error:', {
+        status: response.status,
+        statusText: response.statusText,
+        error: errorText,
+        url,
+      });
+      throw new Error(
+        `API Error: ${response.status} ${response.statusText} - ${errorText}`
+      );
     }
 
-    return response.json();
+    let data;
+    try {
+      data = await response.json();
+    } catch (parseError) {
+      console.error('❌ Error parsing JSON response:', parseError);
+      throw new Error('Invalid JSON response from server');
+    }
+
+    console.log('✅ API call successful');
+    return data;
   } catch (error) {
-    console.error('API Error:', error);
+    console.error('💥 API Error:', {
+      error,
+      url,
+      method: options.method || 'GET',
+    });
     throw error;
   }
 };
 
 export const createSchedulesApi = (token: string | null) => {
-  if (!token) return null;
+  if (!token) {
+    console.error('❌ No token provided to createSchedulesApi');
+    return null;
+  }
 
   return {
     getAll: async (): Promise<ScheduleResponse> => {
-      return fetchApi(`${API_URL}/api/schedules`, token);
+      try {
+        console.log('📡 Fetching all schedules...');
+        const data = await fetchApi(`${API_URL}/api/schedules`, token);
+        console.log('✅ Schedules fetched successfully');
+        return {
+          schedules: data.schedules || [],
+          canManage: !!data.canManage,
+        };
+      } catch (error) {
+        console.error('❌ Error fetching schedules:', error);
+        throw error;
+      }
     },
   };
 };

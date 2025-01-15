@@ -8,7 +8,7 @@ import { InvoiceModal } from '../../components/schedule/InvoiceModal';
 import { Stack } from 'expo-router';
 import { toUTCDate } from '../../utils/date';
 
-export default function ScheduleScreen() {
+export default function Page() {
   const { getToken, userId } = useAuth();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(
     null
@@ -114,44 +114,38 @@ export default function ScheduleScreen() {
     setSelectedInvoice(null);
   }, []);
 
-  if (loading) {
-    return (
-      <View className='flex-1 bg-gray-950 justify-center items-center'>
-        <Text className='text-gray-400'>Loading schedules...</Text>
-      </View>
-    );
-  }
-
-  if (error) {
-    return (
-      <View className='flex-1 bg-gray-950 justify-center items-center p-4'>
-        <Text className='text-red-500 text-center mb-4'>
-          Error loading schedules
-        </Text>
-        <Text className='text-gray-400 text-center'>{error.message}</Text>
-      </View>
-    );
-  }
-
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      <View className='flex-1 bg-gray-950'>
-        <MonthView
-          currentDate={currentDate}
-          onDateChange={setCurrentDate}
-          appointments={appointments}
-          onDayPress={handleDayPress}
-          onAppointmentPress={handleAppointmentPress}
-        />
-        <InvoiceModal
-          visible={!!selectedInvoiceId}
-          onClose={handleCloseModal}
-          invoice={selectedInvoice}
-          canManage={canManage}
-          technicianId={userId || ''}
-        />
-      </View>
+      {loading ? (
+        <View className='flex-1 bg-gray-950 justify-center items-center'>
+          <Text className='text-gray-400'>Loading schedules...</Text>
+        </View>
+      ) : error ? (
+        <View className='flex-1 bg-gray-950 justify-center items-center p-4'>
+          <Text className='text-red-500 text-center mb-4'>
+            Error loading schedules
+          </Text>
+          <Text className='text-gray-400 text-center'>{error.message}</Text>
+        </View>
+      ) : (
+        <View className='flex-1 bg-gray-950'>
+          <MonthView
+            currentDate={currentDate}
+            onDateChange={setCurrentDate}
+            appointments={appointments}
+            onDayPress={handleDayPress}
+            onAppointmentPress={handleAppointmentPress}
+          />
+          <InvoiceModal
+            visible={!!selectedInvoiceId}
+            onClose={handleCloseModal}
+            invoice={selectedInvoice}
+            canManage={canManage}
+            technicianId={userId || ''}
+          />
+        </View>
+      )}
     </>
   );
 }
