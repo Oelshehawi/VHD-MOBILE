@@ -17,38 +17,42 @@ const PROD_URL = 'https://vhd-psi.vercel.app';
 
 // Choose the appropriate URL based on environment and platform
 const getDevelopmentUrl = () => {
-  // For web in production, always use PROD_URL
-  if (Platform.OS === 'web' && !__DEV__) {
+  // For production or preview builds, always use PROD_URL
+  if (!__DEV__) {
+    console.log('VHD-INFO: Using production URL:', PROD_URL);
     return PROD_URL;
   }
 
-  // For web in development
-  if (Platform.OS === 'web') {
-    return 'http://localhost:3000';
-  }
-
-  // Check if running in Expo development client
+  // For Expo Go development
   const isExpoGo = Constants.appOwnership === 'expo';
   if (isExpoGo) {
+    console.log('VHD-INFO: Using physical device URL:', DEV_PHYSICAL_DEVICE);
     return DEV_PHYSICAL_DEVICE;
   }
 
-  if (Platform.OS === 'android') {
-    // Check if running in Android Emulator
-    if (
-      Platform.constants.Model === 'sdk_gphone64_arm64' ||
-      Platform.constants.Model?.includes('google_sdk')
-    ) {
-      return DEV_ANDROID_EMULATOR;
-    }
+  // For web development
+  if (Platform.OS === 'web') {
+    console.log('VHD-INFO: Using localhost URL');
+    return 'http://localhost:3000';
   }
 
-  // For all other cases (physical devices, iOS simulator)
+  // For Android Emulator
+  if (
+    Platform.OS === 'android' &&
+    (Platform.constants.Model === 'sdk_gphone64_arm64' ||
+      Platform.constants.Model?.includes('google_sdk'))
+  ) {
+    console.log('VHD-INFO: Using Android emulator URL:', DEV_ANDROID_EMULATOR);
+    return DEV_ANDROID_EMULATOR;
+  }
+
+  // For all other development cases
+  console.log('VHD-INFO: Using physical device URL:', DEV_PHYSICAL_DEVICE);
   return DEV_PHYSICAL_DEVICE;
 };
 
 const API_URL = getDevelopmentUrl();
-
+console.log('VHD-INFO: Final API URL:', API_URL);
 
 const fetchApi = async (
   url: string,
@@ -60,6 +64,9 @@ const fetchApi = async (
     throw new Error('No token provided');
   }
 
+  console.log('VHD-INFO: Making request to:', url);
+  console.log('VHD-INFO: Request method:', options.method || 'GET');
+  console.log('VHD-INFO: Request headers:', JSON.stringify(options.headers));
 
   try {
     const response = await fetch(url, {
@@ -72,8 +79,17 @@ const fetchApi = async (
             : 'application/json',
         ...options.headers,
       },
+    }).catch((error) => {
+      console.error('VHD-ERROR: Fetch failed:', error.message);
+      console.error('VHD-ERROR: Network error details:', {
+        name: error.name,
+        message: error.message,
+        cause: error.cause,
+        url,
+        method: options.method || 'GET',
+      });
+      throw error;
     });
-
 
     if (!response.ok) {
       const errorText = await response.text();
@@ -91,8 +107,9 @@ const fetchApi = async (
     let data;
     try {
       data = await response.json();
+      console.log('VHD-INFO: Response received successfully');
     } catch (parseError) {
-      console.error('❌ Error parsing JSON response:', parseError);
+      console.error('VHD-ERROR: JSON parse error:', parseError);
       throw new Error('Invalid JSON response from server');
     }
 
