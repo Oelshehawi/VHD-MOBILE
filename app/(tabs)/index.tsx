@@ -17,6 +17,12 @@ export default function HomeScreen() {
   const { data, loading, error, refreshDashboard } = useDashboard();
   const [showSchedules, setShowSchedules] = useState(false);
 
+  const sortedTodaySchedules = data?.todaySchedules.sort((a, b) => {
+    return (
+      new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime()
+    );
+  });
+
   const onRefresh = useCallback(() => {
     refreshDashboard();
   }, [refreshDashboard]);
@@ -77,13 +83,13 @@ export default function HomeScreen() {
               <Text className='text-lg font-bold text-gray-200 mb-2'>
                 Today's Schedule
               </Text>
-              {data?.todaySchedules.length === 0 ? (
+              {!sortedTodaySchedules?.length ? (
                 <Text className='text-gray-400'>
                   No appointments scheduled for today
                 </Text>
               ) : (
                 <View className='flex flex-col gap-3'>
-                  {data?.todaySchedules.map((schedule) => (
+                  {sortedTodaySchedules.map((schedule) => (
                     <TouchableOpacity
                       key={schedule._id}
                       className='border-l-4 border-l-darkGreen p-3 bg-gray-800 rounded'

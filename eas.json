@@ -8,7 +8,8 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "ios": {
-        "buildConfiguration": "Debug"
+        "buildConfiguration": "Debug",
+        "simulator": true
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app"
@@ -21,6 +22,10 @@
         "buildType": "apk",
         "image": "latest"
       },
+      "ios": {
+        "buildConfiguration": "Release",
+        "distribution": "internal"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app"
       },
@@ -30,6 +35,10 @@
       "android": {
         "buildType": "app-bundle"
       },
+      "ios": {
+        "buildConfiguration": "Release",
+        "distribution": "store"
+      },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app"
       },
@@ -37,6 +46,12 @@
     }
   },
   "submit": {
-    "production": {}
+    "production": {
+      "ios": {
+        "appleId": "your-apple-id@example.com",
+        "ascAppId": "your-app-store-connect-app-id",
+        "appleTeamId": "your-apple-team-id"
+      }
+    }
   }
 }

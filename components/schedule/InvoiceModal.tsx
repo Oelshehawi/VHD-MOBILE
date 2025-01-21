@@ -1,12 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  Modal,
-  TouchableOpacity,
-  ScrollView,
-  ActivityIndicator,
-} from 'react-native';
+import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { InvoiceType, PhotoType, SignatureType } from '../../types';
 import { formatDateReadable } from '../../utils/date';
 import { PhotoCapture } from './PhotoCapture';
@@ -113,10 +106,10 @@ export function InvoiceModal({
           Work Documentation
         </Text>
 
-        {/* Step 1: Before Photos */}
+        {/* Before Photos */}
         <View className='flex flex-col gap-4'>
           <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-            Step 1: Before Photos {hasBeforePhotos && '✓'}
+            Before Photos {hasBeforePhotos && '✓'}
           </Text>
           <PhotoCapture
             type='before'
@@ -129,59 +122,64 @@ export function InvoiceModal({
           />
         </View>
 
-        {/* Step 2: After Photos (only show if before photos exist) */}
-        {hasBeforePhotos && (
-          <View className='flex flex-col gap-4'>
-            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-              Step 2: After Photos {hasAfterPhotos && '✓'}
-            </Text>
-            <PhotoCapture
-              type='after'
-              onPhotosCapture={(photos) => handlePhotosCapture(photos, 'after')}
-              technicianId={technicianId}
-              isLoading={isLoading}
-              existingPhotos={invoice.photos?.after}
-              jobTitle={invoice.jobTitle}
-              invoiceId={invoice._id}
-            />
-          </View>
-        )}
+        {/* After Photos */}
+        <View className='flex flex-col gap-4'>
+          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+            After Photos {hasAfterPhotos && '✓'}
+          </Text>
+          <PhotoCapture
+            type='after'
+            onPhotosCapture={(photos) => handlePhotosCapture(photos, 'after')}
+            technicianId={technicianId}
+            isLoading={isLoading}
+            existingPhotos={invoice.photos?.after}
+            jobTitle={invoice.jobTitle}
+            invoiceId={invoice._id}
+          />
+        </View>
 
-        {/* Step 3: Signature (only show if both photo sets exist) */}
-        {hasBeforePhotos && hasAfterPhotos && (
-          <View className='flex flex-col gap-4'>
-            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-              Step 3: Customer Signature {hasSignature && '✓'}
-            </Text>
-            {!hasSignature ? (
-              <View className='flex flex-col gap-4'>
-                <TouchableOpacity
-                  onPress={() => setShowSignatureModal(true)}
-                  disabled={isLoading}
-                  className={`p-4 rounded-lg flex-row justify-center items-center ${
-                    isLoading ? 'bg-gray-300' : 'bg-darkGreen'
-                  }`}
-                >
-                  <Text className='text-white font-medium text-lg'>
-                    ✍️ Tap to Sign
-                  </Text>
-                </TouchableOpacity>
-                <SignatureCapture
-                  onSignatureCapture={handleSignatureCapture}
-                  technicianId={technicianId}
-                  invoice={invoice}
-                  isLoading={isLoading}
-                  visible={showSignatureModal}
-                  onClose={() => setShowSignatureModal(false)}
-                />
-              </View>
-            ) : (
-              <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
-                <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
-                  ✓ Work Documentation Complete
+        {/* Signature */}
+        <View className='flex flex-col gap-4'>
+          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+            Customer Signature {hasSignature && '✓'}
+          </Text>
+          {!hasSignature ? (
+            <View className='flex flex-col gap-4'>
+              <TouchableOpacity
+                onPress={() => setShowSignatureModal(true)}
+                disabled={isLoading}
+                className={`p-4 rounded-lg flex-row justify-center items-center ${
+                  isLoading ? 'bg-gray-300' : 'bg-darkGreen'
+                }`}
+              >
+                <Text className='text-white font-medium text-lg'>
+                  ✍️ Tap to Sign
                 </Text>
-              </View>
-            )}
+              </TouchableOpacity>
+              <SignatureCapture
+                onSignatureCapture={handleSignatureCapture}
+                technicianId={technicianId}
+                invoice={invoice}
+                isLoading={isLoading}
+                visible={showSignatureModal}
+                onClose={() => setShowSignatureModal(false)}
+              />
+            </View>
+          ) : (
+            <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
+              <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+                ✓ Signature Captured
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Work Complete Status */}
+        {hasBeforePhotos && hasAfterPhotos && hasSignature && (
+          <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
+            <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+              ✓ Work Documentation Complete
+            </Text>
           </View>
         )}
       </View>
