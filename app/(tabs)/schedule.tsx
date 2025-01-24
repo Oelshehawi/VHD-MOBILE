@@ -1,4 +1,4 @@
-import { View, Text } from 'react-native';
+import { View, Text, SafeAreaView, Platform, StatusBar } from 'react-native';
 import { useCallback, useEffect, useState, useMemo } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
 import { createSchedulesApi, createInvoicesApi } from '../../services/api';
@@ -117,35 +117,49 @@ export default function Page() {
   return (
     <>
       <Stack.Screen options={{ headerShown: false }} />
-      {loading ? (
-        <View className='flex-1 bg-gray-950 justify-center items-center'>
-          <Text className='text-gray-400'>Loading schedules...</Text>
+      <SafeAreaView
+        className='flex-1 bg-gray-950'
+        style={{
+          paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+        }}
+      >
+        <View
+          className='flex-1'
+          style={{
+            paddingBottom: Platform.OS === 'ios' ? 20 : 0,
+          }}
+        >
+          {loading ? (
+            <View className='flex-1 justify-center items-center'>
+              <Text className='text-gray-400'>Loading schedules...</Text>
+            </View>
+          ) : error ? (
+            <View className='flex-1 justify-center items-center p-4'>
+              <Text className='text-red-500 text-center mb-4'>
+                Error loading schedules
+              </Text>
+              <Text className='text-gray-400 text-center'>{error.message}</Text>
+            </View>
+          ) : (
+            <View className='flex-1'>
+              <MonthView
+                currentDate={currentDate}
+                onDateChange={setCurrentDate}
+                appointments={appointments}
+                onDayPress={handleDayPress}
+                onAppointmentPress={handleAppointmentPress}
+              />
+              <InvoiceModal
+                visible={!!selectedInvoiceId}
+                onClose={handleCloseModal}
+                invoice={selectedInvoice}
+                canManage={canManage}
+                technicianId={userId || ''}
+              />
+            </View>
+          )}
         </View>
-      ) : error ? (
-        <View className='flex-1 bg-gray-950 justify-center items-center p-4'>
-          <Text className='text-red-500 text-center mb-4'>
-            Error loading schedules
-          </Text>
-          <Text className='text-gray-400 text-center'>{error.message}</Text>
-        </View>
-      ) : (
-        <View className='flex-1 bg-gray-950'>
-          <MonthView
-            currentDate={currentDate}
-            onDateChange={setCurrentDate}
-            appointments={appointments}
-            onDayPress={handleDayPress}
-            onAppointmentPress={handleAppointmentPress}
-          />
-          <InvoiceModal
-            visible={!!selectedInvoiceId}
-            onClose={handleCloseModal}
-            invoice={selectedInvoice}
-            canManage={canManage}
-            technicianId={userId || ''}
-          />
-        </View>
-      )}
+      </SafeAreaView>
     </>
   );
 }

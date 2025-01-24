@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  useWindowDimensions,
 } from 'react-native';
 import {
   format,
@@ -35,7 +36,8 @@ interface MonthViewProps {
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const DAY_WIDTH = SCREEN_WIDTH / 7;
+const DAY_WIDTH = Math.floor(SCREEN_WIDTH / 7);
+const DAY_HEIGHT = Math.max(DAY_WIDTH, 45); // Set a reasonable minimum height
 const MAX_EVENT_BARS = 4;
 
 const WEEKDAYS = [
@@ -135,26 +137,26 @@ export function MonthView({
   return (
     <View className='flex-1 bg-gray-950'>
       {/* Month Header */}
-      <View className='flex-row justify-between items-center p-4'>
+      <View className='flex-row justify-between items-center px-2 py-3'>
         <TouchableOpacity
           onPress={() => onDateChange(subMonths(currentDate, 1))}
-          className='p-2'
+          className='h-10 w-10 bg-gray-800 rounded-full items-center justify-center'
         >
-          <Text className='text-gray-200 text-lg'>←</Text>
+          <Text className='text-gray-200 text-xl leading-none'>←</Text>
         </TouchableOpacity>
         <Text className='text-xl font-bold text-gray-200'>
           {format(currentDate, 'MMMM yyyy')}
         </Text>
         <TouchableOpacity
           onPress={() => onDateChange(addMonths(currentDate, 1))}
-          className='p-2'
+          className='h-10 w-10 bg-gray-800 rounded-full items-center justify-center'
         >
-          <Text className='text-gray-200 text-lg'>→</Text>
+          <Text className='text-gray-200 text-xl leading-none'>→</Text>
         </TouchableOpacity>
       </View>
 
       {/* Weekday Headers */}
-      <View className='flex-row'>
+      <View className='flex-row border-b border-gray-800'>
         {WEEKDAYS.map((day, index) => (
           <View
             key={day.key}
@@ -162,7 +164,7 @@ export function MonthView({
             className='py-2 items-center'
           >
             <Text
-              className={`text-sm ${
+              className={`text-sm font-medium ${
                 index === 0 ? 'text-red-500' : 'text-gray-400'
               }`}
             >
@@ -184,15 +186,18 @@ export function MonthView({
             return (
               <TouchableOpacity
                 key={index}
-                style={{ width: DAY_WIDTH, height: DAY_WIDTH * 1.2 }}
+                style={{
+                  width: DAY_WIDTH,
+                  height: DAY_HEIGHT,
+                }}
                 className={`border-[0.5px] border-gray-800 p-1 ${
-                  isSelected ? 'bg-gray-900' : ''
-                }`}
+                  isSelected ? 'bg-gray-800' : ''
+                } ${isCurrentDay ? 'border-blue-500 border-[1.5px]' : ''}`}
                 onPress={() => handleDayPress(date as Date)}
               >
                 <View className='flex-1'>
                   <Text
-                    className={`text-base ${
+                    className={`text-sm ${
                       index % 7 === 0
                         ? 'text-red-500'
                         : isCurrentDay
@@ -253,3 +258,5 @@ export function MonthView({
     </View>
   );
 }
+
+export default MonthView;
