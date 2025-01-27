@@ -23,19 +23,22 @@ export function InvoiceModal({
   technicianId,
 }: InvoiceModalProps) {
   const [isLoading, setIsLoading] = useState(false);
-  const [invoice, setInvoice] = useState<InvoiceType | null>(initialInvoice);
+  const [invoice, setInvoice] = useState<InvoiceType | null>(null);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const { getToken } = useAuth();
 
   // Update local invoice state when prop changes
   useEffect(() => {
-    setInvoice(initialInvoice);
+    if (initialInvoice) {
+      setInvoice(initialInvoice);
+    }
   }, [initialInvoice]);
 
   const refreshInvoice = async () => {
     if (!invoice?._id) return;
 
     try {
+      setIsLoading(true);
       const token = await getToken();
       const api = createInvoicesApi(token);
       if (!api) return;
@@ -44,6 +47,8 @@ export function InvoiceModal({
       setInvoice(updatedInvoice);
     } catch (error) {
       console.error('Error refreshing invoice:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -53,7 +58,7 @@ export function InvoiceModal({
   ) => {
     try {
       setIsLoading(true);
-      await refreshInvoice(); // Refresh invoice data after photos are uploaded
+      await refreshInvoice();
     } catch (error) {
       console.error('Error updating photos:', error);
     } finally {
@@ -64,7 +69,7 @@ export function InvoiceModal({
   const handleSignatureCapture = async (signature: SignatureType) => {
     try {
       setIsLoading(true);
-      await refreshInvoice(); // Refresh invoice data after signature is uploaded
+      await refreshInvoice();
       setShowSignatureModal(false);
     } catch (error) {
       console.error('Error updating signature:', error);
@@ -72,6 +77,13 @@ export function InvoiceModal({
       setIsLoading(false);
     }
   };
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!visible) {
+      setShowSignatureModal(false);
+    }
+  }, [visible]);
 
   if (!invoice) return null;
 

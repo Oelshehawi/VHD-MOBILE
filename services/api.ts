@@ -58,7 +58,6 @@ const fetchApi = async (
     throw new Error('No token provided');
   }
 
-
   try {
     const response = await fetch(url, {
       ...options,
@@ -139,6 +138,11 @@ export const createSchedulesApi = (token: string | null) => {
 export const createInvoicesApi = (token: string | null) => {
   if (!token) return null;
 
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    'Content-Type': 'application/json',
+  };
+
   return {
     getById: async (id: string): Promise<InvoiceType> => {
       return fetchApi(`${API_URL}/api/invoices/${id}`, token);
@@ -185,6 +189,23 @@ export const createInvoicesApi = (token: string | null) => {
           invoiceId,
         }),
       });
+    },
+    deletePhoto: async (
+      photoUrl: string,
+      type: 'before' | 'after',
+      invoiceId?: string
+    ) => {
+      const response = await fetch(`${API_URL}/api/deletePhoto`, {
+        method: 'DELETE',
+        headers,
+        body: JSON.stringify({ photoUrl, type, invoiceId }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to delete photo');
+      }
+
+      return response.json();
     },
   };
 };

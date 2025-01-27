@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   Platform,
   ScrollView,
+  Modal,
 } from 'react-native';
 import { PhotoType } from '../../types';
 import { createInvoicesApi } from '../../services/api';
@@ -24,11 +25,6 @@ interface PhotoCaptureProps {
   invoiceId?: string;
 }
 
-interface PendingPhoto {
-  uri: string;
-  base64: string;
-}
-
 export function PhotoCapture({
   onPhotosCapture,
   technicianId,
@@ -38,18 +34,32 @@ export function PhotoCapture({
   jobTitle,
   invoiceId,
 }: PhotoCaptureProps) {
-  const [photos, setPhotos] = useState<PhotoType[]>(existingPhotos);
-  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
+  const [photos, setPhotos] = useState<PhotoType[]>([]);
   const [uploadLoading, setUploadLoading] = useState(false);
+  const [showModal, setShowModal] = useState(false);
   const { getToken } = useAuth();
 
-  const requestCameraPermission = useCallback(async () => {
+  // Sync photos with existingPhotos prop
+  useEffect(() => {
+    setPhotos(existingPhotos || []);
+  }, [existingPhotos]);
+
+  const requestPermissions = async (type: 'camera' | 'gallery') => {
     if (Platform.OS !== 'web') {
-      const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      if (status !== 'granted') {
+      let permissionResult;
+      if (type === 'camera') {
+        permissionResult = await ImagePicker.requestCameraPermissionsAsync();
+      } else {
+        permissionResult =
+          await ImagePicker.requestMediaLibraryPermissionsAsync();
+      }
+
+      if (permissionResult.status !== 'granted') {
         Alert.alert(
           'Permission Required',
-          'Camera access is needed to take photos.',
+          `${
+            type === 'camera' ? 'Camera' : 'Gallery'
+          } access is needed to take photos.`,
           [{ text: 'OK' }]
         );
         return false;
@@ -57,76 +67,86 @@ export function PhotoCapture({
       return true;
     }
     return true;
-  }, []);
-
-  const handleTakePhoto = async () => {
-    try {
-      const hasPermission = await requestCameraPermission();
-      if (!hasPermission) return;
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: 'images',
-        quality: 0.8,
-        allowsEditing: true,
-        base64: true,
-      });
-
-      if (
-        !result.canceled &&
-        result.assets[0]?.uri &&
-        result.assets[0]?.base64
-      ) {
-        setPendingPhotos([
-          ...pendingPhotos,
-          {
-            uri: result.assets[0].uri,
-            base64: result.assets[0].base64,
-          },
-        ]);
-      }
-    } catch (error) {
-      console.error('Photo capture error:', error);
-      Alert.alert('Error', 'Failed to capture photo. Please try again.');
-    }
   };
 
-  const handleUploadPhotos = async () => {
-    if (pendingPhotos.length === 0) return;
+  const handleImageSelection = async (source: 'camera' | 'gallery') => {
+    if (uploadLoading) return; // Prevent multiple simultaneous uploads
 
     try {
-      setUploadLoading(true);
+      // Close modal first to prevent UI issues
+      setShowModal(false);
+
+      const hasPermission = await requestPermissions(source);
+      if (!hasPermission) return;
+
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: 'images',
+        quality: 0.8,
+        base64: true,
+        allowsEditing: true,
+        aspect: [4, 3],
+        exif: false,
+      };
+
+      setUploadLoading(true); // Set loading before camera launch
+
+      const result = await (source === 'camera'
+        ? ImagePicker.launchCameraAsync(options)
+        : ImagePicker.launchImageLibraryAsync(options));
+
+      if (result.canceled || !result.assets?.[0]?.base64) {
+        setUploadLoading(false);
+        return;
+      }
+
       const token = await getToken();
       const api = createInvoicesApi(token);
+
       if (!api) throw new Error('Failed to create API client');
 
-      // Upload all pending photos
-      const base64Images = pendingPhotos.map(
-        (photo) => `data:image/jpeg;base64,${photo.base64}`
-      );
       const uploadResult = await api.uploadPhotos(
-        base64Images,
+        [`data:image/jpeg;base64,${result.assets[0].base64}`],
         type,
         technicianId,
         jobTitle,
         invoiceId
       );
 
-      // Handle the response data correctly
-      const uploadedPhotos = uploadResult.data || [];
-      const updatedPhotos = [...photos, ...uploadedPhotos];
-      setPhotos(updatedPhotos);
-      setPendingPhotos([]); // Clear pending photos after successful upload
-      onPhotosCapture(updatedPhotos);
+      if (uploadResult.data) {
+        // Ensure we're not adding duplicate photos
+        const newPhotos = uploadResult.data.filter(
+          (newPhoto) =>
+            !photos.some((existingPhoto) => existingPhoto.url === newPhoto.url)
+        );
+
+        if (newPhotos.length > 0) {
+          const updatedPhotos = [...photos, ...newPhotos];
+          setPhotos(updatedPhotos);
+          onPhotosCapture(updatedPhotos);
+        }
+      }
     } catch (error) {
-      console.error('Photo upload error:', error);
-      Alert.alert('Error', 'Failed to upload photos. Please try again.');
+      console.error('Photo handling error:', error);
+      Alert.alert('Error', 'Failed to process photo. Please try again.');
     } finally {
       setUploadLoading(false);
     }
   };
 
-  const handleRemovePendingPhoto = (index: number) => {
-    setPendingPhotos(pendingPhotos.filter((_, i) => i !== index));
+  const handleDeletePhoto = async (photoUrl: string) => {
+    try {
+      const token = await getToken();
+      const api = createInvoicesApi(token);
+      if (!api) throw new Error('Failed to create API client');
+
+      await api.deletePhoto(photoUrl, type, invoiceId);
+      const updatedPhotos = photos.filter((photo) => photo.url !== photoUrl);
+      setPhotos(updatedPhotos);
+      onPhotosCapture(updatedPhotos);
+    } catch (error) {
+      console.error('Delete photo error:', error);
+      Alert.alert('Error', 'Failed to delete photo. Please try again.');
+    }
   };
 
   return (
@@ -142,84 +162,90 @@ export function PhotoCapture({
           </Text>
         </View>
 
-        {/* Pending Photos Section */}
-        {pendingPhotos.length > 0 && (
-          <View className='flex flex-col gap-4'>
-            <Text className='text-base font-medium text-amber-600 dark:text-amber-400'>
-              {pendingPhotos.length} Photo
-              {pendingPhotos.length !== 1 ? 's' : ''} Ready to Upload
-            </Text>
-            <View className='flex-row flex-wrap gap-3'>
-              {pendingPhotos.map((photo, index) => (
-                <View key={index} className='relative'>
-                  <Image
-                    source={{ uri: photo.uri }}
-                    className='w-28 h-28 rounded-lg'
-                  />
-                  <TouchableOpacity
-                    onPress={() => handleRemovePendingPhoto(index)}
-                    className='absolute -top-2 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center'
-                  >
-                    <Text className='text-white text-sm'>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
-
-        {/* Uploaded Photos Section */}
+        {/* Photos Grid */}
         {photos.length > 0 && (
-          <View className='flex flex-col gap-4'>
-            <Text className='text-base font-medium text-green-600 dark:text-green-400'>
-              {photos.length} Photo{photos.length !== 1 ? 's' : ''} Uploaded
-            </Text>
-            <View className='flex-row flex-wrap gap-3'>
-              {photos.map((photo, index) => (
-                <View key={index} className='relative'>
-                  <Image
-                    source={{ uri: photo.url }}
-                    className='w-28 h-28 rounded-lg'
-                  />
-                </View>
-              ))}
-            </View>
+          <View className='flex-row flex-wrap gap-3'>
+            {photos.map((photo) => (
+              <View
+                key={`${photo.url}-${photo.timestamp}`}
+                className='relative'
+              >
+                <Image
+                  source={{ uri: photo.url }}
+                  className='w-28 h-28 rounded-lg'
+                />
+                <TouchableOpacity
+                  onPress={() => handleDeletePhoto(photo.url)}
+                  className='absolute -top-2 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center'
+                >
+                  <Text className='text-white text-sm'>✕</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
           </View>
         )}
 
-        {/* Action Buttons */}
-        <View className='flex flex-col gap-3'>
-          <TouchableOpacity
-            onPress={handleTakePhoto}
-            disabled={isLoading || uploadLoading}
-            className={`p-4 rounded-lg flex-row justify-center items-center ${
-              isLoading || uploadLoading ? 'bg-gray-300' : 'bg-darkGreen'
-            }`}
-          >
-            <Text className='text-white font-medium text-lg'>
-              📸 Take Photo
-            </Text>
-          </TouchableOpacity>
-
-          {pendingPhotos.length > 0 && (
-            <TouchableOpacity
-              onPress={handleUploadPhotos}
-              disabled={isLoading || uploadLoading}
-              className={`p-4 rounded-lg flex-row justify-center items-center ${
-                isLoading || uploadLoading ? 'bg-gray-300' : 'bg-amber-500'
-              }`}
-            >
-              {uploadLoading ? (
-                <ActivityIndicator color='white' />
-              ) : (
-                <Text className='text-white font-medium text-lg'>
-                  ⬆️ Upload {pendingPhotos.length} Photo
-                  {pendingPhotos.length !== 1 ? 's' : ''}
-                </Text>
-              )}
-            </TouchableOpacity>
+        {/* Add Photo Button */}
+        <TouchableOpacity
+          onPress={() => setShowModal(true)}
+          disabled={isLoading || uploadLoading}
+          className={`p-4 rounded-lg flex-row justify-center items-center ${
+            isLoading || uploadLoading ? 'bg-gray-300' : 'bg-darkGreen'
+          }`}
+        >
+          {uploadLoading ? (
+            <ActivityIndicator color='white' />
+          ) : (
+            <Text className='text-white font-medium text-lg'>Add Photo</Text>
           )}
-        </View>
+        </TouchableOpacity>
+
+        {/* Photo Selection Modal */}
+        <Modal
+          animationType='slide'
+          transparent={true}
+          visible={showModal}
+          onRequestClose={() => setShowModal(false)}
+        >
+          <View className='flex-1 justify-end bg-black/50'>
+            <View className='bg-gray-900 rounded-t-3xl p-6'>
+              <View className='flex-col gap-4'>
+                <Text className='text-white text-xl font-bold text-center mb-4'>
+                  Add Photo
+                </Text>
+
+                <TouchableOpacity
+                  onPress={() => handleImageSelection('camera')}
+                  className='bg-darkGreen p-4 rounded-xl flex-row items-center justify-center space-x-2'
+                >
+                  <Text className='text-2xl'>📸</Text>
+                  <Text className='text-white text-lg font-semibold'>
+                    Take Photo
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => handleImageSelection('gallery')}
+                  className='bg-blue-500 p-4 rounded-xl flex-row items-center justify-center space-x-2'
+                >
+                  <Text className='text-2xl'>🖼️</Text>
+                  <Text className='text-white text-lg font-semibold'>
+                    Choose from Gallery
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setShowModal(false)}
+                  className='bg-gray-700 p-4 rounded-xl mt-2'
+                >
+                  <Text className='text-white text-lg font-semibold text-center'>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </View>
     </ScrollView>
   );
