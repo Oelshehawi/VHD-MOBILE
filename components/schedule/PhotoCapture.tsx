@@ -25,6 +25,18 @@ interface PhotoCaptureProps {
   invoiceId?: string;
 }
 
+interface PendingPhoto {
+  id: string;
+  uri: string;
+  base64: string;
+  type: 'before' | 'after';
+  technicianId: string;
+  jobTitle: string;
+  invoiceId?: string;
+  isUploading: boolean;
+  lastAttempt: number;
+}
+
 export function PhotoCapture({
   onPhotosCapture,
   technicianId,
@@ -34,15 +46,10 @@ export function PhotoCapture({
   jobTitle,
   invoiceId,
 }: PhotoCaptureProps) {
-  const [photos, setPhotos] = useState<PhotoType[]>([]);
-  const [uploadLoading, setUploadLoading] = useState(false);
+  const [photos, setPhotos] = useState<PhotoType[]>(existingPhotos || []);
+  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [showModal, setShowModal] = useState(false);
   const { getToken } = useAuth();
-
-  // Sync photos with existingPhotos prop
-  useEffect(() => {
-    setPhotos(existingPhotos || []);
-  }, [existingPhotos]);
 
   const requestPermissions = async (type: 'camera' | 'gallery') => {
     if (Platform.OS !== 'web') {
@@ -69,43 +76,32 @@ export function PhotoCapture({
     return true;
   };
 
-  const handleImageSelection = async (source: 'camera' | 'gallery') => {
-    if (uploadLoading) return; // Prevent multiple simultaneous uploads
+  const uploadPhoto = async (pendingPhoto: PendingPhoto) => {
+    // Skip if already uploading or too soon since last attempt (5 second cooldown)
+    const now = Date.now();
+    if (
+      pendingPhoto.isUploading ||
+      (pendingPhoto.lastAttempt && now - pendingPhoto.lastAttempt < 5000)
+    ) {
+      return;
+    }
 
     try {
-      // Close modal first to prevent UI issues
-      setShowModal(false);
-
-      const hasPermission = await requestPermissions(source);
-      if (!hasPermission) return;
-
-      const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: 'images',
-        quality: 0.8,
-        base64: true,
-        allowsEditing: true,
-        aspect: [4, 3],
-        exif: false,
-      };
-
-      setUploadLoading(true); // Set loading before camera launch
-
-      const result = await (source === 'camera'
-        ? ImagePicker.launchCameraAsync(options)
-        : ImagePicker.launchImageLibraryAsync(options));
-
-      if (result.canceled || !result.assets?.[0]?.base64) {
-        setUploadLoading(false);
-        return;
-      }
+      // Mark as uploading
+      setPendingPhotos((current) =>
+        current.map((p) =>
+          p.id === pendingPhoto.id
+            ? { ...p, isUploading: true, lastAttempt: now }
+            : p
+        )
+      );
 
       const token = await getToken();
       const api = createInvoicesApi(token);
-
       if (!api) throw new Error('Failed to create API client');
 
       const uploadResult = await api.uploadPhotos(
-        [`data:image/jpeg;base64,${result.assets[0].base64}`],
+        [`data:image/jpeg;base64,${pendingPhoto.base64}`],
         type,
         technicianId,
         jobTitle,
@@ -113,7 +109,6 @@ export function PhotoCapture({
       );
 
       if (uploadResult.data) {
-        // Ensure we're not adding duplicate photos
         const newPhotos = uploadResult.data.filter(
           (newPhoto) =>
             !photos.some((existingPhoto) => existingPhoto.url === newPhoto.url)
@@ -124,12 +119,80 @@ export function PhotoCapture({
           setPhotos(updatedPhotos);
           onPhotosCapture(updatedPhotos);
         }
+
+        // Remove from pending after successful upload
+        setPendingPhotos((current) =>
+          current.filter((p) => p.id !== pendingPhoto.id)
+        );
       }
     } catch (error) {
+      console.error('Photo upload error:', error);
+      // Update upload state
+      setPendingPhotos((current) =>
+        current.map((p) =>
+          p.id === pendingPhoto.id ? { ...p, isUploading: false } : p
+        )
+      );
+    }
+  };
+
+  // Automatic retry effect
+  useEffect(() => {
+    if (pendingPhotos.length === 0) return;
+
+    const retryInterval = setInterval(() => {
+      pendingPhotos
+        .filter((photo) => !photo.isUploading)
+        .forEach((photo) => {
+          uploadPhoto(photo);
+        });
+    }, 5000); // Retry every 5 seconds
+
+    return () => clearInterval(retryInterval);
+  }, [pendingPhotos]);
+
+  const handleImageSelection = async (source: 'camera' | 'gallery') => {
+    try {
+      setShowModal(false);
+      const hasPermission = await requestPermissions(source);
+      if (!hasPermission) return;
+
+      const options: ImagePicker.ImagePickerOptions = {
+        mediaTypes: 'images',
+        quality: 0.5, // Reduced quality for better performance
+        base64: true,
+        allowsEditing: true,
+        aspect: [4, 3],
+        exif: false,
+      };
+
+      const result = await (source === 'camera'
+        ? ImagePicker.launchCameraAsync(options)
+        : ImagePicker.launchImageLibraryAsync(options));
+
+      if (result.canceled || !result.assets?.[0]?.base64) return;
+
+      const uniqueId = `${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+
+      const newPendingPhoto: PendingPhoto = {
+        id: uniqueId,
+        uri: result.assets[0].uri,
+        base64: result.assets[0].base64,
+        type,
+        technicianId,
+        jobTitle,
+        invoiceId,
+        isUploading: false,
+        lastAttempt: 0,
+      };
+
+      setPendingPhotos((current) => [...current, newPendingPhoto]);
+      uploadPhoto(newPendingPhoto);
+    } catch (error) {
       console.error('Photo handling error:', error);
-      Alert.alert('Error', 'Failed to process photo. Please try again.');
-    } finally {
-      setUploadLoading(false);
+      Alert.alert('Error', 'Failed to capture photo. Please try again.');
     }
   };
 
@@ -163,41 +226,48 @@ export function PhotoCapture({
         </View>
 
         {/* Photos Grid */}
-        {photos.length > 0 && (
-          <View className='flex-row flex-wrap gap-3'>
-            {photos.map((photo) => (
-              <View
-                key={`${photo.url}-${photo.timestamp}`}
-                className='relative'
+        <View className='flex-row flex-wrap gap-3'>
+          {/* Pending Photos */}
+          {pendingPhotos.map((photo) => (
+            <View key={photo.id} className='relative'>
+              <Image
+                source={{ uri: photo.uri }}
+                className='w-28 h-28 rounded-lg opacity-50'
+              />
+              <ActivityIndicator
+                className='absolute top-1/2 left-1/2 -mt-3 -ml-3'
+                color='#fff'
+                size='large'
+              />
+            </View>
+          ))}
+
+          {/* Uploaded Photos */}
+          {photos.map((photo) => (
+            <View key={`${photo.url}-${photo.timestamp}`} className='relative'>
+              <Image
+                source={{ uri: photo.url }}
+                className='w-28 h-28 rounded-lg'
+              />
+              <TouchableOpacity
+                onPress={() => handleDeletePhoto(photo.url)}
+                className='absolute -top-2 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center'
               >
-                <Image
-                  source={{ uri: photo.url }}
-                  className='w-28 h-28 rounded-lg'
-                />
-                <TouchableOpacity
-                  onPress={() => handleDeletePhoto(photo.url)}
-                  className='absolute -top-2 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center'
-                >
-                  <Text className='text-white text-sm'>✕</Text>
-                </TouchableOpacity>
-              </View>
-            ))}
-          </View>
-        )}
+                <Text className='text-white text-sm'>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ))}
+        </View>
 
         {/* Add Photo Button */}
         <TouchableOpacity
           onPress={() => setShowModal(true)}
-          disabled={isLoading || uploadLoading}
+          disabled={isLoading}
           className={`p-4 rounded-lg flex-row justify-center items-center ${
-            isLoading || uploadLoading ? 'bg-gray-300' : 'bg-darkGreen'
+            isLoading ? 'bg-gray-300' : 'bg-darkGreen'
           }`}
         >
-          {uploadLoading ? (
-            <ActivityIndicator color='white' />
-          ) : (
-            <Text className='text-white font-medium text-lg'>Add Photo</Text>
-          )}
+          <Text className='text-white font-medium text-lg'>Add Photo</Text>
         </TouchableOpacity>
 
         {/* Photo Selection Modal */}
