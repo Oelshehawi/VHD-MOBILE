@@ -51,6 +51,17 @@ export function PhotoCapture({
   const [showModal, setShowModal] = useState(false);
   const { getToken } = useAuth();
 
+  // Reset photos and pending photos when invoice changes
+  useEffect(() => {
+    setPhotos(existingPhotos || []);
+    setPendingPhotos([]); // Clear pending photos when invoice changes
+  }, [existingPhotos, invoiceId]);
+
+  // Filter pending photos to only show ones for current invoice
+  const currentInvoicePendingPhotos = pendingPhotos.filter(
+    (photo) => photo.invoiceId === invoiceId
+  );
+
   const requestPermissions = async (type: 'camera' | 'gallery') => {
     if (Platform.OS !== 'web') {
       let permissionResult;
@@ -136,20 +147,20 @@ export function PhotoCapture({
     }
   };
 
-  // Automatic retry effect
+  // Automatic retry effect - only retry photos for current invoice
   useEffect(() => {
-    if (pendingPhotos.length === 0) return;
+    if (currentInvoicePendingPhotos.length === 0) return;
 
     const retryInterval = setInterval(() => {
-      pendingPhotos
+      currentInvoicePendingPhotos
         .filter((photo) => !photo.isUploading)
         .forEach((photo) => {
           uploadPhoto(photo);
         });
-    }, 5000); // Retry every 5 seconds
+    }, 5000);
 
     return () => clearInterval(retryInterval);
-  }, [pendingPhotos]);
+  }, [currentInvoicePendingPhotos]);
 
   const handleImageSelection = async (source: 'camera' | 'gallery') => {
     try {
@@ -227,8 +238,8 @@ export function PhotoCapture({
 
         {/* Photos Grid */}
         <View className='flex-row flex-wrap gap-3'>
-          {/* Pending Photos */}
-          {pendingPhotos.map((photo) => (
+          {/* Pending Photos - Only show for current invoice */}
+          {currentInvoicePendingPhotos.map((photo) => (
             <View key={photo.id} className='relative'>
               <Image
                 source={{ uri: photo.uri }}

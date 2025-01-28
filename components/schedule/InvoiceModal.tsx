@@ -25,12 +25,20 @@ export function InvoiceModal({
   const [isLoading, setIsLoading] = useState(false);
   const [invoice, setInvoice] = useState<InvoiceType | null>(null);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
   const { getToken } = useAuth();
 
   // Update local invoice state when prop changes
   useEffect(() => {
     if (initialInvoice) {
-      setInvoice(initialInvoice);
+      setIsTransitioning(true);
+      // Small delay to ensure modal animation completes
+      setTimeout(() => {
+        setInvoice(initialInvoice);
+        setIsTransitioning(false);
+      }, 100);
+    } else {
+      setInvoice(null);
     }
   }, [initialInvoice]);
 
@@ -81,11 +89,22 @@ export function InvoiceModal({
   // Reset state when modal closes
   useEffect(() => {
     if (!visible) {
+      setIsTransitioning(false);
+      // Small delay to clear invoice after modal close animation
+      setTimeout(() => {
+        setInvoice(null);
+      }, 300);
+    }
+  }, [visible]);
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!visible) {
       setShowSignatureModal(false);
     }
   }, [visible]);
 
-  if (!invoice) return null;
+  if (!visible || !invoice) return null;
 
   const subtotal = invoice.items.reduce(
     (sum, item) => sum + (item.price || 0),

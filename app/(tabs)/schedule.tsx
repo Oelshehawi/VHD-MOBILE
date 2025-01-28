@@ -49,7 +49,10 @@ export default function Page() {
     let mounted = true;
 
     const fetchInvoice = async () => {
-      if (!selectedInvoiceId) return;
+      if (!selectedInvoiceId) {
+        setSelectedInvoice(null);
+        return;
+      }
 
       try {
         const token = await getToken();
@@ -100,6 +103,7 @@ export default function Page() {
     (appointmentId: string) => {
       const schedule = schedules?.find((s) => s._id === appointmentId);
       if (!schedule) return;
+      setSelectedInvoice(null);
       setSelectedInvoiceId(schedule.invoiceRef as string);
     },
     [schedules]
