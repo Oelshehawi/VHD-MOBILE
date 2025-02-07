@@ -1,169 +1,158 @@
-import { View, Text, SafeAreaView, Platform, StatusBar } from 'react-native';
-import { useCallback, useEffect, useState, useMemo } from 'react';
+import {
+  View,
+  Text,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+  ActivityIndicator,
+} from 'react-native';
+import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
-import { createSchedulesApi, createInvoicesApi } from '../../services/api';
 import { MonthView } from '../../components/schedule/MonthView';
-import { ScheduleType, InvoiceType } from '../../types';
+import { InvoiceType, Schedule } from '@/types';
 import { InvoiceModal } from '../../components/schedule/InvoiceModal';
 import { Stack } from 'expo-router';
-import { toUTCDate } from '../../utils/date';
+import { usePowerSync, useQuery } from '@powersync/react-native';
+
+interface AppointmentType {
+  id: string;
+  startTime: string;
+  endTime: string;
+  clientName: string;
+  serviceType: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+}
 
 export default function Page() {
-  const { getToken, userId } = useAuth();
+  const { userId, getToken } = useAuth();
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<string | null>(
     null
   );
-  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceType | null>(
-    null
+  const [isManager, setIsManager] = useState(false);
+  const [currentDate, setCurrentDate] = useState(() => {
+    const now = new Date();
+    // Subtract 8 hours to convert from UTC to PST
+    const pstTime = now.getTime() - 8 * 60 * 60 * 1000;
+    return new Date(pstTime).toISOString();
+  });
+
+  // Use PowerSync queries directly
+  const { data: schedules = [] } = useQuery<Schedule>(
+    `SELECT * FROM schedules 
+     WHERE assignedTechnicians LIKE ? 
+     OR ? = true
+     ORDER BY startDateTime ASC`,
+    [userId ? `%${userId}%` : '', isManager]
   );
-  const [currentDate, setCurrentDate] = useState(new Date());
-  const [schedules, setSchedules] = useState<ScheduleType[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<Error | null>(null);
-  const [canManage, setCanManage] = useState(false);
 
-  const fetchSchedules = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const token = await getToken();
-      const api = createSchedulesApi(token);
-      if (!api) throw new Error('Failed to initialize API');
+  const { data: invoices = [] } = useQuery<InvoiceType>(
+    `SELECT * FROM invoices`
+  );
 
-      const result = await api.getAll();
-      setSchedules(result.schedules);
-      setCanManage(result.canManage);
-    } catch (err) {
-      console.error('Error fetching schedules:', err);
-      setError(err as Error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchSchedules();
-  }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const fetchInvoice = async () => {
-      if (!selectedInvoiceId) {
-        setSelectedInvoice(null);
-        return;
-      }
-
-      try {
-        const token = await getToken();
-        const api = createInvoicesApi(token);
-        if (!mounted || !api) return;
-
-        const invoice = await api.getById(selectedInvoiceId);
-        if (mounted) setSelectedInvoice(invoice);
-      } catch (error) {
-        console.error('Error fetching invoice:', error);
-        if (mounted) setSelectedInvoice(null);
-      }
-    };
-
-    fetchInvoice();
-    return () => {
-      mounted = false;
-    };
-  }, [selectedInvoiceId]);
-
-  const appointments = useMemo(() => {
-    if (!schedules?.length) return [];
-
-    return schedules
-      .map((schedule) => {
-        const startDateTime = toUTCDate(schedule.startDateTime);
-        if (isNaN(startDateTime.getTime())) return null;
-
-        return {
-          id: schedule._id,
-          startTime: startDateTime,
-          endTime: new Date(
-            startDateTime.getTime() + (schedule.hours || 4) * 60 * 60 * 1000
-          ),
-          clientName: schedule.jobTitle,
-          serviceType: schedule.location,
-          status: schedule.confirmed
-            ? ('scheduled' as const)
-            : schedule.deadRun
-            ? ('cancelled' as const)
-            : ('scheduled' as const),
-        };
-      })
-      .filter((apt): apt is NonNullable<typeof apt> => apt !== null);
-  }, [schedules]);
+  // Only run this query when we have a selectedInvoiceId
+  const { data: selectedInvoice = [] } = useQuery<InvoiceType>(
+    selectedInvoiceId
+      ? `SELECT * FROM invoices WHERE id = ?`
+      : `SELECT * FROM invoices WHERE 0`,
+    [selectedInvoiceId || '']
+  );
 
   const handleAppointmentPress = useCallback(
-    (appointmentId: string) => {
-      const schedule = schedules?.find((s) => s._id === appointmentId);
-      if (!schedule) return;
-      setSelectedInvoice(null);
-      setSelectedInvoiceId(schedule.invoiceRef as string);
+    async (appointmentId: string) => {
+      const schedule = schedules?.find((s) => s.id === appointmentId);
+      if (!schedule?.invoiceRef) {
+        console.log('No invoice reference found for schedule:', appointmentId);
+        return;
+      }
+      setSelectedInvoiceId(schedule.invoiceRef);
     },
     [schedules]
   );
 
-  const handleDayPress = useCallback((date: Date) => {
-    setCurrentDate(date);
+  const handleDayPress = useCallback((date: string) => {
+    // When a day is clicked, keep it in PST
+    const selectedDate = new Date(date);
+    // No need to adjust time since the date from MonthView is already in correct timezone
+    setCurrentDate(selectedDate.toISOString());
   }, []);
 
   const handleCloseModal = useCallback(() => {
     setSelectedInvoiceId(null);
-    setSelectedInvoice(null);
   }, []);
 
+  const appointments: AppointmentType[] = schedules
+    .map((schedule) => {
+      if (!schedule.startDateTime) return null;
+
+      const hours = schedule.hours || 4;
+      const startTime = schedule.startDateTime;
+      const endTime = new Date(
+        new Date(startTime).getTime() + hours * 60 * 60 * 1000
+      ).toISOString();
+
+      return {
+        id: schedule.id,
+        startTime,
+        endTime,
+        clientName: schedule.jobTitle,
+        serviceType: schedule.location,
+        status: schedule.confirmed
+          ? ('scheduled' as const)
+          : schedule.deadRun
+          ? ('cancelled' as const)
+          : ('scheduled' as const),
+      };
+    })
+    .filter((apt): apt is NonNullable<typeof apt> => apt !== null);
+
+  useEffect(() => {
+    const checkManager = async () => {
+      const token = await getToken();
+      if (!token) {
+        setIsManager(false);
+        return;
+      }
+
+      try {
+        const decoded = JSON.parse(atob(token.split('.')[1]));
+        setIsManager(decoded?.publicMetadata?.isManager || false);
+      } catch (e) {
+        console.error('Error decoding token:', e);
+        setIsManager(false);
+      }
+    };
+
+    checkManager();
+  }, [getToken]);
+
   return (
-    <>
-      <Stack.Screen options={{ headerShown: false }} />
-      <SafeAreaView
-        className='flex-1 bg-gray-950'
-        style={{
-          paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
+    <SafeAreaView className='flex-1 bg-gray-950'>
+      <Stack.Screen
+        options={{
+          headerShown: false,
         }}
-      >
-        <View
-          className='flex-1'
-          style={{
-            paddingBottom: Platform.OS === 'ios' ? 20 : 0,
-          }}
-        >
-          {loading ? (
-            <View className='flex-1 justify-center items-center'>
-              <Text className='text-gray-400'>Loading schedules...</Text>
-            </View>
-          ) : error ? (
-            <View className='flex-1 justify-center items-center p-4'>
-              <Text className='text-red-500 text-center mb-4'>
-                Error loading schedules
-              </Text>
-              <Text className='text-gray-400 text-center'>{error.message}</Text>
-            </View>
-          ) : (
-            <View className='flex-1'>
-              <MonthView
-                currentDate={currentDate}
-                onDateChange={setCurrentDate}
-                appointments={appointments}
-                onDayPress={handleDayPress}
-                onAppointmentPress={handleAppointmentPress}
-              />
-              <InvoiceModal
-                visible={!!selectedInvoiceId}
-                onClose={handleCloseModal}
-                invoice={selectedInvoice}
-                canManage={canManage}
-                technicianId={userId || ''}
-              />
-            </View>
-          )}
-        </View>
-      </SafeAreaView>
-    </>
+      />
+      <StatusBar
+        barStyle='light-content'
+        backgroundColor='#111827'
+        translucent={false}
+      />
+      <View className='flex-1'>
+        <MonthView
+          appointments={appointments}
+          onAppointmentPress={handleAppointmentPress}
+          onDayPress={handleDayPress}
+          currentDate={currentDate}
+          onDateChange={setCurrentDate}
+        />
+      </View>
+      <InvoiceModal
+        visible={!!selectedInvoice.length}
+        onClose={handleCloseModal}
+        invoice={selectedInvoice[0] || null}
+        canManage={isManager}
+        technicianId={userId || ''}
+      />
+    </SafeAreaView>
   );
 }

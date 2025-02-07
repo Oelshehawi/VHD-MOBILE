@@ -2,6 +2,21 @@ import { parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
 
 /**
+ * Check if a date string or Date object is valid
+ */
+export const isValidDate = (
+  date: string | Date | undefined | null
+): boolean => {
+  if (!date) return false;
+  try {
+    const parsedDate = typeof date === 'string' ? new Date(date) : date;
+    return !isNaN(parsedDate.getTime());
+  } catch {
+    return false;
+  }
+};
+
+/**
  * Format a date in UTC (YYYY-MM-DD)
  */
 export const formatDateUTC = (date: string | Date): string => {

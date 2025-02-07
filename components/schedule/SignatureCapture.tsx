@@ -3,23 +3,34 @@ import {
   View,
   Text,
   TouchableOpacity,
-  ActivityIndicator,
   TextInput,
   Alert,
   Modal,
   SafeAreaView,
+  ToastAndroid,
+  Platform,
 } from 'react-native';
 import SignatureCanvas from 'react-native-signature-canvas';
 import { SignatureType, InvoiceType } from '../../types';
-import { formatDateReadable } from '../../utils/date';
-import { createInvoicesApi } from '../../services/api';
 import { useAuth } from '@clerk/clerk-expo';
+import { usePowerSync } from '@powersync/react-native';
+import { ApiClient } from '@/services/api';
+
+// Toast utility function
+const showToast = (message: string) => {
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(message, ToastAndroid.SHORT);
+  } else {
+    // For iOS, you might want to use a custom toast component
+    // For now, we'll use Alert
+    Alert.alert('Success', message);
+  }
+};
 
 interface SignatureCaptureProps {
-  onSignatureCapture: (signature: SignatureType) => void;
+  onSignatureCapture: () => void;
   technicianId: string;
   invoice: InvoiceType;
-  isLoading?: boolean;
   visible: boolean;
   onClose: () => void;
 }
@@ -28,13 +39,13 @@ export function SignatureCapture({
   onSignatureCapture,
   technicianId,
   invoice,
-  isLoading = false,
   visible,
   onClose,
 }: SignatureCaptureProps) {
   const signatureRef = useRef<any>(null);
   const [signerName, setSignerName] = useState('');
-  const [uploadLoading, setUploadLoading] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const powerSync = usePowerSync();
   const { getToken } = useAuth();
 
   const handleSignature = async (signature: string) => {
@@ -44,26 +55,67 @@ export function SignatureCapture({
     }
 
     try {
-      setUploadLoading(true);
-      const token = await getToken();
-      const api = createInvoicesApi(token);
-      if (!api) throw new Error('Failed to create API client');
+      setIsUploading(true);
 
-      const signatureData = await api.uploadSignature(
-        signature,
+      // Get token for API client
+      const token = await getToken({ template: 'Powersync' });
+      if (!token) {
+        throw new Error('Failed to get authentication token');
+      }
+
+      const apiClient = new ApiClient(token);
+
+      // Create temporary signature object
+      const signatureId = `${Date.now()}-${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
+      const tempSignature: SignatureType & { type: 'signature' } = {
+        id: signatureId,
+        url: signature,
+        timestamp: new Date().toISOString(),
         technicianId,
-        signerName.trim(),
+        signerName: signerName.trim(),
+        status: 'pending',
+        type: 'signature',
+      };
+
+      // Update signature through the unified API
+      await apiClient.updatePhotos(
+        [tempSignature],
+        'signature',
+        technicianId,
         invoice.jobTitle,
-        invoice._id
+        invoice.id,
+        signerName.trim()
       );
 
-      onSignatureCapture(signatureData.data);
+      // Save to local database using PowerSync
+      await powerSync.writeTransaction(async (tx) => {
+        console.log('Starting signature write transaction');
+
+        // Update signature in database
+        await tx.execute(
+          `UPDATE invoices 
+           SET signature = ?
+           WHERE id = ?`,
+          [JSON.stringify(tempSignature), invoice.id]
+        );
+      });
+
+      showToast('Signature saved successfully');
+      console.log('Signature write transaction completed successfully');
+      onSignatureCapture();
       onClose();
     } catch (error) {
-      console.error('Signature upload error:', error);
-      Alert.alert('Error', 'Failed to save signature. Please try again.');
+      console.error('Error handling signature:', error);
+      Alert.alert(
+        'Error',
+        error instanceof Error
+          ? error.message
+          : 'Failed to save signature. Please try again.'
+      );
     } finally {
-      setUploadLoading(false);
+      setIsUploading(false);
     }
   };
 
@@ -129,7 +181,7 @@ export function SignatureCapture({
               onEmpty={() => console.log('Empty')}
               descriptionText=''
               clearText='Clear'
-              confirmText='Save'
+              confirmText={isUploading ? 'Saving...' : 'Save'}
               webStyle={`
                 .m-signature-pad {
                   height: 100%;

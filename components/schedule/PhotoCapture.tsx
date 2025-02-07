@@ -1,333 +1,320 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   TouchableOpacity,
-  Image,
-  ActivityIndicator,
   Alert,
+  ToastAndroid,
   Platform,
-  ScrollView,
   Modal,
+  SafeAreaView,
 } from 'react-native';
-import { PhotoType } from '../../types';
-import { createInvoicesApi } from '../../services/api';
-import { useAuth } from '@clerk/clerk-expo';
+import { PhotoType } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
+import { PhotoGrid } from './PhotoGrid';
+import { PhotoCaptureModal } from './PhotoCaptureModal';
+import { usePowerSync } from '@powersync/react-native';
+
+// Toast utility function
+const showToast = (message: string) => {
+  if (Platform.OS === 'android') {
+    ToastAndroid.show(message, ToastAndroid.SHORT);
+  } else {
+    // For iOS, you might want to use a custom toast component
+    // For now, we'll use Alert
+    Alert.alert('Success', message);
+  }
+};
 
 interface PhotoCaptureProps {
-  onPhotosCapture: (photos: PhotoType[]) => void;
   technicianId: string;
   isLoading?: boolean;
-  existingPhotos?: PhotoType[];
+  photos: PhotoType[]; // Already parsed photos for this type
   type: 'before' | 'after';
   jobTitle: string;
   invoiceId?: string;
-}
-
-interface PendingPhoto {
-  id: string;
-  uri: string;
-  base64: string;
-  type: 'before' | 'after';
-  technicianId: string;
-  jobTitle: string;
-  invoiceId?: string;
-  isUploading: boolean;
-  lastAttempt: number;
 }
 
 export function PhotoCapture({
-  onPhotosCapture,
   technicianId,
   isLoading = false,
-  existingPhotos = [],
+  photos = [],
   type,
-  jobTitle,
   invoiceId,
 }: PhotoCaptureProps) {
-  const [photos, setPhotos] = useState<PhotoType[]>(existingPhotos || []);
-  const [pendingPhotos, setPendingPhotos] = useState<PendingPhoto[]>([]);
   const [showModal, setShowModal] = useState(false);
-  const { getToken } = useAuth();
+  const [isUploading, setIsUploading] = useState(false);
+  const [photoToDelete, setPhotoToDelete] = useState<{
+    id: string;
+    url: string;
+  } | null>(null);
+  const powerSync = usePowerSync();
 
-  // Reset photos and pending photos when invoice changes
-  useEffect(() => {
-    setPhotos(existingPhotos || []);
-    setPendingPhotos([]); // Clear pending photos when invoice changes
-  }, [existingPhotos, invoiceId]);
-
-  // Filter pending photos to only show ones for current invoice
-  const currentInvoicePendingPhotos = pendingPhotos.filter(
-    (photo) => photo.invoiceId === invoiceId
-  );
-
-  const requestPermissions = async (type: 'camera' | 'gallery') => {
-    if (Platform.OS !== 'web') {
-      let permissionResult;
-      if (type === 'camera') {
-        permissionResult = await ImagePicker.requestCameraPermissionsAsync();
-      } else {
-        permissionResult =
-          await ImagePicker.requestMediaLibraryPermissionsAsync();
-      }
-
-      if (permissionResult.status !== 'granted') {
-        Alert.alert(
-          'Permission Required',
-          `${
-            type === 'camera' ? 'Camera' : 'Gallery'
-          } access is needed to take photos.`,
-          [{ text: 'OK' }]
-        );
-        return false;
-      }
-      return true;
-    }
-    return true;
-  };
-
-  const uploadPhoto = async (pendingPhoto: PendingPhoto) => {
-    // Skip if already uploading or too soon since last attempt (5 second cooldown)
-    const now = Date.now();
-    if (
-      pendingPhoto.isUploading ||
-      (pendingPhoto.lastAttempt && now - pendingPhoto.lastAttempt < 5000)
-    ) {
+  const handlePhotoSelected = async (result: ImagePicker.ImagePickerResult) => {
+    if (result.canceled || !result.assets?.[0] || isUploading || !invoiceId)
       return;
-    }
 
     try {
-      // Mark as uploading
-      setPendingPhotos((current) =>
-        current.map((p) =>
-          p.id === pendingPhoto.id
-            ? { ...p, isUploading: true, lastAttempt: now }
-            : p
-        )
-      );
+      setIsUploading(true);
+      const asset = result.assets[0];
+      const base64 = await asset.base64;
 
-      const token = await getToken();
-      const api = createInvoicesApi(token);
-      if (!api) throw new Error('Failed to create API client');
+      if (!base64) {
+        throw new Error('Failed to get base64 data from image');
+      }
 
-      const uploadResult = await api.uploadPhotos(
-        [`data:image/jpeg;base64,${pendingPhoto.base64}`],
-        type,
+      // Create temporary photo object with required fields
+      const photoId = `${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2, 9)}`;
+      const tempPhoto: PhotoType = {
+        id: photoId,
+        url: `data:image/jpeg;base64,${base64}`,
+        timestamp: new Date().toISOString(),
         technicianId,
-        jobTitle,
-        invoiceId
-      );
+        type,
+        status: 'pending',
+      };
 
-      if (uploadResult.data) {
-        const newPhotos = uploadResult.data.filter(
-          (newPhoto) =>
-            !photos.some((existingPhoto) => existingPhoto.url === newPhoto.url)
+      // Use PowerSync writeTransaction to update photos
+      await powerSync.writeTransaction(async (tx) => {
+        const dbResult = await tx.getAll<{ photos: string }>(
+          `SELECT photos FROM invoices WHERE id = ?`,
+          [invoiceId]
         );
 
-        if (newPhotos.length > 0) {
-          const updatedPhotos = [...photos, ...newPhotos];
-          setPhotos(updatedPhotos);
-          onPhotosCapture(updatedPhotos);
+        let currentPhotos;
+        try {
+          currentPhotos = dbResult?.[0]?.photos
+            ? JSON.parse(dbResult[0].photos)
+            : { before: [], after: [], pendingOps: [] };
+        } catch (e) {
+          console.error('Invalid photos JSON:', dbResult?.[0]?.photos);
+          currentPhotos = { before: [], after: [], pendingOps: [] };
         }
 
-        // Remove from pending after successful upload
-        setPendingPhotos((current) =>
-          current.filter((p) => p.id !== pendingPhoto.id)
-        );
-      }
-    } catch (error) {
-      console.error('Photo upload error:', error);
-      // Update upload state
-      setPendingPhotos((current) =>
-        current.map((p) =>
-          p.id === pendingPhoto.id ? { ...p, isUploading: false } : p
-        )
-      );
-    }
-  };
+        // Ensure arrays exist
+        currentPhotos.before = Array.isArray(currentPhotos.before)
+          ? currentPhotos.before
+          : [];
+        currentPhotos.after = Array.isArray(currentPhotos.after)
+          ? currentPhotos.after
+          : [];
+        currentPhotos.pendingOps = Array.isArray(currentPhotos.pendingOps)
+          ? currentPhotos.pendingOps
+          : [];
 
-  // Automatic retry effect - only retry photos for current invoice
-  useEffect(() => {
-    if (currentInvoicePendingPhotos.length === 0) return;
+        // Add new photo to the correct array
+        currentPhotos[type] = [...currentPhotos[type], tempPhoto];
 
-    const retryInterval = setInterval(() => {
-      currentInvoicePendingPhotos
-        .filter((photo) => !photo.isUploading)
-        .forEach((photo) => {
-          uploadPhoto(photo);
+        // Store the operation type for toast timing
+        currentPhotos.pendingOps.push({
+          type: 'add',
+          photoId: tempPhoto.id,
+          technicianId,
+          timestamp: new Date().toISOString(),
         });
-    }, 5000);
 
-    return () => clearInterval(retryInterval);
-  }, [currentInvoicePendingPhotos]);
+        console.log('Saving photos:', {
+          type,
+          photoCount: currentPhotos[type].length,
+          pendingOps: currentPhotos.pendingOps,
+        });
 
-  const handleImageSelection = async (source: 'camera' | 'gallery') => {
-    try {
-      setShowModal(false);
-      const hasPermission = await requestPermissions(source);
-      if (!hasPermission) return;
+        await tx.execute(
+          `UPDATE invoices 
+           SET photos = ?
+           WHERE id = ?`,
+          [JSON.stringify(currentPhotos), invoiceId]
+        );
+      });
 
-      const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: 'images',
-        quality: 0.5, // Reduced quality for better performance
-        base64: true,
-        allowsEditing: true,
-        aspect: [4, 3],
-        exif: false,
-      };
-
-      const result = await (source === 'camera'
-        ? ImagePicker.launchCameraAsync(options)
-        : ImagePicker.launchImageLibraryAsync(options));
-
-      if (result.canceled || !result.assets?.[0]?.base64) return;
-
-      const uniqueId = `${Date.now()}-${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
-
-      const newPendingPhoto: PendingPhoto = {
-        id: uniqueId,
-        uri: result.assets[0].uri,
-        base64: result.assets[0].base64,
-        type,
-        technicianId,
-        jobTitle,
-        invoiceId,
-        isUploading: false,
-        lastAttempt: 0,
-      };
-
-      setPendingPhotos((current) => [...current, newPendingPhoto]);
-      uploadPhoto(newPendingPhoto);
+      // Toast will be shown by BackendConnector after sync
     } catch (error) {
-      console.error('Photo handling error:', error);
-      Alert.alert('Error', 'Failed to capture photo. Please try again.');
+      console.error('Error handling photo:', error);
+      Alert.alert(
+        'Error',
+        error instanceof Error
+          ? error.message
+          : 'Failed to save photo. Please try again.'
+      );
+    } finally {
+      setIsUploading(false);
+      setShowModal(false);
     }
   };
 
-  const handleDeletePhoto = async (photoUrl: string) => {
-    try {
-      const token = await getToken();
-      const api = createInvoicesApi(token);
-      if (!api) throw new Error('Failed to create API client');
+  const handleDeleteConfirm = async () => {
+    if (!photoToDelete || !invoiceId || !powerSync) return;
 
-      await api.deletePhoto(photoUrl, type, invoiceId);
-      const updatedPhotos = photos.filter((photo) => photo.url !== photoUrl);
-      setPhotos(updatedPhotos);
-      onPhotosCapture(updatedPhotos);
+    try {
+      await powerSync.writeTransaction(async (tx) => {
+        const result = await tx.getAll<{ photos: string }>(
+          `SELECT photos FROM invoices WHERE id = ?`,
+          [invoiceId]
+        );
+
+        if (!result?.[0]?.photos) {
+          console.error('No valid photos data found');
+          return;
+        }
+
+        let currentPhotos;
+        try {
+          currentPhotos = JSON.parse(result[0].photos);
+        } catch (e) {
+          console.error('Invalid photos JSON:', result[0].photos);
+          currentPhotos = { before: [], after: [] };
+        }
+
+        console.log('Before deletion:', {
+          type,
+          photoId: photoToDelete.id,
+          currentPhotos,
+        });
+
+        // Remove the photo from the appropriate array
+        if (currentPhotos[type]) {
+          const photoToDeleteObj = currentPhotos[type].find(
+            (photo: PhotoType) =>
+              photo.id === photoToDelete.id || photo._id === photoToDelete.id
+          );
+
+          if (!photoToDeleteObj) {
+            console.error('Photo not found:', photoToDelete.id);
+            return;
+          }
+
+          currentPhotos[type] = currentPhotos[type].filter(
+            (photo: PhotoType) =>
+              photo.id !== photoToDelete.id && photo._id !== photoToDelete.id
+          );
+
+          // Store the operation type for toast timing
+          const pendingOps = currentPhotos.pendingOps || [];
+          pendingOps.push({
+            type: 'delete',
+            photoId: photoToDelete.id,
+            url: photoToDelete.url,
+            technicianId: photoToDeleteObj.technicianId,
+            timestamp: new Date().toISOString(),
+          });
+          currentPhotos.pendingOps = pendingOps;
+
+          console.log('After deletion:', {
+            type,
+            photoId: photoToDelete.id,
+            remainingPhotos: currentPhotos[type],
+            pendingOps,
+          });
+
+          // Update the invoice with the new photos array
+          await tx.execute(
+            `UPDATE invoices 
+             SET photos = ?
+             WHERE id = ?`,
+            [JSON.stringify(currentPhotos), invoiceId]
+          );
+        }
+      });
     } catch (error) {
-      console.error('Delete photo error:', error);
+      console.error('Error deleting photo:', error);
       Alert.alert('Error', 'Failed to delete photo. Please try again.');
+    } finally {
+      setPhotoToDelete(null);
     }
+  };
+
+  const handleDeleteRequest = (photoId: string, url: string) => {
+    setPhotoToDelete({ id: photoId, url });
   };
 
   return (
-    <ScrollView>
-      <View className='flex flex-col gap-6 pb-6'>
-        <View className='flex flex-col gap-2'>
-          <Text className='text-xl font-semibold text-gray-900 dark:text-white'>
-            {type === 'before' ? 'Before Photos' : 'After Photos'}
-          </Text>
-          <Text className='text-sm text-gray-500 dark:text-gray-400'>
-            Take photos to document the{' '}
-            {type === 'before' ? 'initial' : 'completed'} state
-          </Text>
-        </View>
+    <View className='flex flex-col gap-6 pb-6'>
+      <View className='flex flex-col gap-2'>
+        <Text className='text-xl font-semibold text-gray-900 dark:text-white'>
+          {type === 'before' ? 'Before Photos' : 'After Photos'}
+        </Text>
+        <Text className='text-sm text-gray-500 dark:text-gray-400'>
+          Take photos to document the{' '}
+          {type === 'before' ? 'initial' : 'completed'} state
+          {!invoiceId && ' (Save invoice first to enable photos)'}
+        </Text>
+      </View>
 
-        {/* Photos Grid */}
-        <View className='flex-row flex-wrap gap-3'>
-          {/* Pending Photos - Only show for current invoice */}
-          {currentInvoicePendingPhotos.map((photo) => (
-            <View key={photo.id} className='relative'>
-              <Image
-                source={{ uri: photo.uri }}
-                className='w-28 h-28 rounded-lg opacity-50'
-              />
-              <ActivityIndicator
-                className='absolute top-1/2 left-1/2 -mt-3 -ml-3'
-                color='#fff'
-                size='large'
-              />
-            </View>
-          ))}
+      <PhotoGrid
+        photos={photos}
+        pendingPhotos={photos.filter((p) => p.status === 'pending')}
+        onDeletePhoto={handleDeleteRequest}
+      />
 
-          {/* Uploaded Photos */}
-          {photos.map((photo) => (
-            <View key={`${photo.url}-${photo.timestamp}`} className='relative'>
-              <Image
-                source={{ uri: photo.url }}
-                className='w-28 h-28 rounded-lg'
-              />
+      <TouchableOpacity
+        onPress={() => setShowModal(true)}
+        disabled={isLoading || isUploading || !invoiceId}
+        className={`p-4 rounded-lg flex-row justify-center items-center ${
+          isLoading || isUploading || !invoiceId
+            ? 'bg-gray-300'
+            : 'bg-darkGreen'
+        }`}
+      >
+        <Text className='text-white font-medium text-lg'>
+          {isUploading ? 'Uploading...' : 'Add Photo'}
+        </Text>
+      </TouchableOpacity>
+
+      <PhotoCaptureModal
+        visible={showModal}
+        onClose={() => setShowModal(false)}
+        onPhotoSelected={handlePhotoSelected}
+      />
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        visible={!!photoToDelete}
+        transparent
+        animationType='fade'
+        onRequestClose={() => setPhotoToDelete(null)}
+      >
+        <View className='flex-1 bg-black/75 justify-center items-center p-4'>
+          <View className='bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl'>
+            <View className='flex-row justify-between items-center mb-4'>
+              <Text className='text-xl font-semibold text-gray-900 dark:text-white'>
+                Delete Photo?
+              </Text>
               <TouchableOpacity
-                onPress={() => handleDeletePhoto(photo.url)}
-                className='absolute -top-2 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center'
+                onPress={() => setPhotoToDelete(null)}
+                className='rounded-full p-2 bg-gray-100 dark:bg-gray-700'
               >
-                <Text className='text-white text-sm'>✕</Text>
+                <Text className='text-gray-500 dark:text-gray-400 text-lg'>
+                  ✕
+                </Text>
               </TouchableOpacity>
             </View>
-          ))}
-        </View>
-
-        {/* Add Photo Button */}
-        <TouchableOpacity
-          onPress={() => setShowModal(true)}
-          disabled={isLoading}
-          className={`p-4 rounded-lg flex-row justify-center items-center ${
-            isLoading ? 'bg-gray-300' : 'bg-darkGreen'
-          }`}
-        >
-          <Text className='text-white font-medium text-lg'>Add Photo</Text>
-        </TouchableOpacity>
-
-        {/* Photo Selection Modal */}
-        <Modal
-          animationType='slide'
-          transparent={true}
-          visible={showModal}
-          onRequestClose={() => setShowModal(false)}
-        >
-          <View className='flex-1 justify-end bg-black/50'>
-            <View className='bg-gray-900 rounded-t-3xl p-6'>
-              <View className='flex-col gap-4'>
-                <Text className='text-white text-xl font-bold text-center mb-4'>
-                  Add Photo
+            <Text className='text-gray-600 dark:text-gray-300 mb-6'>
+              Are you sure you want to delete this photo? This action cannot be
+              undone.
+            </Text>
+            <View className='flex-row justify-end gap-3'>
+              <TouchableOpacity
+                onPress={() => setPhotoToDelete(null)}
+                className='flex-1 px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-700'
+              >
+                <Text className='text-gray-900 dark:text-white font-medium text-center'>
+                  Cancel
                 </Text>
-
-                <TouchableOpacity
-                  onPress={() => handleImageSelection('camera')}
-                  className='bg-darkGreen p-4 rounded-xl flex-row items-center justify-center space-x-2'
-                >
-                  <Text className='text-2xl'>📸</Text>
-                  <Text className='text-white text-lg font-semibold'>
-                    Take Photo
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => handleImageSelection('gallery')}
-                  className='bg-blue-500 p-4 rounded-xl flex-row items-center justify-center space-x-2'
-                >
-                  <Text className='text-2xl'>🖼️</Text>
-                  <Text className='text-white text-lg font-semibold'>
-                    Choose from Gallery
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={() => setShowModal(false)}
-                  className='bg-gray-700 p-4 rounded-xl mt-2'
-                >
-                  <Text className='text-white text-lg font-semibold text-center'>
-                    Cancel
-                  </Text>
-                </TouchableOpacity>
-              </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleDeleteConfirm}
+                className='flex-1 px-4 py-3 rounded-xl bg-red-500'
+              >
+                <Text className='text-white font-medium text-center'>
+                  Delete
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
-        </Modal>
-      </View>
-    </ScrollView>
+        </View>
+      </Modal>
+    </View>
   );
 }

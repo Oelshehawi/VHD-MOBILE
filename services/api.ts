@@ -1,221 +1,117 @@
-import {
-  ScheduleType,
-  InvoiceType,
-  DashboardData,
-  ScheduleResponse,
-  PhotoType,
-  SignatureType,
-} from '@/types';
-import { Platform } from 'react-native';
+import { PhotoType } from '@/types';
 import Constants from 'expo-constants';
 
-// Development URLs for different environments
-const DEV_ANDROID_EMULATOR = 'http://10.0.2.2:3000';
-const DEV_IOS_SIMULATOR = 'http://localhost:3000';
-const DEV_PHYSICAL_DEVICE = 'http://192.168.1.128:3000';
+// Extend PhotoType to include signature-specific fields
+export interface PhotoRequest {
+  _id?: string;
+  id?: string;
+  url: string;
+  timestamp: string | Date;
+  technicianId: string;
+  type: 'before' | 'after' | 'signature';
+  status?: string;
+  signerName?: string;
+}
+
 const PROD_URL = 'https://vhd-psi.vercel.app';
 
-// Choose the appropriate URL based on environment and platform
-const getDevelopmentUrl = () => {
-  // For production or preview builds, always use PROD_URL
-  if (!__DEV__) {
-    return PROD_URL;
+export class ApiClient {
+  private readonly baseUrl: string;
+  private readonly token: string;
+  private readonly headers: Record<string, string>;
+
+  constructor(token: string) {
+    this.baseUrl = PROD_URL;
+    this.token = token;
+    this.headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    };
   }
 
-  // For Expo Go development
-  const isExpoGo = Constants.appOwnership === 'expo';
-  if (isExpoGo) {
-    return DEV_PHYSICAL_DEVICE;
-  }
-
-  // For web development
-  if (Platform.OS === 'web') {
-    return 'http://localhost:3000';
-  }
-
-  // For Android Emulator
-  if (
-    Platform.OS === 'android' &&
-    (Platform.constants.Model === 'sdk_gphone64_arm64' ||
-      Platform.constants.Model?.includes('google_sdk'))
+  async updatePhotos(
+    photos: PhotoRequest[],
+    type: 'before' | 'after' | 'signature',
+    technicianId: string,
+    jobTitle: string,
+    invoiceId: string,
+    signerName?: string,
+    newImages?: string[]
   ) {
-    return DEV_ANDROID_EMULATOR;
-  }
-
-  // For all other development cases
-  return DEV_PHYSICAL_DEVICE;
-};
-
-const API_URL = getDevelopmentUrl();
-
-const fetchApi = async (
-  url: string,
-  token: string | null,
-  options: RequestInit = {}
-) => {
-  if (!token) {
-    console.error('VHD-ERROR: No token provided for API call');
-    throw new Error('No token provided');
-  }
-
-  try {
-    const response = await fetch(url, {
-      ...options,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type':
-          options.body instanceof FormData
-            ? 'multipart/form-data'
-            : 'application/json',
-        ...options.headers,
-      },
-    }).catch((error) => {
-      console.error('VHD-ERROR: Fetch failed:', error.message);
-      console.error('VHD-ERROR: Network error details:', {
-        name: error.name,
-        message: error.message,
-        cause: error.cause,
-        url,
-        method: options.method || 'GET',
-      });
-      throw error;
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('VHD-ERROR: API Error:', {
-        status: response.status,
-        statusText: response.statusText,
-        error: errorText,
-        url,
-      });
-      throw new Error(
-        `API Error: ${response.status} ${response.statusText} - ${errorText}`
-      );
-    }
-
-    let data;
     try {
-      data = await response.json();
-    } catch (parseError) {
-      console.error('VHD-ERROR: JSON parse error:', parseError);
-      throw new Error('Invalid JSON response from server');
-    }
 
-    return data;
-  } catch (error) {
-    console.error('💥 API Error:', {
-      error,
-      url,
-      method: options.method || 'GET',
-    });
-    throw error;
-  }
-};
-
-export const createSchedulesApi = (token: string | null) => {
-  if (!token) {
-    console.error('❌ No token provided to createSchedulesApi');
-    return null;
-  }
-
-  return {
-    getAll: async (): Promise<ScheduleResponse> => {
-      try {
-        const data = await fetchApi(`${API_URL}/api/schedules`, token);
-        return {
-          schedules: data.schedules || [],
-          canManage: !!data.canManage,
-        };
-      } catch (error) {
-        console.error('❌ Error fetching schedules:', error);
-        throw error;
-      }
-    },
-  };
-};
-
-export const createInvoicesApi = (token: string | null) => {
-  if (!token) return null;
-
-  const headers = {
-    Authorization: `Bearer ${token}`,
-    'Content-Type': 'application/json',
-  };
-
-  return {
-    getById: async (id: string): Promise<InvoiceType> => {
-      return fetchApi(`${API_URL}/api/invoices/${id}`, token);
-    },
-    uploadPhotos: async (
-      images: string[],
-      type: 'before' | 'after',
-      technicianId: string,
-      jobTitle: string,
-      invoiceId?: string
-    ): Promise<{ message: string; type: string; data: PhotoType[] }> => {
-      return fetchApi(`${API_URL}/api/upload`, token, {
+      const response = await fetch(`${this.baseUrl}/api/photos`, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          ...this.headers,
+          Accept: 'application/json',
         },
         body: JSON.stringify({
-          images,
+          photos,
+          newImages,
           type,
           technicianId,
           jobTitle,
           invoiceId,
+          ...(signerName && { signerName }),
         }),
-      });
-    },
-    uploadSignature: async (
-      image: string,
-      technicianId: string,
-      signerName: string,
-      jobTitle: string,
-      invoiceId?: string
-    ): Promise<{ message: string; type: string; data: SignatureType }> => {
-      return fetchApi(`${API_URL}/api/upload`, token, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          images: [image],
-          type: 'signature',
-          technicianId,
-          signerName,
-          jobTitle,
-          invoiceId,
-        }),
-      });
-    },
-    deletePhoto: async (
-      photoUrl: string,
-      type: 'before' | 'after',
-      invoiceId?: string
-    ) => {
-      const response = await fetch(`${API_URL}/api/deletePhoto`, {
-        method: 'DELETE',
-        headers,
-        body: JSON.stringify({ photoUrl, type, invoiceId }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to delete photo');
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.details ||
+            errorData.error ||
+            `Server returned HTTP ${response.status}`
+        );
       }
 
-      return response.json();
-    },
-  };
-};
+      const data = await response.json();
 
-export const createDashboardApi = (token: string | null) => {
-  if (!token) return null;
 
-  return {
-    getData: async (): Promise<DashboardData> => {
-      return fetchApi(`${API_URL}/api/dashboard`, token);
-    },
-  };
-};
+      return data;
+    } catch (error) {
+      console.error('❌ Error updating photos:', error);
+      throw error;
+    }
+  }
+
+  async deletePhoto(
+    photoUrl: string,
+    type: 'before' | 'after',
+    invoiceId: string
+  ) {
+    try {
+
+      const response = await fetch(`${this.baseUrl}/api/deletePhoto`, {
+        method: 'DELETE',
+        headers: this.headers,
+        body: JSON.stringify({
+          photoUrl,
+          type,
+          invoiceId,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Delete photo failed:', {
+          status: response.status,
+          error: data.error,
+          details: data.details,
+        });
+        throw new Error(
+          data.details ||
+            data.error ||
+            `Server returned HTTP ${response.status}`
+        );
+      }
+
+      return data;
+    } catch (error) {
+      console.error('❌ Error deleting photo:', error);
+      throw error;
+    }
+  }
+}

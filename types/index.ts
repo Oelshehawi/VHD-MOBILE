@@ -1,107 +1,9 @@
-export interface DashboardSchedule {
-  _id: string;
+export interface Schedule {
+  id: string;
+  invoiceRef: string;
   jobTitle: string;
   location: string;
-  startDateTime: Date;
-  hours: number;
-  confirmed: boolean;
-  technicians?: Array<{
-    id: string;
-    name: string;
-  }>;
-}
-
-export interface EmployeeHours {
-  userId: string;
-  name: string;
-  hours: number;
-}
-
-export interface PayrollSchedule {
-  _id: string;
-  jobTitle: string;
-  date: Date;
-  hours: number;
-  location: string;
-}
-
-export interface CurrentPayroll {
-  periodStart: Date;
-  periodEnd: Date;
-  cutoffDate: Date;
-  payDay: Date;
-  totalHours: number;
-  schedules: PayrollSchedule[];
-}
-
-export interface DashboardData {
-  name: string;
-  canManage: boolean;
-  todaySchedules: DashboardSchedule[];
-  totalHours: number;
-  userId: string;
-  employeeHours?: EmployeeHours[];
-  currentPayroll?: CurrentPayroll;
-}
-
-export interface ClientType {
-  _id: string;
-  clientName?: string;
-  email?: string;
-  phoneNumber?: string;
-  prefix?: string;
-  notes?: string;
-}
-
-export interface PhotoType {
-  url: string;
-  timestamp: Date;
-  technicianId: string;
-}
-
-export interface SignatureType {
-  url: string;
-  timestamp: Date;
-  signerName: string;
-  technicianId: string;
-}
-
-export interface InvoiceType {
-  _id: string;
-  invoiceId: string;
-  jobTitle: string;
-  dateIssued: Date;
-  dateDue: Date;
-  items: Array<{
-    description: string;
-    price: number;
-  }>;
-  frequency: number;
-  location: string;
-  notes?: string;
-  status: 'pending' | 'overdue' | 'paid';
-  clientId: string | ClientType;
-  signature?: SignatureType;
-  photos?: {
-    before?: PhotoType[];
-    after?: PhotoType[];
-  };
-}
-
-export interface ShiftType {
-  technicianId: string;
-  clockIn?: Date;
-  clockOut?: Date;
-  jobDetails?: string;
-  hoursWorked?: number;
-}
-
-export interface ScheduleType {
-  _id: string;
-  invoiceRef: string | InvoiceType;
-  jobTitle: string;
-  location: string;
-  startDateTime: Date;
+  startDateTime: string;
   assignedTechnicians: string[];
   confirmed: boolean;
   hours: number;
@@ -111,14 +13,122 @@ export interface ScheduleType {
   canManage?: boolean;
 }
 
-export interface PayrollPeriodType {
+export interface PayrollPeriod {
+  id: string;
+  startDate: string;
+  endDate: string;
+  cutoffDate: string;
+  payDay: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EmployeeHours {
+  technicianName: string;
+  hours: number;
+}
+
+export interface PayrollSchedule {
+  id: string;
+  jobTitle: string;
+  date: string;
+  hours: number;
+  location: string;
+}
+
+export interface Client {
+  id: string;
+  clientName?: string;
+  email?: string;
+  phoneNumber?: string;
+  prefix?: string;
+  notes?: string;
+}
+
+export interface PhotoType {
+  id: string;
+  _id?: string;
+  url: string;
+  timestamp: string;
+  technicianId: string;
+  type: 'before' | 'after';
+  status: 'pending' | 'uploaded';
+}
+
+export interface PhotosData {
+  before: PhotoType[];
+  after: PhotoType[];
+}
+
+export interface PhotoQueryResult {
+  photos: string; // PowerSync returns photos as a JSON string
+}
+
+export interface SignatureType {
+  id: string;
+  url: string;
+  timestamp: string;
+  technicianId: string;
+  signerName: string;
+  status: 'pending' | 'uploaded';
+}
+
+export interface InvoiceType {
+  id: string;
+  invoiceId: string;
+  jobTitle: string;
+  location: string;
+  dateIssued: string;
+  dateDue: string;
+  items: string;
+  notes?: string;
+  photos?: string;
+  signature?: string;
+  frequency?: number;
+  status?: 'pending' | 'overdue' | 'paid';
+  clientId?: string;
+}
+
+export interface ShiftType {
+  technicianId: string;
+  clockIn?: string;
+  clockOut?: string;
+  jobDetails?: string;
+  hoursWorked?: number;
+}
+
+export interface DashboardData {
+  name: string;
+  canManage: boolean;
+  todaySchedules: Schedule[];
+  totalHours: number;
+  userId: string;
+  employeeHours?: EmployeeHours[];
+  currentPayroll?: PayrollPeriod;
+}
+
+export interface DashboardSchedule {
   _id: string;
-  startDate: Date;
-  endDate: Date;
-  cutoffDate: Date;
-  payDay: Date;
-  createdAt?: Date;
-  updatedAt?: Date;
+  invoiceRef: string;
+  jobTitle: string;
+  location: string;
+  startDateTime: string;
+  hours: number;
+  confirmed: boolean;
+  technicians?: Array<{
+    id: string;
+    name: string;
+  }>;
+}
+
+export interface CurrentPayroll {
+  _id: string;
+  periodStart: string;
+  periodEnd: string;
+  cutoffDate: string;
+  payDay: string;
+  totalHours: number;
+  schedules: PayrollSchedule[];
 }
 
 export interface DueInvoiceType {
@@ -128,10 +138,10 @@ export interface DueInvoiceType {
   dateDue: Date;
   isScheduled: boolean;
   emailSent: boolean;
-  clientId: string | ClientType;
+  clientId: string | Client;
 }
 
 export interface ScheduleResponse {
-  schedules: ScheduleType[];
+  schedules: Schedule[];
   canManage: boolean;
 }

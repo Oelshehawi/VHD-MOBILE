@@ -1,0 +1,43 @@
+bucket_definitions:
+  global:
+    data:
+      - SELECT _id as id, * FROM "schedules"
+      - SELECT _id as id, * FROM "payrollperiods"
+  invoices:
+    data:
+      - SELECT
+        _id as id,
+        clientId,
+        dateDue,
+        dateIssued,
+        frequency,
+        invoiceId,
+        items,
+        jobTitle,
+        location,
+        notes,
+        status,
+        signature
+        FROM "invoices"
+      - SELECT
+        json_object(
+        'url', value->>'$.url',
+        'timestamp', value->>'$.timestamp',
+        'technicianId', value->>'$.technicianId',
+        'type', 'after',
+        'status', 'uploaded',
+        'invoice_id', _id
+        ) as photo_data
+        FROM "invoices"
+        JOIN json_each(json_extract(photos, '$.after'))
+      - SELECT
+        json_object(
+        'url', value->>'$.url',
+        'timestamp', value->>'$.timestamp',
+        'technicianId', value->>'$.technicianId',
+        'type', 'before',
+        'status', 'uploaded',
+        'invoice_id', _id
+        ) as photo_data
+        FROM "invoices"
+        JOIN json_each(json_extract(photos, '$.before'))

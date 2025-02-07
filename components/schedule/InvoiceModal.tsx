@@ -1,11 +1,16 @@
-import React, { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
-import { InvoiceType, PhotoType, SignatureType } from '../../types';
-import { formatDateReadable } from '../../utils/date';
+import { InvoiceType } from '@/types';
+import { formatDateReadable } from '@/utils/date';
 import { PhotoCapture } from './PhotoCapture';
 import { SignatureCapture } from './SignatureCapture';
-import { useAuth } from '@clerk/clerk-expo';
-import { createInvoicesApi } from '../../services/api';
+import { useQuery } from '@powersync/react-native';
+import Logger from 'js-logger';
+
+// Log messages will be written to the window's console.
+Logger.useDefaults();
+
+Logger.setLevel(Logger.DEBUG);
 
 interface InvoiceModalProps {
   visible: boolean;
@@ -15,6 +20,11 @@ interface InvoiceModalProps {
   technicianId: string;
 }
 
+interface InvoiceItem {
+  description: string;
+  price: number;
+}
+
 export function InvoiceModal({
   visible,
   onClose,
@@ -22,114 +32,67 @@ export function InvoiceModal({
   canManage,
   technicianId,
 }: InvoiceModalProps) {
-  const [isLoading, setIsLoading] = useState(false);
-  const [invoice, setInvoice] = useState<InvoiceType | null>(null);
   const [showSignatureModal, setShowSignatureModal] = useState(false);
-  const [isTransitioning, setIsTransitioning] = useState(false);
-  const { getToken } = useAuth();
 
-  // Update local invoice state when prop changes
-  useEffect(() => {
-    if (initialInvoice) {
-      setIsTransitioning(true);
-      // Small delay to ensure modal animation completes
-      setTimeout(() => {
-        setInvoice(initialInvoice);
-        setIsTransitioning(false);
-      }, 100);
-    } else {
-      setInvoice(null);
-    }
-  }, [initialInvoice]);
+  // Use PowerSync query directly
+  const { data: invoiceData = [] } = useQuery<InvoiceType>(
+    initialInvoice?.id
+      ? `SELECT * FROM invoices WHERE id = ?`
+      : `SELECT * FROM invoices WHERE 0`,
+    [initialInvoice?.id || '']
+  );
 
-  const refreshInvoice = async () => {
-    if (!invoice?._id) return;
-
-    try {
-      setIsLoading(true);
-      const token = await getToken();
-      const api = createInvoicesApi(token);
-      if (!api) return;
-
-      const updatedInvoice = await api.getById(invoice._id);
-      setInvoice(updatedInvoice);
-    } catch (error) {
-      console.error('Error refreshing invoice:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handlePhotosCapture = async (
-    photos: PhotoType[],
-    type: 'before' | 'after'
-  ) => {
-    try {
-      setIsLoading(true);
-      await refreshInvoice();
-    } catch (error) {
-      console.error('Error updating photos:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleSignatureCapture = async (signature: SignatureType) => {
-    try {
-      setIsLoading(true);
-      await refreshInvoice();
-      setShowSignatureModal(false);
-    } catch (error) {
-      console.error('Error updating signature:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Reset state when modal closes
-  useEffect(() => {
-    if (!visible) {
-      setIsTransitioning(false);
-      // Small delay to clear invoice after modal close animation
-      setTimeout(() => {
-        setInvoice(null);
-      }, 300);
-    }
-  }, [visible]);
-
-  // Reset state when modal closes
-  useEffect(() => {
-    if (!visible) {
-      setShowSignatureModal(false);
-    }
-  }, [visible]);
+  const invoice = invoiceData[0] || null;
 
   if (!visible || !invoice) return null;
 
-  const subtotal = invoice.items.reduce(
-    (sum, item) => sum + (item.price || 0),
-    0
-  );
+  // Parse photos, signature, and items from JSON strings
+  const photos = (() => {
+    try {
+      const parsedPhotos = invoice.photos
+        ? JSON.parse(invoice.photos)
+        : { before: [], after: [] };
+
+      // Convert _id to id if needed and add type field
+      return {
+        before: Array.isArray(parsedPhotos.before)
+          ? parsedPhotos.before.map((photo: any) => ({
+              ...photo,
+              id: photo._id || photo.id,
+              _id: photo._id || photo.id, // Keep _id for backward compatibility
+              type: 'before' as const,
+              status: photo.status || 'uploaded',
+            }))
+          : [],
+        after: Array.isArray(parsedPhotos.after)
+          ? parsedPhotos.after.map((photo: any) => ({
+              ...photo,
+              id: photo._id || photo.id,
+              _id: photo._id || photo.id, // Keep _id for backward compatibility
+              type: 'after' as const,
+              status: photo.status || 'uploaded',
+            }))
+          : [],
+      };
+    } catch (error) {
+      console.error('Error parsing photos:', error, invoice.photos);
+      return { before: [], after: [] };
+    }
+  })();
+
+  const signature = invoice.signature
+    ? JSON.parse(invoice.signature)
+    : undefined;
+  const items: InvoiceItem[] = invoice.items ? JSON.parse(invoice.items) : [];
+
+  const subtotal = items.reduce((sum, item) => sum + (item.price || 0), 0);
   const gst = subtotal * 0.05;
   const total = subtotal + gst;
 
-  const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <View className='mb-4'>
-      <Text className='text-sm text-gray-500 dark:text-gray-400 mb-1'>
-        {label}
-      </Text>
-      <Text className='text-base text-gray-900 dark:text-white font-medium'>
-        {value}
-      </Text>
-    </View>
-  );
-
   const renderWorkCompletionSection = () => {
-    const hasBeforePhotos =
-      invoice.photos?.before && invoice.photos.before.length > 0;
-    const hasAfterPhotos =
-      invoice.photos?.after && invoice.photos.after.length > 0;
-    const hasSignature = invoice.signature;
+    const hasBeforePhotos = photos.before?.length > 0;
+    const hasAfterPhotos = photos.after?.length > 0;
+    const hasSignature = signature;
 
     return (
       <View className='flex flex-col gap-6 border-t border-gray-200 dark:border-gray-700 pt-6 mt-6'>
@@ -139,33 +102,23 @@ export function InvoiceModal({
 
         {/* Before Photos */}
         <View className='flex flex-col gap-4'>
-          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-            Before Photos {hasBeforePhotos && '✓'}
-          </Text>
           <PhotoCapture
             type='before'
-            onPhotosCapture={(photos) => handlePhotosCapture(photos, 'before')}
+            photos={photos.before}
             technicianId={technicianId}
-            isLoading={isLoading}
-            existingPhotos={invoice.photos?.before}
             jobTitle={invoice.jobTitle}
-            invoiceId={invoice._id}
+            invoiceId={invoice.id}
           />
         </View>
 
         {/* After Photos */}
         <View className='flex flex-col gap-4'>
-          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-            After Photos {hasAfterPhotos && '✓'}
-          </Text>
           <PhotoCapture
             type='after'
-            onPhotosCapture={(photos) => handlePhotosCapture(photos, 'after')}
+            photos={photos.after}
             technicianId={technicianId}
-            isLoading={isLoading}
-            existingPhotos={invoice.photos?.after}
             jobTitle={invoice.jobTitle}
-            invoiceId={invoice._id}
+            invoiceId={invoice.id}
           />
         </View>
 
@@ -178,27 +131,25 @@ export function InvoiceModal({
             <View className='flex flex-col gap-4'>
               <TouchableOpacity
                 onPress={() => setShowSignatureModal(true)}
-                disabled={isLoading}
-                className={`p-4 rounded-lg flex-row justify-center items-center ${
-                  isLoading ? 'bg-gray-300' : 'bg-darkGreen'
-                }`}
+                className='p-4 rounded-lg flex-row justify-center items-center bg-darkGreen'
               >
                 <Text className='text-white font-medium text-lg'>
                   ✍️ Tap to Sign
                 </Text>
               </TouchableOpacity>
               <SignatureCapture
-                onSignatureCapture={handleSignatureCapture}
+                onSignatureCapture={() => {
+                  setShowSignatureModal(false);
+                }}
                 technicianId={technicianId}
                 invoice={invoice}
-                isLoading={isLoading}
                 visible={showSignatureModal}
                 onClose={() => setShowSignatureModal(false)}
               />
             </View>
           ) : (
             <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
-              <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+              <Text className='text-green-200 dark:text-green-200 text-center font-medium'>
                 ✓ Signature Captured
               </Text>
             </View>
@@ -287,7 +238,7 @@ export function InvoiceModal({
                     Services
                   </Text>
                   <View className='flex flex-col gap-3'>
-                    {invoice.items.map((item, index) => (
+                    {items.map((item, index) => (
                       <View
                         key={index}
                         className='flex-row justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700'
@@ -301,36 +252,34 @@ export function InvoiceModal({
                       </View>
                     ))}
                   </View>
-                </View>
-              )}
 
-              {/* Total Section - Only visible to managers */}
-              {canManage && (
-                <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                  <View className='flex flex-col gap-2'>
-                    <View className='flex-row justify-between items-center'>
-                      <Text className='text-gray-600 dark:text-gray-400'>
-                        Subtotal
-                      </Text>
-                      <Text className='text-gray-900 dark:text-white'>
-                        ${subtotal.toFixed(2)}
-                      </Text>
-                    </View>
-                    <View className='flex-row justify-between items-center'>
-                      <Text className='text-gray-600 dark:text-gray-400'>
-                        GST (5%)
-                      </Text>
-                      <Text className='text-gray-900 dark:text-white'>
-                        ${gst.toFixed(2)}
-                      </Text>
-                    </View>
-                    <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
-                      <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                        Total
-                      </Text>
-                      <Text className='text-xl font-bold text-white'>
-                        ${total.toFixed(2)}
-                      </Text>
+                  {/* Total Section */}
+                  <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                    <View className='flex flex-col gap-2'>
+                      <View className='flex-row justify-between items-center'>
+                        <Text className='text-gray-600 dark:text-gray-400'>
+                          Subtotal
+                        </Text>
+                        <Text className='text-gray-900 dark:text-white'>
+                          ${subtotal.toFixed(2)}
+                        </Text>
+                      </View>
+                      <View className='flex-row justify-between items-center'>
+                        <Text className='text-gray-600 dark:text-gray-400'>
+                          GST (5%)
+                        </Text>
+                        <Text className='text-gray-900 dark:text-white'>
+                          ${gst.toFixed(2)}
+                        </Text>
+                      </View>
+                      <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
+                        <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+                          Total
+                        </Text>
+                        <Text className='text-xl font-bold text-gray-900 dark:text-white'>
+                          ${total.toFixed(2)}
+                        </Text>
+                      </View>
                     </View>
                   </View>
                 </View>

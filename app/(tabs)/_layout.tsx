@@ -1,6 +1,5 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs, Redirect } from 'expo-router';
-import { useColorScheme } from '@/components/useColorScheme';
 import '../global.css';
 import { useAuth } from '@clerk/clerk-expo';
 
