@@ -10,10 +10,10 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
-import { ClerkProvider, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, useAuth, ClerkLoaded } from '@clerk/clerk-expo';
 import { tokenCache } from '../cache';
+import { secureStore } from '@clerk/clerk-expo/secure-store';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
-import { View, Text } from 'react-native';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -32,16 +32,8 @@ const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 // Separate component for auth-dependent content
 function AuthenticatedLayout() {
-  const { isSignedIn, isLoaded } = useAuth();
+  const { isSignedIn } = useAuth();
   const colorScheme = useColorScheme();
-
-  if (!isLoaded) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Loading...</Text>
-      </View>
-    );
-  }
 
   // For non-authenticated routes
   if (!isSignedIn) {
@@ -87,8 +79,11 @@ export default function RootLayout() {
     <ClerkProvider
       publishableKey={CLERK_PUBLISHABLE_KEY!}
       tokenCache={tokenCache}
+      __experimental_resourceCache={secureStore}
     >
-      <AuthenticatedLayout />
+      <ClerkLoaded>
+        <AuthenticatedLayout />
+      </ClerkLoaded>
     </ClerkProvider>
   );
 }

@@ -5,12 +5,7 @@ import { formatDateReadable } from '@/utils/date';
 import { PhotoCapture } from './PhotoCapture';
 import { SignatureCapture } from './SignatureCapture';
 import { useQuery } from '@powersync/react-native';
-import Logger from 'js-logger';
 
-// Log messages will be written to the window's console.
-Logger.useDefaults();
-
-Logger.setLevel(Logger.DEBUG);
 
 interface InvoiceModalProps {
   visible: boolean;
