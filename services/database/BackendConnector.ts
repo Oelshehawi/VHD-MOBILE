@@ -8,6 +8,26 @@ import { ApiClient } from '../api';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import { Platform, ToastAndroid, Alert } from 'react-native';
 
+interface PhotoType {
+  id?: string;
+  _id?: string;
+  url?: string;
+  timestamp?: string;
+  technicianId?: string;
+  type?: 'before' | 'after' | 'signature';
+  status?: string;
+  signerName?: string;
+}
+
+interface PendingOp {
+  type: 'add' | 'delete';
+  photoId: string;
+  photoType: 'before' | 'after' | 'signature';
+  technicianId: string;
+  timestamp: string;
+  url?: string;
+}
+
 // Toast utility function
 const showToast = (message: string) => {
   if (Platform.OS === 'android') {
@@ -21,6 +41,26 @@ const showToast = (message: string) => {
 
 export class BackendConnector implements PowerSyncBackendConnector {
   private apiClient: ApiClient | null = null;
+  // Track both uploads and deletes
+  private processedOperations: Set<string> = new Set();
+
+  // Helper to generate unique operation keys
+  private getOperationKey(op: PendingOp, invoiceId: string): string {
+    return `${invoiceId}-${op.photoId}-${op.type}-${op.photoType}`;
+  }
+
+  // Helper to check if operation was processed
+  private isOperationProcessed(op: PendingOp, invoiceId: string): boolean {
+    const key = this.getOperationKey(op, invoiceId);
+    return this.processedOperations.has(key);
+  }
+
+  // Helper to mark operation as processed
+  private markOperationProcessed(op: PendingOp, invoiceId: string): void {
+    const key = this.getOperationKey(op, invoiceId);
+    this.processedOperations.add(key);
+    console.log('Marked operation as processed:', { key });
+  }
 
   async fetchCredentials() {
     try {
@@ -62,7 +102,12 @@ export class BackendConnector implements PowerSyncBackendConnector {
         throw new Error('API client not initialized');
       }
 
-      console.log('Processing batch with operations:', batch.crud.length);
+      console.log('Processing batch operations:', {
+        totalOperations: batch.crud.length,
+        hasPhotoOperations: batch.crud.some(
+          (op) => op.table === 'invoices' && op.opData?.photos
+        ),
+      });
 
       for (const op of batch.crud) {
         if (op.table === 'invoices' && op.opData?.photos) {
@@ -83,204 +128,159 @@ export class BackendConnector implements PowerSyncBackendConnector {
                 ? JSON.parse(op.opData.photos)
                 : op.opData.photos;
 
-            // Ensure photos object and its arrays exist
-            if (!photos || typeof photos !== 'object') {
-              photos = { before: [], after: [], pendingOps: [] };
-            }
-
-            // Initialize arrays if they don't exist
-            photos.before = Array.isArray(photos.before) ? photos.before : [];
-            photos.after = Array.isArray(photos.after) ? photos.after : [];
-            photos.pendingOps = Array.isArray(photos.pendingOps)
-              ? photos.pendingOps
-              : [];
-
-            console.log('Photos object after initialization:', {
-              beforeLength: photos.before.length,
-              afterLength: photos.after.length,
-              pendingOpsLength: photos.pendingOps.length,
-              pendingOps: photos.pendingOps,
-            });
-          } catch (e) {
-            console.error('Invalid photos data:', op.opData.photos);
-            photos = { before: [], after: [], pendingOps: [] };
-          }
-
-          const pendingOps = photos.pendingOps;
-
-          try {
-            // Handle before photos
-            if (Array.isArray(photos.before)) {
-              console.log('Processing before photos:', {
-                count: photos.before.length,
-                sample: photos.before[0],
-                pendingOps: pendingOps.filter(
-                  (op: { type: string }) => op.type === 'add'
-                ),
-              });
-
-              const newImages = photos.before
-                .filter((p: any) => p && p.url && p.url.startsWith('data:'))
-                .map((p: any) => p.url);
-
-              const existingPhotos = photos.before
-                .filter((p: any) => p && p.url && !p.url.startsWith('data:'))
-                .map((p: any) => ({ ...p, type: 'before' }));
-
-              // Get technicianId from pending ops first, then fall back to photo
-              const addOp = pendingOps.find((op: any) => op.type === 'add');
-              const techId =
-                addOp?.technicianId ||
-                photos.before[0]?.technicianId ||
-                'deleted';
-
-              console.log('Uploading before photos:', {
-                newImagesCount: newImages.length,
-                existingPhotosCount: existingPhotos.length,
-                techId,
-              });
-
-              if (newImages.length > 0 || existingPhotos.length > 0) {
-                const response = await this.apiClient.updatePhotos(
-                  existingPhotos,
-                  'before',
-                  techId,
-                  invoice.jobTitle,
-                  op.id,
-                  undefined,
-                  newImages
-                );
-
-                // Update local status for uploaded photos
-                if (response?.data?.length) {
-                  const uploadedUrls = new Set(
-                    response.data.map((p: any) => p.url)
-                  );
-                  const updatedPhotos = photos.before.map((p: any) => {
-                    if (uploadedUrls.has(p.url)) {
-                      return { ...p, status: 'uploaded' };
-                    }
-                    return p;
-                  });
-
-                  await database.execute(
-                    `UPDATE invoices 
-                     SET photos = json_set(photos, '$.before', ?)
-                     WHERE id = ?`,
-                    [JSON.stringify(updatedPhotos), op.id]
-                  );
-                }
-              }
-            }
-
-            // Handle after photos
-            if (Array.isArray(photos.after)) {
-              console.log('Processing after photos:', {
-                count: photos.after.length,
-                sample: photos.after[0],
-                pendingOps: pendingOps.filter(
-                  (op: { type: string }) => op.type === 'add'
-                ),
-              });
-
-              const newImages = photos.after
-                .filter((p: any) => p && p.url && p.url.startsWith('data:'))
-                .map((p: any) => p.url);
-
-              const existingPhotos = photos.after
-                .filter((p: any) => p && p.url && !p.url.startsWith('data:'))
-                .map((p: any) => ({ ...p, type: 'after' }));
-
-              // Get technicianId from pending ops first, then fall back to photo
-              const addOp = pendingOps.find((op: any) => op.type === 'add');
-              const techId =
-                addOp?.technicianId ||
-                photos.after[0]?.technicianId ||
-                'deleted';
-
-              console.log('Uploading after photos:', {
-                newImagesCount: newImages.length,
-                existingPhotosCount: existingPhotos.length,
-                techId,
-              });
-
-              if (newImages.length > 0 || existingPhotos.length > 0) {
-                const response = await this.apiClient.updatePhotos(
-                  existingPhotos,
-                  'after',
-                  techId,
-                  invoice.jobTitle,
-                  op.id,
-                  undefined,
-                  newImages
-                );
-
-                // Update local status for uploaded photos
-                if (response?.data?.length) {
-                  const uploadedUrls = new Set(
-                    response.data.map((p: any) => p.url)
-                  );
-                  const updatedPhotos = photos.after.map((p: any) => {
-                    if (uploadedUrls.has(p.url)) {
-                      return { ...p, status: 'uploaded' };
-                    }
-                    return p;
-                  });
-
-                  await database.execute(
-                    `UPDATE invoices 
-                     SET photos = json_set(photos, '$.after', ?)
-                     WHERE id = ?`,
-                    [JSON.stringify(updatedPhotos), op.id]
-                  );
-                }
-              }
-            }
-
-            // Handle signature if present
-            if (photos.signature) {
-              const isNewSignature = photos.signature.url.startsWith('data:');
-              const newImages = isNewSignature ? [photos.signature.url] : [];
-              const existingSignature = isNewSignature
-                ? []
-                : [{ ...photos.signature, type: 'signature' }];
-
-              await this.apiClient.updatePhotos(
-                existingSignature,
-                'signature',
-                photos.signature.technicianId,
-                invoice.jobTitle,
-                op.id,
-                photos.signature.signerName,
-                newImages
-              );
-            }
-
-            // Also log the complete photos object for context
-            console.log('Complete photos object:', {
-              before: photos.before,
-              after: photos.after,
-              signature: photos.signature,
-              pendingOps,
+            console.log('Processing photos operation:', {
+              invoiceId: op.id,
+              beforePhotos: photos.before?.length || 0,
+              afterPhotos: photos.after?.length || 0,
+              pendingOperations: photos.pendingOps?.length || 0,
             });
 
-            // Show toasts for completed operations
-            for (const pendingOp of pendingOps) {
-              if (pendingOp.type === 'add') {
-                showToast('Photo uploaded successfully');
-              } else if (pendingOp.type === 'delete') {
-                showToast('Photo deleted successfully');
-              }
-            }
+            // Process pending operations
+            if (photos.pendingOps?.length > 0) {
+              const newPendingOps: PendingOp[] = [];
 
-            // Clear pending operations
-            if (pendingOps.length > 0) {
-              await database.execute(
-                `UPDATE invoices 
-                 SET photos = json_set(photos, '$.pendingOps', json_array()) 
-                 WHERE id = ?`,
-                [op.id]
+              // Filter out already processed operations
+              const unprocessedOps = photos.pendingOps.filter(
+                (pendingOp: PendingOp) =>
+                  !this.isOperationProcessed(pendingOp, op.id)
               );
+
+              if (unprocessedOps.length === 0) {
+                console.log(
+                  'All operations already processed for invoice:',
+                  op.id
+                );
+                continue;
+              }
+
+              // Group unprocessed operations by type
+              const addOps = unprocessedOps.filter(
+                (pendingOp: PendingOp) => pendingOp.type === 'add'
+              );
+              const deleteOps = unprocessedOps.filter(
+                (pendingOp: PendingOp) => pendingOp.type === 'delete'
+              );
+
+              // Handle uploads
+              if (addOps.length > 0) {
+                // Handle signatures first
+                const signatureOps = addOps.filter(
+                  (op: PendingOp) => op.photoType === 'signature'
+                );
+                if (signatureOps.length > 0) {
+                  const signatureData = photos.signature;
+                  if (signatureData?.url?.startsWith('data:')) {
+                    try {
+                      await this.apiClient.uploadPhotos(
+                        [signatureData.url],
+                        'signature',
+                        signatureOps[0].technicianId,
+                        invoice.jobTitle,
+                        op.id,
+                        signatureData.signerName
+                      );
+                      // Mark signature as processed
+                      signatureOps.forEach((pendingOp: PendingOp) => {
+                        this.markOperationProcessed(pendingOp, op.id);
+                      });
+                    } catch (error) {
+                      // Keep failed operations for retry
+                      newPendingOps.push(...signatureOps);
+                      throw error;
+                    }
+                  }
+                }
+
+                // Handle regular photos
+                for (const photoType of ['before', 'after'] as const) {
+                  const typeOps = addOps.filter(
+                    (pendingOp: PendingOp) => pendingOp.photoType === photoType
+                  );
+                  if (typeOps.length > 0) {
+                    const newImages = photos[photoType]
+                      .filter(
+                        (p: PhotoType) =>
+                          p?.url?.startsWith('data:') &&
+                          typeOps.some((op: PendingOp) => op.photoId === p.id)
+                      )
+                      .map((p: PhotoType) => p.url);
+
+                    if (newImages.length > 0) {
+                      try {
+                        const response = await this.apiClient.uploadPhotos(
+                          newImages,
+                          photoType,
+                          typeOps[0].technicianId,
+                          invoice.jobTitle,
+                          op.id
+                        );
+
+                        console.log(`${photoType} photos upload result:`, {
+                          uploaded: response?.data?.length || 0,
+                          type: photoType,
+                        });
+
+                        // Mark uploads as processed
+                        typeOps.forEach((pendingOp: PendingOp) => {
+                          this.markOperationProcessed(pendingOp, op.id);
+                        });
+                      } catch (error) {
+                        // Keep failed operations for retry
+                        newPendingOps.push(...typeOps);
+                        throw error;
+                      }
+                    }
+                  }
+                }
+              }
+
+              // Handle deletes
+              if (deleteOps.length > 0) {
+                for (const deleteOp of deleteOps) {
+                  if (deleteOp.url) {
+                    try {
+                      await this.apiClient.deletePhoto(
+                        deleteOp.url,
+                        deleteOp.photoType,
+                        op.id
+                      );
+                      console.log('Photo deletion completed:', {
+                        type: deleteOp.photoType,
+                        photoId: deleteOp.photoId,
+                      });
+
+                      // Mark delete as processed
+                      this.markOperationProcessed(deleteOp, op.id);
+                    } catch (error) {
+                      if (
+                        error instanceof Error &&
+                        !error.message.includes(
+                          'Failed to delete from Cloudinary'
+                        )
+                      ) {
+                        newPendingOps.push(deleteOp);
+                      } else {
+                        // If already deleted, mark as processed
+                        this.markOperationProcessed(deleteOp, op.id);
+                      }
+                      throw error;
+                    }
+                  }
+                }
+              }
+
+              // Update photos object with remaining pending operations
+              if (newPendingOps.length !== photos.pendingOps.length) {
+                const updatedPhotos = {
+                  ...photos,
+                  pendingOps: newPendingOps,
+                };
+
+                await database.execute(
+                  `UPDATE invoices SET photos = ? WHERE id = ?`,
+                  [JSON.stringify(updatedPhotos), op.id]
+                );
+              }
             }
           } catch (error) {
             console.error('Error processing photos:', error);
@@ -288,7 +288,6 @@ export class BackendConnector implements PowerSyncBackendConnector {
         }
       }
 
-      // Complete the batch only once after all operations
       await batch.complete();
     } catch (error) {
       console.error('Error in uploadData:', error);

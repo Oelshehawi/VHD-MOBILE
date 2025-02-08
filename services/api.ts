@@ -29,26 +29,23 @@ export class ApiClient {
     };
   }
 
-  async updatePhotos(
-    photos: PhotoRequest[],
+  async uploadPhotos(
+    images: string[],
     type: 'before' | 'after' | 'signature',
     technicianId: string,
     jobTitle: string,
     invoiceId: string,
-    signerName?: string,
-    newImages?: string[]
+    signerName?: string
   ) {
     try {
-
-      const response = await fetch(`${this.baseUrl}/api/photos`, {
+      const response = await fetch(`${this.baseUrl}/api/upload`, {
         method: 'POST',
         headers: {
           ...this.headers,
           Accept: 'application/json',
         },
         body: JSON.stringify({
-          photos,
-          newImages,
+          images,
           type,
           technicianId,
           jobTitle,
@@ -66,12 +63,9 @@ export class ApiClient {
         );
       }
 
-      const data = await response.json();
-
-
-      return data;
+      return await response.json();
     } catch (error) {
-      console.error('❌ Error updating photos:', error);
+      console.error('❌ Error uploading photos:', error);
       throw error;
     }
   }
@@ -82,7 +76,6 @@ export class ApiClient {
     invoiceId: string
   ) {
     try {
-
       const response = await fetch(`${this.baseUrl}/api/deletePhoto`, {
         method: 'DELETE',
         headers: this.headers,
@@ -93,22 +86,16 @@ export class ApiClient {
         }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        console.error('Delete photo failed:', {
-          status: response.status,
-          error: data.error,
-          details: data.details,
-        });
+        const errorData = await response.json().catch(() => ({}));
         throw new Error(
-          data.details ||
-            data.error ||
+          errorData.details ||
+            errorData.error ||
             `Server returned HTTP ${response.status}`
         );
       }
 
-      return data;
+      return await response.json();
     } catch (error) {
       console.error('❌ Error deleting photo:', error);
       throw error;

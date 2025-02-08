@@ -45,8 +45,20 @@ export function SignatureCapture({
   const signatureRef = useRef<any>(null);
   const [signerName, setSignerName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const powerSync = usePowerSync();
-  const { getToken } = useAuth();
+
+  // Check if signature exists in photos data
+  const hasSignature = (() => {
+    try {
+      if (!invoice?.photos) return false;
+      const photosData = JSON.parse(invoice.photos);
+      return !!photosData.signature;
+    } catch (error) {
+      console.error('Error parsing photos data:', error);
+      return false;
+    }
+  })();
 
   const handleSignature = async (signature: string) => {
     if (!signerName.trim()) {
@@ -55,55 +67,61 @@ export function SignatureCapture({
     }
 
     try {
-      setIsUploading(true);
+      setIsSaving(true);
 
-      // Get token for API client
-      const token = await getToken({ template: 'Powersync' });
-      if (!token) {
-        throw new Error('Failed to get authentication token');
-      }
-
-      const apiClient = new ApiClient(token);
-
-      // Create temporary signature object
-      const signatureId = `${Date.now()}-${Math.random()
+      const signatureId = `sig_${Date.now()}-${Math.random()
         .toString(36)
         .substr(2, 9)}`;
-      const tempSignature: SignatureType & { type: 'signature' } = {
+
+      // Create signature object
+      const signatureData = {
         id: signatureId,
         url: signature,
         timestamp: new Date().toISOString(),
         technicianId,
         signerName: signerName.trim(),
         status: 'pending',
-        type: 'signature',
+        type: 'signature' as const,
       };
-
-      // Update signature through the unified API
-      await apiClient.updatePhotos(
-        [tempSignature],
-        'signature',
-        technicianId,
-        invoice.jobTitle,
-        invoice.id,
-        signerName.trim()
-      );
 
       // Save to local database using PowerSync
       await powerSync.writeTransaction(async (tx) => {
-        console.log('Starting signature write transaction');
-
-        // Update signature in database
-        await tx.execute(
-          `UPDATE invoices 
-           SET signature = ?
-           WHERE id = ?`,
-          [JSON.stringify(tempSignature), invoice.id]
+        // Get existing photos to preserve before/after photos and existing pending ops
+        const result = await tx.get<{ photos: string }>(
+          'SELECT photos FROM invoices WHERE id = ?',
+          [invoice.id]
         );
+
+        const existingData = result?.photos ? JSON.parse(result.photos) : {};
+
+        // Create updated data with new signature
+        const updatedData = {
+          ...existingData,
+          before: existingData.before || [],
+          after: existingData.after || [],
+          signature: signatureData,
+          pendingOps: [
+            ...(existingData.pendingOps || []).filter(
+              (op: any) => op.photoType !== 'signature'
+            ),
+            {
+              type: 'add',
+              photoId: signatureId,
+              photoType: 'signature',
+              technicianId,
+              timestamp: new Date().toISOString(),
+              signerName: signerName.trim(),
+            },
+          ],
+        };
+
+        await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
+          JSON.stringify(updatedData),
+          invoice.id,
+        ]);
       });
 
-      showToast('Signature saved successfully');
-      console.log('Signature write transaction completed successfully');
+      showToast('Signature saved and will sync when online');
       onSignatureCapture();
       onClose();
     } catch (error) {
@@ -115,7 +133,7 @@ export function SignatureCapture({
           : 'Failed to save signature. Please try again.'
       );
     } finally {
-      setIsUploading(false);
+      setIsSaving(false);
     }
   };
 
@@ -123,18 +141,24 @@ export function SignatureCapture({
     <Modal
       animationType='slide'
       transparent={false}
-      visible={visible}
+      visible={visible && !hasSignature}
       onRequestClose={onClose}
     >
       <SafeAreaView className='flex-1 bg-white dark:bg-gray-900'>
         <View className='flex-1 p-4 flex flex-col gap-4'>
-          {/* Header */}
+          {/* Header with Loading State */}
           <View className='flex-row justify-between items-center'>
-            <Text className='text-xl font-bold text-gray-900 dark:text-white'>
-              Customer Signature
-            </Text>
+            <View className='flex-row items-center gap-2'>
+              <Text className='text-xl font-bold text-gray-900 dark:text-white'>
+                Electronic Signature Agreement
+              </Text>
+              {(isUploading || isSaving) && (
+                <View className='h-5 w-5 rounded-full border-2 border-t-darkGreen animate-spin' />
+              )}
+            </View>
             <TouchableOpacity
               onPress={onClose}
+              disabled={isUploading || isSaving}
               className='p-2 bg-gray-100 dark:bg-gray-700 rounded-full'
             >
               <Text className='text-gray-600 dark:text-gray-300 text-lg'>
@@ -143,23 +167,34 @@ export function SignatureCapture({
             </TouchableOpacity>
           </View>
 
-          {/* Consent Statement */}
+          {/* Enhanced Legal Consent Statement */}
           <View className='bg-gray-100 dark:bg-gray-800 rounded-lg p-4'>
             <Text className='text-gray-900 dark:text-white font-medium mb-3'>
-              Work Completion & Payment Authorization
+              Legal Authorization & Payment Agreement
             </Text>
             <View className='flex flex-col gap-2'>
               <Text className='text-gray-700 dark:text-gray-300'>
-                By signing below, I confirm that:
+                By signing this electronic document, I hereby:
               </Text>
               <Text className='text-gray-700 dark:text-gray-300'>
-                • All work has been completed to my satisfaction
+                • Confirm all work has been completed to my satisfaction
               </Text>
               <Text className='text-gray-700 dark:text-gray-300'>
-                • I have reviewed and approve all charges
+                • Acknowledge and approve all charges as presented
               </Text>
               <Text className='text-gray-700 dark:text-gray-300'>
-                • I authorize payment for the services rendered
+                • Authorize payment for the services rendered
+              </Text>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                • Understand this is a legally binding electronic signature
+                under the Electronic Transactions Act of British Columbia
+              </Text>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                • Agree this signature carries the same weight and legal effect
+                as a handwritten signature
+              </Text>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                • Consent to using electronic signatures for this transaction
               </Text>
             </View>
           </View>
@@ -173,7 +208,7 @@ export function SignatureCapture({
             onChangeText={setSignerName}
           />
 
-          {/* Signature Area */}
+          {/* Signature Area with Loading State */}
           <View className='flex-1 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden'>
             <SignatureCanvas
               ref={signatureRef}
@@ -181,7 +216,9 @@ export function SignatureCapture({
               onEmpty={() => console.log('Empty')}
               descriptionText=''
               clearText='Clear'
-              confirmText={isUploading ? 'Saving...' : 'Save'}
+              confirmText={
+                isUploading ? 'Saving...' : isSaving ? 'Processing...' : 'Save'
+              }
               webStyle={`
                 .m-signature-pad {
                   height: 100%;
@@ -228,10 +265,20 @@ export function SignatureCapture({
                 .m-signature-pad--footer .button:disabled {
                   opacity: 0.5;
                   cursor: not-allowed;
+                  background-color: #9ca3af;
                 }
               `}
             />
           </View>
+
+          {/* Status Message */}
+          {(isUploading || isSaving) && (
+            <Text className='text-sm text-gray-500 dark:text-gray-400 text-center'>
+              {isUploading
+                ? 'Uploading signature...'
+                : 'Processing signature...'}
+            </Text>
+          )}
         </View>
       </SafeAreaView>
     </Modal>

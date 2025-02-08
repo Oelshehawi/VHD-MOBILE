@@ -63,11 +63,10 @@ export function PhotoCapture({
         throw new Error('Failed to get base64 data from image');
       }
 
-      // Create temporary photo object with required fields
       const photoId = `${Date.now()}-${Math.random()
         .toString(36)
         .substring(2, 9)}`;
-      const tempPhoto: PhotoType = {
+      const tempPhoto = {
         id: photoId,
         url: `data:image/jpeg;base64,${base64}`,
         timestamp: new Date().toISOString(),
@@ -76,60 +75,44 @@ export function PhotoCapture({
         status: 'pending',
       };
 
-      // Use PowerSync writeTransaction to update photos
       await powerSync.writeTransaction(async (tx) => {
         const dbResult = await tx.getAll<{ photos: string }>(
           `SELECT photos FROM invoices WHERE id = ?`,
           [invoiceId]
         );
 
-        let currentPhotos;
-        try {
-          currentPhotos = dbResult?.[0]?.photos
-            ? JSON.parse(dbResult[0].photos)
-            : { before: [], after: [], pendingOps: [] };
-        } catch (e) {
-          console.error('Invalid photos JSON:', dbResult?.[0]?.photos);
-          currentPhotos = { before: [], after: [], pendingOps: [] };
-        }
+        const currentPhotos = dbResult?.[0]?.photos
+          ? JSON.parse(dbResult[0].photos)
+          : { before: [], after: [], pendingOps: [] };
 
-        // Ensure arrays exist
-        currentPhotos.before = Array.isArray(currentPhotos.before)
-          ? currentPhotos.before
-          : [];
-        currentPhotos.after = Array.isArray(currentPhotos.after)
-          ? currentPhotos.after
-          : [];
-        currentPhotos.pendingOps = Array.isArray(currentPhotos.pendingOps)
-          ? currentPhotos.pendingOps
-          : [];
+        // Create the new photos object
+        const newPhotos = {
+          before:
+            type === 'before'
+              ? [...currentPhotos.before, tempPhoto]
+              : currentPhotos.before,
+          after:
+            type === 'after'
+              ? [...currentPhotos.after, tempPhoto]
+              : currentPhotos.after,
+          pendingOps: [
+            ...(currentPhotos.pendingOps || []),
+            {
+              type: 'add',
+              photoId: tempPhoto.id,
+              photoType: type,
+              technicianId,
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        };
 
-        // Add new photo to the correct array
-        currentPhotos[type] = [...currentPhotos[type], tempPhoto];
-
-        // Store the operation type for toast timing
-        currentPhotos.pendingOps.push({
-          type: 'add',
-          photoId: tempPhoto.id,
-          technicianId,
-          timestamp: new Date().toISOString(),
-        });
-
-        console.log('Saving photos:', {
-          type,
-          photoCount: currentPhotos[type].length,
-          pendingOps: currentPhotos.pendingOps,
-        });
-
-        await tx.execute(
-          `UPDATE invoices 
-           SET photos = ?
-           WHERE id = ?`,
-          [JSON.stringify(currentPhotos), invoiceId]
-        );
+        // Direct string update
+        await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
+          JSON.stringify(newPhotos),
+          invoiceId,
+        ]);
       });
-
-      // Toast will be shown by BackendConnector after sync
     } catch (error) {
       console.error('Error handling photo:', error);
       Alert.alert(
@@ -159,63 +142,51 @@ export function PhotoCapture({
           return;
         }
 
-        let currentPhotos;
-        try {
-          currentPhotos = JSON.parse(result[0].photos);
-        } catch (e) {
-          console.error('Invalid photos JSON:', result[0].photos);
-          currentPhotos = { before: [], after: [] };
+        const currentPhotos = JSON.parse(result[0].photos);
+        const photoToDeleteObj = currentPhotos[type]?.find(
+          (photo: PhotoType) =>
+            photo.id === photoToDelete.id || photo._id === photoToDelete.id
+        );
+
+        if (!photoToDeleteObj) {
+          console.error('Photo not found:', photoToDelete.id);
+          return;
         }
 
-        console.log('Before deletion:', {
-          type,
-          photoId: photoToDelete.id,
-          currentPhotos,
-        });
+        // Create the new photos object
+        const newPhotos = {
+          before:
+            type === 'before'
+              ? currentPhotos.before.filter(
+                  (p: PhotoType) =>
+                    p.id !== photoToDelete.id && p._id !== photoToDelete.id
+                )
+              : currentPhotos.before,
+          after:
+            type === 'after'
+              ? currentPhotos.after.filter(
+                  (p: PhotoType) =>
+                    p.id !== photoToDelete.id && p._id !== photoToDelete.id
+                )
+              : currentPhotos.after,
+          pendingOps: [
+            ...(currentPhotos.pendingOps || []),
+            {
+              type: 'delete',
+              photoId: photoToDelete.id,
+              photoType: type,
+              url: photoToDelete.url,
+              technicianId: photoToDeleteObj.technicianId,
+              timestamp: new Date().toISOString(),
+            },
+          ],
+        };
 
-        // Remove the photo from the appropriate array
-        if (currentPhotos[type]) {
-          const photoToDeleteObj = currentPhotos[type].find(
-            (photo: PhotoType) =>
-              photo.id === photoToDelete.id || photo._id === photoToDelete.id
-          );
-
-          if (!photoToDeleteObj) {
-            console.error('Photo not found:', photoToDelete.id);
-            return;
-          }
-
-          currentPhotos[type] = currentPhotos[type].filter(
-            (photo: PhotoType) =>
-              photo.id !== photoToDelete.id && photo._id !== photoToDelete.id
-          );
-
-          // Store the operation type for toast timing
-          const pendingOps = currentPhotos.pendingOps || [];
-          pendingOps.push({
-            type: 'delete',
-            photoId: photoToDelete.id,
-            url: photoToDelete.url,
-            technicianId: photoToDeleteObj.technicianId,
-            timestamp: new Date().toISOString(),
-          });
-          currentPhotos.pendingOps = pendingOps;
-
-          console.log('After deletion:', {
-            type,
-            photoId: photoToDelete.id,
-            remainingPhotos: currentPhotos[type],
-            pendingOps,
-          });
-
-          // Update the invoice with the new photos array
-          await tx.execute(
-            `UPDATE invoices 
-             SET photos = ?
-             WHERE id = ?`,
-            [JSON.stringify(currentPhotos), invoiceId]
-          );
-        }
+        // Direct string update
+        await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
+          JSON.stringify(newPhotos),
+          invoiceId,
+        ]);
       });
     } catch (error) {
       console.error('Error deleting photo:', error);
@@ -274,40 +245,30 @@ export function PhotoCapture({
         transparent
         animationType='fade'
         onRequestClose={() => setPhotoToDelete(null)}
+        statusBarTranslucent={true}
       >
-        <View className='flex-1 bg-black/75 justify-center items-center p-4'>
-          <View className='bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl'>
-            <View className='flex-row justify-between items-center mb-4'>
-              <Text className='text-xl font-semibold text-gray-900 dark:text-white'>
-                Delete Photo?
-              </Text>
-              <TouchableOpacity
-                onPress={() => setPhotoToDelete(null)}
-                className='rounded-full p-2 bg-gray-100 dark:bg-gray-700'
-              >
-                <Text className='text-gray-500 dark:text-gray-400 text-lg'>
-                  ✕
-                </Text>
-              </TouchableOpacity>
-            </View>
-            <Text className='text-gray-600 dark:text-gray-300 mb-6'>
-              Are you sure you want to delete this photo? This action cannot be
-              undone.
+        <View className='flex-1 bg-black/50 justify-center items-center p-4'>
+          <View className='bg-white dark:bg-gray-800 rounded-xl p-5 w-[80%] max-w-[300px] shadow-xl'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white mb-3 text-center'>
+              Delete Photo?
             </Text>
-            <View className='flex-row justify-end gap-3'>
+            <Text className='text-gray-600 dark:text-gray-300 mb-5 text-center text-sm'>
+              This action cannot be undone.
+            </Text>
+            <View className='flex-row justify-center gap-3'>
               <TouchableOpacity
                 onPress={() => setPhotoToDelete(null)}
-                className='flex-1 px-4 py-3 rounded-xl bg-gray-100 dark:bg-gray-700'
+                className='flex-1 px-4 py-2.5 rounded-lg bg-gray-100 dark:bg-gray-700'
               >
-                <Text className='text-gray-900 dark:text-white font-medium text-center'>
+                <Text className='text-gray-900 dark:text-white font-medium text-center text-sm'>
                   Cancel
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleDeleteConfirm}
-                className='flex-1 px-4 py-3 rounded-xl bg-red-500'
+                className='flex-1 px-4 py-2.5 rounded-lg bg-red-500'
               >
-                <Text className='text-white font-medium text-center'>
+                <Text className='text-white font-medium text-center text-sm'>
                   Delete
                 </Text>
               </TouchableOpacity>
