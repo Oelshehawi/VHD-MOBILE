@@ -12,7 +12,8 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import React from 'react';
-import { setManagerStatus } from '@/cache';
+import { setManagerStatus, setOfflineSession } from '@/cache';
+import * as SecureStore from 'expo-secure-store';
 
 const MANAGER_STATUS_KEY = 'vhd_manager_status';
 
@@ -50,6 +51,11 @@ export default function Page() {
         const token = await getToken({ template: 'manager-status' });
         if (token) {
           await setManagerStatus(token);
+        }
+
+        // Save session data for offline use
+        if (signInAttempt.createdSessionId) {
+          await setOfflineSession(signInAttempt.createdSessionId, emailAddress);
         }
 
         router.replace('/');

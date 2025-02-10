@@ -7,13 +7,14 @@ import {
 import { useFonts } from 'expo-font';
 import { Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
 import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
-import { tokenCache } from '../cache';
+import { tokenCache, getOfflineSession } from '../cache';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { ManagerStatusProvider } from '../providers/ManagerStatusProvider';
+import NetInfo from '@react-native-community/netinfo';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -36,6 +37,22 @@ export default function RootLayout() {
     ...FontAwesome.font,
   });
   const colorScheme = useColorScheme();
+  const [isOffline, setIsOffline] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOffline(!state.isConnected);
+    });
+
+    // Check initial connection state
+    NetInfo.fetch().then((state) => {
+      setIsOffline(!state.isConnected);
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
 
   // Expo Router uses Error Boundaries to catch errors in the navigation tree.
   useEffect(() => {

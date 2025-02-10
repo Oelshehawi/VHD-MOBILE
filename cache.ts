@@ -63,3 +63,31 @@ const createTokenCache = (): TokenCache => {
 // SecureStore is not supported on the web
 export const tokenCache =
   Platform.OS !== 'web' ? createTokenCache() : undefined;
+
+export const getOfflineSession = async () => {
+  try {
+    const sessionData = await SecureStore.getItemAsync('clerk-session');
+    return sessionData ? JSON.parse(sessionData) : null;
+  } catch (error) {
+    console.error('Error getting offline session:', error);
+    return null;
+  }
+};
+
+export const setOfflineSession = async (
+  sessionId: string,
+  email: string
+): Promise<void> => {
+  try {
+    await SecureStore.setItemAsync(
+      'clerk-session',
+      JSON.stringify({
+        sessionId,
+        email,
+        lastSignedIn: new Date().toISOString(),
+      })
+    );
+  } catch (error) {
+    console.error('Error setting offline session:', error);
+  }
+};

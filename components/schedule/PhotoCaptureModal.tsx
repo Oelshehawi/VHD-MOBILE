@@ -7,6 +7,7 @@ import {
   Platform,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 
 interface PhotoCaptureModalProps {
   visible: boolean;
@@ -39,11 +40,42 @@ export function PhotoCaptureModal({
         : ImagePicker.launchImageLibraryAsync(options));
 
       if (!result.canceled) {
-        onPhotoSelected(result);
+        // Handle multiple assets for gallery or single asset for camera
+        const processedResult = { ...result };
+
+        if (Platform.OS === 'ios') {
+          // Process each asset
+          processedResult.assets = await Promise.all(
+            result.assets.map(async (asset) => {
+              if (!asset.base64) {
+                try {
+                  const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+                    encoding: FileSystem.EncodingType.Base64,
+                  });
+                  return { ...asset, base64 };
+                } catch (error) {
+                  console.error(
+                    'Error converting to base64:',
+                    error,
+                    asset.uri
+                  );
+                  return asset;
+                }
+              }
+              return asset;
+            })
+          );
+        }
+
+        onPhotoSelected(processedResult);
       }
       onClose();
     } catch (error) {
       console.error('Photo selection error:', error);
+      Alert.alert(
+        'Error',
+        'Failed to process selected photos. Please try again.'
+      );
     }
   };
 
