@@ -22,8 +22,8 @@ export function ManagerStatusProvider({
   const [isManager, setIsManager] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const { isSignedIn, getToken } = useAuth();
-
   // Load initial status from cache
+
   useEffect(() => {
     const loadCachedStatus = async () => {
       if (!isSignedIn) {

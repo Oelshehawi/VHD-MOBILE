@@ -1,16 +1,9 @@
 import '@azure/core-asynciterator-polyfill';
 import { PowerSyncContext } from '@powersync/react-native';
-import { ReactNode, useEffect, useMemo } from 'react';
+import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
 import Constants from 'expo-constants';
 import { System, useSystem } from '../services/database/System';
-
-console.log('PowerSyncProvider environment:', {
-  isExpoGo: Constants.appOwnership === 'expo',
-  appOwnership: Constants.appOwnership,
-});
-
-const isExpoGo = Constants.appOwnership === 'expo';
 
 const TECHNICIAN_MAP: Record<string, string> = {
   user_2mqv5uvRlgBoXqWxPj3j1tAKXcE: 'Mohnad Elkeliny',
@@ -22,14 +15,15 @@ export const getTechnicianName = (userId: string): string => {
   return TECHNICIAN_MAP[userId] || 'Unknown';
 };
 
-
 export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoaded } = useAuth();
   const system: System = useSystem();
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  useEffect(() => {
-    console.log('PowerSync auth state:', { isSignedIn });
-  }, [isSignedIn]);
+  // Check environment on component mount
+  const isExpoGo = Constants.appOwnership === 'expo';
+  
 
   // If in Expo Go, just render children
   if (isExpoGo) {
@@ -39,22 +33,52 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
     return <>{children}</>;
   }
 
-  // Initialize PowerSync when signed in
+  // Wait for Clerk to load before initializing PowerSync
   useEffect(() => {
-    if (isSignedIn) {
-      console.log('Initializing PowerSync...');
-      system
-        .init()
-        .then(() => console.log('PowerSync initialized successfully'))
-        .catch((error) =>
-          console.error('PowerSync initialization error:', error)
-        );
+
+    if (!isLoaded) {
+      console.log('Waiting for Clerk to load...');
+      return;
     }
-  }, [isSignedIn]);
+
+    const initializePowerSync = async () => {
+      if (isSignedIn && !isInitialized) {
+        try {
+          console.log('🔄 Initializing PowerSync...');
+          setError(null);
+          await system.init();
+          setIsInitialized(true);
+          console.log('✅ PowerSync initialized successfully');
+        } catch (err) {
+          const error =
+            err instanceof Error
+              ? err
+              : new Error('PowerSync initialization failed');
+          console.error('❌ PowerSync initialization error:', error);
+          setError(error);
+        }
+      } else if (!isSignedIn && isInitialized) {
+        try {
+          console.log('🔄 Disconnecting PowerSync...');
+          await system.disconnect();
+          setIsInitialized(false);
+          console.log('✅ PowerSync disconnected successfully');
+        } catch (err) {
+          console.error('❌ PowerSync disconnect error:', err);
+        }
+      }
+    };
+
+    initializePowerSync();
+  }, [isSignedIn, isLoaded, isInitialized]);
 
   const db = useMemo(() => {
     return system.powersync;
-  }, []);
+  }, [system]);
+
+  if (error) {
+    console.error('PowerSync Error State:', error);
+  }
 
   return (
     <PowerSyncContext.Provider value={db}>{children}</PowerSyncContext.Provider>

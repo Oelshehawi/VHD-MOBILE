@@ -1,4 +1,4 @@
-import { useSignIn, useAuth } from '@clerk/clerk-expo';
+import { useSignIn, useAuth, isClerkRuntimeError } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import {
   Text,
@@ -12,10 +12,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import React from 'react';
-import { setManagerStatus, setOfflineSession } from '@/cache';
-import * as SecureStore from 'expo-secure-store';
-
-const MANAGER_STATUS_KEY = 'vhd_manager_status';
+import { setManagerStatus } from '@/cache';
 
 export default function Page() {
   const { signIn, setActive, isLoaded } = useSignIn();
@@ -28,7 +25,9 @@ export default function Page() {
   const [error, setError] = React.useState<string | null>(null);
 
   const onSignInPress = React.useCallback(async () => {
-    if (!isLoaded) return;
+    if (!isLoaded) {
+      return;
+    }
 
     try {
       setIsLoading(true);
@@ -53,19 +52,28 @@ export default function Page() {
           await setManagerStatus(token);
         }
 
-        // Save session data for offline use
-        if (signInAttempt.createdSessionId) {
-          await setOfflineSession(signInAttempt.createdSessionId, emailAddress);
-        }
-
         router.replace('/');
       } else {
-        console.error(JSON.stringify(signInAttempt, null, 2));
+        console.error(
+          '❌ Sign in incomplete:',
+          JSON.stringify(signInAttempt, null, 2)
+        );
         setError('Unable to sign in. Please check your credentials.');
       }
     } catch (err: any) {
-      console.error('Sign in error:', err);
-      setError(err?.errors?.[0]?.message || 'An error occurred during sign in');
+      console.error('❌ Sign in error:', err);
+
+      if (isClerkRuntimeError(err)) {
+        if (err.code === 'network_error') {
+          setError('Network error occurred. Please check your connection.');
+        } else {
+          setError(err.message || 'An error occurred during sign in');
+        }
+      } else {
+        setError(
+          err?.errors?.[0]?.message || 'An error occurred during sign in'
+        );
+      }
     } finally {
       setIsLoading(false);
     }

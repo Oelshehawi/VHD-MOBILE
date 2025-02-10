@@ -38,34 +38,51 @@ export class ApiClient {
     signerName?: string
   ) {
     try {
-      const response = await fetch(`${this.baseUrl}/api/upload`, {
-        method: 'POST',
-        headers: {
-          ...this.headers,
-          Accept: 'application/json',
-        },
-        body: JSON.stringify({
-          images,
-          type,
-          technicianId,
-          jobTitle,
-          invoiceId,
-          ...(signerName && { signerName }),
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.details ||
-            errorData.error ||
-            `Server returned HTTP ${response.status}`
-        );
+      // Split images into smaller batches of 2 to avoid 413 errors
+      const BATCH_SIZE = 2;
+      const batches = [];
+      for (let i = 0; i < images.length; i += BATCH_SIZE) {
+        batches.push(images.slice(i, i + BATCH_SIZE));
       }
 
-      return await response.json();
+      const allResults = [];
+      for (const [index, batch] of batches.entries()) {
+        const response = await fetch(`${this.baseUrl}/api/upload`, {
+          method: 'POST',
+          headers: {
+            ...this.headers,
+            Accept: 'application/json',
+          },
+          body: JSON.stringify({
+            images: batch,
+            type,
+            technicianId,
+            jobTitle,
+            invoiceId,
+            ...(signerName && { signerName }),
+          }),
+        });
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(
+            errorData.details ||
+              errorData.error?.message ||
+              `Server returned HTTP ${response.status}`
+          );
+        }
+
+        const result = await response.json();
+        allResults.push(result);
+      }
+
+      // Combine all batch results
+      return {
+        data: allResults.flatMap((r) => r.data || []),
+        success: true,
+      };
     } catch (error) {
-      console.error('❌ Error uploading photos:', error);
+      console.error('Error uploading photos:', error);
       throw error;
     }
   }

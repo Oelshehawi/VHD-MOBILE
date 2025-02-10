@@ -27,7 +27,6 @@ export function ManagerScheduleView({
     async (appointmentId: string) => {
       const schedule = schedules?.find((s) => s.id === appointmentId);
       if (!schedule?.invoiceRef) {
-        console.log('No invoice reference found for schedule:', appointmentId);
         return;
       }
       setSelectedInvoiceId(schedule.invoiceRef);

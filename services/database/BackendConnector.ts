@@ -1,6 +1,5 @@
 import {
   AbstractPowerSyncDatabase,
-  CrudEntry,
   PowerSyncBackendConnector,
 } from '@powersync/react-native';
 import { AppConfig } from '../AppConfig';
@@ -175,8 +174,8 @@ export class BackendConnector implements PowerSyncBackendConnector {
                         [signatureData.url],
                         'signature',
                         signatureOps[0].technicianId,
-                  invoice.jobTitle,
-                  op.id,
+                        invoice.jobTitle,
+                        op.id,
                         signatureData.signerName
                       );
                       // Mark signature as processed
@@ -215,11 +214,6 @@ export class BackendConnector implements PowerSyncBackendConnector {
                           op.id
                         );
 
-                        console.log(`${photoType} photos upload result:`, {
-                          uploaded: response?.data?.length || 0,
-                          type: photoType,
-                        });
-
                         // Mark uploads as processed
                         typeOps.forEach((pendingOp: PendingOp) => {
                           this.markOperationProcessed(pendingOp, op.id);
@@ -244,10 +238,6 @@ export class BackendConnector implements PowerSyncBackendConnector {
                         deleteOp.photoType,
                         op.id
                       );
-                      console.log('Photo deletion completed:', {
-                        type: deleteOp.photoType,
-                        photoId: deleteOp.photoId,
-                      });
 
                       // Mark delete as processed
                       this.markOperationProcessed(deleteOp, op.id);

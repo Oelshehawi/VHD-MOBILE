@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 
 interface PhotoCaptureModalProps {
   visible: boolean;
@@ -27,10 +28,9 @@ export function PhotoCaptureModal({
 
       const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: 'images',
-        quality: 0.5,
+        quality: 0.7, // Initial compression at capture
         base64: true,
         allowsEditing: false,
-        aspect: source === 'camera' ? [4, 3] : undefined,
         exif: false,
         allowsMultipleSelection: source === 'gallery',
       };
@@ -43,29 +43,44 @@ export function PhotoCaptureModal({
         // Handle multiple assets for gallery or single asset for camera
         const processedResult = { ...result };
 
-        if (Platform.OS === 'ios') {
-          // Process each asset
-          processedResult.assets = await Promise.all(
-            result.assets.map(async (asset) => {
-              if (!asset.base64) {
-                try {
-                  const base64 = await FileSystem.readAsStringAsync(asset.uri, {
-                    encoding: FileSystem.EncodingType.Base64,
-                  });
-                  return { ...asset, base64 };
-                } catch (error) {
-                  console.error(
-                    'Error converting to base64:',
-                    error,
-                    asset.uri
-                  );
-                  return asset;
+        // Process images with compression for both platforms
+        processedResult.assets = await Promise.all(
+          result.assets.map(async (asset) => {
+            try {
+              // Balance quality and size
+              const compressed = await manipulateAsync(
+                asset.uri,
+                [{ resize: { width: 2048 } }], // Standard 2K resolution
+                {
+                  compress: 0.8, // Good quality but smaller size
+                  format: SaveFormat.JPEG,
+                  base64: true,
                 }
+              );
+
+              return {
+                ...asset,
+                base64: compressed.base64,
+                width: compressed.width,
+                height: compressed.height,
+                uri: compressed.uri,
+              };
+            } catch (error) {
+              console.error('Error compressing image:', error, asset.uri);
+
+              // Fallback to FileSystem if compression fails
+              try {
+                const base64 = await FileSystem.readAsStringAsync(asset.uri, {
+                  encoding: FileSystem.EncodingType.Base64,
+                });
+                return { ...asset, base64 };
+              } catch (fallbackError) {
+                console.error('Fallback to FileSystem failed:', fallbackError);
+                throw new Error('Failed to process image');
               }
-              return asset;
-            })
-          );
-        }
+            }
+          })
+        );
 
         onPhotoSelected(processedResult);
       }

@@ -46,9 +46,7 @@ const createTokenCache = (): TokenCache => {
     },
     saveToken: async (key: string, token: string) => {
       try {
-        console.log('💾 Saving token for key:', key);
         if (key === 'manager-status') {
-          console.log('🔄 Setting manager status while saving token');
           await setManagerStatus(token);
         }
         return await SecureStore.setItemAsync(key, token);
@@ -63,31 +61,3 @@ const createTokenCache = (): TokenCache => {
 // SecureStore is not supported on the web
 export const tokenCache =
   Platform.OS !== 'web' ? createTokenCache() : undefined;
-
-export const getOfflineSession = async () => {
-  try {
-    const sessionData = await SecureStore.getItemAsync('clerk-session');
-    return sessionData ? JSON.parse(sessionData) : null;
-  } catch (error) {
-    console.error('Error getting offline session:', error);
-    return null;
-  }
-};
-
-export const setOfflineSession = async (
-  sessionId: string,
-  email: string
-): Promise<void> => {
-  try {
-    await SecureStore.setItemAsync(
-      'clerk-session',
-      JSON.stringify({
-        sessionId,
-        email,
-        lastSignedIn: new Date().toISOString(),
-      })
-    );
-  } catch (error) {
-    console.error('Error setting offline session:', error);
-  }
-};

@@ -20,8 +20,6 @@ const showToast = (message: string) => {
   if (Platform.OS === 'android') {
     ToastAndroid.show(message, ToastAndroid.SHORT);
   } else {
-    // For iOS, you might want to use a custom toast component
-    // For now, we'll use Alert
     Alert.alert('Success', message);
   }
 };
@@ -29,7 +27,7 @@ const showToast = (message: string) => {
 interface PhotoCaptureProps {
   technicianId: string;
   isLoading?: boolean;
-  photos: PhotoType[]; // Already parsed photos for this type
+  photos: PhotoType[];
   type: 'before' | 'after';
   jobTitle: string;
   invoiceId?: string;
@@ -62,8 +60,14 @@ export function PhotoCapture({
 
     try {
       setIsUploading(true);
+      console.log('Starting photo upload process', {
+        assetCount: result.assets.length,
+        invoiceId,
+        type,
+      });
 
       await powerSync.writeTransaction(async (tx) => {
+        console.log('Getting current photos from database');
         const dbResult = await tx.getAll<{ photos: string }>(
           `SELECT photos FROM invoices WHERE id = ?`,
           [invoiceId]
@@ -73,41 +77,60 @@ export function PhotoCapture({
           ? JSON.parse(dbResult[0].photos)
           : { before: [], after: [], pendingOps: [] };
 
-        // Process all selected photos
-        const newPhotos = await Promise.all(
-          result.assets.map(async (asset) => {
-            const base64 = await asset.base64;
-            if (!base64) {
-              throw new Error('Failed to get base64 data from image');
-            }
+        console.log('Current photos state:', {
+          before: currentPhotos.before?.length || 0,
+          after: currentPhotos.after?.length || 0,
+          pendingOps: currentPhotos.pendingOps?.length || 0,
+        });
 
-            const photoId = `${Date.now()}-${Math.random()
-              .toString(36)
-              .substring(2, 9)}`;
+        // Process the compressed photos
+        const newPhotos = result.assets.map((asset) => {
+          if (!asset.base64) {
+            throw new Error('No base64 data available for image');
+          }
 
-            return {
-              id: photoId,
-              url: `data:image/jpeg;base64,${base64}`,
-              timestamp: new Date().toISOString(),
-              technicianId,
-              type,
-              status: 'pending' as const,
-            };
-          })
-        );
+          const photoId = `${Date.now()}-${Math.random()
+            .toString(36)
+            .substring(2, 9)}`;
 
-        // Create the updated photos object
+          return {
+            id: photoId,
+            url: `data:image/jpeg;base64,${asset.base64}`,
+            timestamp: new Date().toISOString(),
+            technicianId,
+            type,
+            status: 'pending' as const,
+          };
+        });
+
+        // Create the updated photos object with careful handling of arrays
         const updatedPhotos = {
           before:
             type === 'before'
-              ? [...(currentPhotos.before || []), ...newPhotos]
-              : currentPhotos.before || [],
+              ? [
+                  ...(Array.isArray(currentPhotos.before)
+                    ? currentPhotos.before
+                    : []),
+                  ...newPhotos,
+                ]
+              : Array.isArray(currentPhotos.before)
+              ? currentPhotos.before
+              : [],
           after:
             type === 'after'
-              ? [...(currentPhotos.after || []), ...newPhotos]
-              : currentPhotos.after || [],
+              ? [
+                  ...(Array.isArray(currentPhotos.after)
+                    ? currentPhotos.after
+                    : []),
+                  ...newPhotos,
+                ]
+              : Array.isArray(currentPhotos.after)
+              ? currentPhotos.after
+              : [],
           pendingOps: [
-            ...(currentPhotos.pendingOps || []),
+            ...(Array.isArray(currentPhotos.pendingOps)
+              ? currentPhotos.pendingOps
+              : []),
             ...newPhotos.map((photo) => ({
               type: 'add',
               photoId: photo.id,
@@ -118,11 +141,24 @@ export function PhotoCapture({
           ],
         };
 
-        // Update the database
-        await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
-          JSON.stringify(updatedPhotos),
-          invoiceId,
-        ]);
+        console.log('Updating photos in database', {
+          newPhotoCount: newPhotos.length,
+          updatedBefore: updatedPhotos.before.length,
+          updatedAfter: updatedPhotos.after.length,
+          updatedPendingOps: updatedPhotos.pendingOps.length,
+        });
+
+        // Update the database with explicit error handling
+        try {
+          await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
+            JSON.stringify(updatedPhotos),
+            invoiceId,
+          ]);
+          console.log('Successfully updated database');
+        } catch (dbError) {
+          console.error('Failed to update database:', dbError);
+          throw dbError;
+        }
       });
 
       showToast(
@@ -144,10 +180,7 @@ export function PhotoCapture({
       );
     } finally {
       setIsUploading(false);
-      // Only close modal if it's from gallery or if there's an error
-      if (result.assets[0]?.uri?.startsWith('file://')) {
-        setShowModal(false);
-      }
+      setShowModal(false);
     }
   };
 

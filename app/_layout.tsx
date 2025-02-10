@@ -10,8 +10,8 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
-import { ClerkProvider, ClerkLoaded } from '@clerk/clerk-expo';
-import { tokenCache, getOfflineSession } from '../cache';
+import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
+import { tokenCache } from '../cache';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { ManagerStatusProvider } from '../providers/ManagerStatusProvider';
 import NetInfo from '@react-native-community/netinfo';
@@ -31,50 +31,36 @@ SplashScreen.preventAutoHideAsync();
 
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-export default function RootLayout() {
-  const [loaded, error] = useFonts({
+function InitialLayout({ children }: { children: React.ReactNode }) {
+  const { isLoaded } = useAuth();
+  const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
-  const colorScheme = useColorScheme();
-  const [isOffline, setIsOffline] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      setIsOffline(!state.isConnected);
-    });
-
-    // Check initial connection state
-    NetInfo.fetch().then((state) => {
-      setIsOffline(!state.isConnected);
-    });
-
-    return () => {
-      unsubscribe();
-    };
-  }, []);
-
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
-
-  useEffect(() => {
-    if (loaded) {
+    if (isLoaded && fontsLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [loaded]);
+  }, [isLoaded, fontsLoaded]);
 
-  if (!loaded) {
+  if (!isLoaded || !fontsLoaded) {
     return null;
   }
+
+  return <>{children}</>;
+}
+
+export default function RootLayout() {
+  const colorScheme = useColorScheme();
+
 
   return (
     <ClerkProvider
       publishableKey={CLERK_PUBLISHABLE_KEY!}
       tokenCache={tokenCache}
     >
-      <ClerkLoaded>
+      <InitialLayout>
         <ThemeProvider
           value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
         >
@@ -84,7 +70,7 @@ export default function RootLayout() {
             </PowerSyncProvider>
           </ManagerStatusProvider>
         </ThemeProvider>
-      </ClerkLoaded>
+      </InitialLayout>
     </ClerkProvider>
   );
 }

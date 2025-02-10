@@ -6,7 +6,7 @@ import { useManagerStatus } from '@/providers/ManagerStatusProvider';
 
 export default function Page() {
   const { userId} = useAuth();
-
+  
   const { isManager } = useManagerStatus();
 
   if (!userId) return null;
