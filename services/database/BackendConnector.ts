@@ -175,8 +175,8 @@ export class BackendConnector implements PowerSyncBackendConnector {
                         [signatureData.url],
                         'signature',
                         signatureOps[0].technicianId,
-                        invoice.jobTitle,
-                        op.id,
+                  invoice.jobTitle,
+                  op.id,
                         signatureData.signerName
                       );
                       // Mark signature as processed

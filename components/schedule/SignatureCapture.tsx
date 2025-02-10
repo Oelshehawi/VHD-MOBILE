@@ -180,9 +180,6 @@ export function SignatureCapture({
                 • Confirm all work has been completed to my satisfaction
               </Text>
               <Text className='text-gray-700 dark:text-gray-300'>
-                • Acknowledge and approve all charges as presented
-              </Text>
-              <Text className='text-gray-700 dark:text-gray-300'>
                 • Authorize payment for the services rendered
               </Text>
               <Text className='text-gray-700 dark:text-gray-300'>

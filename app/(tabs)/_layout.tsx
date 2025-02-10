@@ -2,6 +2,8 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs, Redirect } from 'expo-router';
 import '../global.css';
 import { useAuth } from '@clerk/clerk-expo';
+import { useState, useEffect } from 'react';
+import { useManagerStatus } from '@/providers/ManagerStatusProvider';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
@@ -36,6 +38,7 @@ export default function TabLayout() {
         name='index'
         options={{
           title: 'Dashboard',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
             <FontAwesome name='home' size={24} color={color} />
           ),
@@ -45,6 +48,7 @@ export default function TabLayout() {
         name='schedule'
         options={{
           title: 'Schedule',
+          headerShown: false,
           tabBarIcon: ({ color }) => (
             <FontAwesome name='calendar' size={24} color={color} />
           ),
@@ -54,6 +58,7 @@ export default function TabLayout() {
         name='profile'
         options={{
           title: 'Profile',
+          headerShown: false,
           tabBarIcon: ({ color }) => <TabBarIcon name='user' color={color} />,
         }}
       />

@@ -5,39 +5,28 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
-  useWindowDimensions,
 } from 'react-native';
+import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
+import { AppointmentType } from '@/types';
 import {
-  format,
-  startOfMonth,
-  endOfMonth,
-  eachDayOfInterval,
-  isSameMonth,
-  isSameDay,
-  addMonths,
-  subMonths,
-  isToday,
-} from 'date-fns';
-import { formatTimeUTC } from '../../utils/date';
+  convertUTCToLocal,
+  getMonthDays,
+  getAppointmentsForDay,
+} from '@/utils/calendar';
+import { MonthHeader } from './MonthHeader';
+import { DailyAgenda } from './DailyAgenda';
 
 interface MonthViewProps {
   currentDate: string;
   onDateChange: (date: string) => void;
-  appointments: Array<{
-    id: string;
-    startTime: string;
-    endTime: string;
-    clientName: string;
-    serviceType: string;
-    status: 'scheduled' | 'completed' | 'cancelled';
-  }>;
+  appointments: AppointmentType[];
   onDayPress: (date: string) => void;
   onAppointmentPress: (id: string) => void;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const DAY_WIDTH = Math.floor(SCREEN_WIDTH / 7);
-const DAY_HEIGHT = Math.max(DAY_WIDTH, 45); // Set a reasonable minimum height
+const DAY_HEIGHT = Math.max(DAY_WIDTH, 45);
 
 const WEEKDAYS = [
   { key: 'sun', label: 'S' },
@@ -49,19 +38,6 @@ const WEEKDAYS = [
   { key: 'sat', label: 'S' },
 ];
 
-// Helper function to get current date in PT
-const getCurrentDateInPT = () => {
-  const now = new Date();
-  // Subtract 8 hours to convert from UTC to PST
-  return new Date(now.getTime() - 8 * 60 * 60 * 1000);
-};
-
-// Helper to convert UTC ISO string to local date
-const convertUTCToLocal = (dateStr: string) => {
-  const date = new Date(dateStr);
-  return new Date(date.getTime() + date.getTimezoneOffset() * 60 * 1000);
-};
-
 export function MonthView({
   currentDate,
   onDateChange,
@@ -69,69 +45,24 @@ export function MonthView({
   onDayPress,
   onAppointmentPress,
 }: MonthViewProps) {
-  // Initialize with current date if none provided
-  const [selectedDate, setSelectedDate] = useState(currentDate);
+  const [selectedDate, setSelectedDate] = useState(() =>
+    startOfDay(new Date(currentDate)).toISOString()
+  );
 
-  // Convert currentDate to Date object for calculations
-  const currentDateObj = convertUTCToLocal(currentDate || selectedDate);
-  const monthStart = startOfMonth(currentDateObj);
-  const monthEnd = endOfMonth(currentDateObj);
-  const days = eachDayOfInterval({ start: monthStart, end: monthEnd });
+  const currentDateObj = startOfDay(new Date(currentDate || selectedDate));
+  const allDays = getMonthDays(currentDateObj);
 
-  // Update selectedDate when currentDate changes
   useEffect(() => {
     if (currentDate) {
-      const localDate = convertUTCToLocal(currentDate);
-      setSelectedDate(localDate.toISOString());
+      const newDate = startOfDay(new Date(currentDate));
+      setSelectedDate(newDate.toISOString());
     }
   }, [currentDate]);
 
-  // Add padding days to start of month to align with weekday
-  const startPadding = Array.from({ length: monthStart.getDay() }, (_, i) => {
-    const date = new Date(monthStart);
-    date.setMonth(date.getMonth() - 1);
-    date.setDate(endOfMonth(subMonths(monthStart, 1)).getDate() - i);
-    return date;
-  }).reverse();
-
-  // Add padding days to end of month to complete the grid
-  const endPadding = Array.from({ length: 6 - monthEnd.getDay() }, (_, i) => {
-    const date = new Date(monthStart);
-    date.setMonth(date.getMonth() + 1);
-    date.setDate(i + 1);
-    return date;
-  });
-
-  const allDays = [...startPadding, ...days, ...endPadding];
-
-  const getAppointmentsForDay = useCallback(
-    (date: Date) => {
-      // Keep UTC comparison for appointments
-      const dateString = date.toISOString().split('T')[0];
-
-      if (!date || !appointments?.length) return [];
-
-      const dayAppointments = appointments.filter((apt) => {
-        if (!apt.startTime) return false;
-        const appointmentDate = new Date(apt.startTime)
-          .toISOString()
-          .split('T')[0];
-        return appointmentDate === dateString;
-      });
-
-      return dayAppointments.sort(
-        (a, b) =>
-          new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-      );
-    },
-    [appointments]
-  );
-
   const handleDayPress = useCallback(
     (date: Date) => {
-      // Keep the date in local time
-      const localDate = new Date(date);
-      const dateStr = localDate.toISOString();
+      const newDate = startOfDay(date);
+      const dateStr = newDate.toISOString();
       setSelectedDate(dateStr);
       onDayPress(dateStr);
     },
@@ -140,34 +71,18 @@ export function MonthView({
 
   const handleMonthChange = useCallback(
     (newDate: Date) => {
-      // Convert to local midnight
-      const localDate = new Date(newDate);
-      localDate.setHours(0, 0, 0, 0);
-      onDateChange(localDate.toISOString());
+      const dateToUse = startOfDay(newDate);
+      onDateChange(dateToUse.toISOString());
     },
     [onDateChange]
   );
 
   return (
     <View className='flex-1 bg-gray-950'>
-      {/* Month Header */}
-      <View className='flex-row justify-between items-center px-2 py-3'>
-        <TouchableOpacity
-          onPress={() => handleMonthChange(subMonths(currentDate, 1))}
-          className='h-10 w-10 bg-gray-800 rounded-full items-center justify-center'
-        >
-          <Text className='text-gray-200 text-xl leading-none'>←</Text>
-        </TouchableOpacity>
-        <Text className='text-xl font-bold text-gray-200'>
-          {format(currentDate, 'MMMM yyyy')}
-        </Text>
-        <TouchableOpacity
-          onPress={() => handleMonthChange(addMonths(currentDate, 1))}
-          className='h-10 w-10 bg-gray-800 rounded-full items-center justify-center'
-        >
-          <Text className='text-gray-200 text-xl leading-none'>→</Text>
-        </TouchableOpacity>
-      </View>
+      <MonthHeader
+        currentDate={currentDateObj}
+        onMonthChange={handleMonthChange}
+      />
 
       {/* Weekday Headers */}
       <View className='flex-row border-b border-gray-800'>
@@ -192,8 +107,8 @@ export function MonthView({
       <ScrollView className='flex-1'>
         <View className='flex-row flex-wrap'>
           {allDays.map((date, index) => {
-            const isCurrentMonth = isSameMonth(date, currentDate);
-            const dayAppointments = getAppointmentsForDay(date);
+            const isCurrentMonth = isSameMonth(date, currentDateObj);
+            const dayAppointments = getAppointmentsForDay(date, appointments);
             const isSelected = isSameDay(date, new Date(selectedDate));
             const isCurrentDay = isToday(date);
             const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${index}`;
@@ -246,42 +161,11 @@ export function MonthView({
         </View>
       </ScrollView>
 
-      {/* Daily Agenda */}
-      <View className='bg-gray-900 p-4 min-h-[200]'>
-        <Text className='text-gray-200 text-lg mb-4'>
-          {format(selectedDate, 'MMMM d, yyyy')}
-        </Text>
-        <ScrollView>
-          <View className='flex flex-col gap-2'>
-            {getAppointmentsForDay(new Date(selectedDate)).map((apt) => (
-              <TouchableOpacity
-                key={apt.id}
-                className='bg-gray-800 rounded-lg p-4'
-                onPress={() => onAppointmentPress(apt.id)}
-              >
-                <View className='flex-row justify-between items-center'>
-                  <Text className='text-gray-200 font-medium'>
-                    {formatTimeUTC(new Date(apt.startTime))}
-                  </Text>
-                  <View
-                    className={`w-2 h-2 rounded-full ${
-                      apt.status === 'cancelled'
-                        ? 'bg-red-500'
-                        : apt.status === 'completed'
-                        ? 'bg-darkGreen'
-                        : 'bg-blue-500'
-                    }`}
-                  />
-                </View>
-                <Text className='text-gray-200 text-lg'>
-                  {apt.clientName.trim()}
-                </Text>
-                <Text className='text-gray-400'>{apt.serviceType}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </ScrollView>
-      </View>
+      <DailyAgenda
+        selectedDate={new Date(selectedDate)}
+        appointments={appointments}
+        onAppointmentPress={onAppointmentPress}
+      />
     </View>
   );
 }

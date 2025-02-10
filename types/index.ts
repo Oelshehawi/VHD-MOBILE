@@ -145,3 +145,12 @@ export interface ScheduleResponse {
   schedules: Schedule[];
   canManage: boolean;
 }
+
+export interface AppointmentType {
+  id: string;
+  startTime: string;
+  endTime: string;
+  clientName: string;
+  serviceType: string;
+  status: 'scheduled' | 'completed' | 'cancelled';
+}

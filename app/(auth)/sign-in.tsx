@@ -1,4 +1,4 @@
-import { useSignIn } from '@clerk/clerk-expo';
+import { useSignIn, useAuth } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import {
   Text,
@@ -9,22 +9,35 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  ActivityIndicator,
 } from 'react-native';
 import React from 'react';
+import { setManagerStatus } from '@/cache';
+
+const MANAGER_STATUS_KEY = 'vhd_manager_status';
 
 export default function Page() {
   const { signIn, setActive, isLoaded } = useSignIn();
+  const { getToken } = useAuth();
   const router = useRouter();
 
   const [emailAddress, setEmailAddress] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const onSignInPress = React.useCallback(async () => {
     if (!isLoaded) return;
 
     try {
       setIsLoading(true);
+      setError(null);
+
+      if (!emailAddress || !password) {
+        setError('Please enter both email and password');
+        return;
+      }
+
       const signInAttempt = await signIn.create({
         identifier: emailAddress,
         password,
@@ -32,16 +45,25 @@ export default function Page() {
 
       if (signInAttempt.status === 'complete') {
         await setActive({ session: signInAttempt.createdSessionId });
+
+        // Get manager status token after session is active
+        const token = await getToken({ template: 'manager-status' });
+        if (token) {
+          await setManagerStatus(token);
+        }
+
         router.replace('/');
       } else {
         console.error(JSON.stringify(signInAttempt, null, 2));
+        setError('Unable to sign in. Please check your credentials.');
       }
-    } catch (err) {
-      console.error(JSON.stringify(err, null, 2));
+    } catch (err: any) {
+      console.error('Sign in error:', err);
+      setError(err?.errors?.[0]?.message || 'An error occurred during sign in');
     } finally {
       setIsLoading(false);
     }
-  }, [isLoaded, emailAddress, password]);
+  }, [isLoaded, emailAddress, password, getToken]);
 
   return (
     <KeyboardAvoidingView
@@ -79,7 +101,12 @@ export default function Page() {
                   value={emailAddress}
                   placeholder='Enter your email'
                   placeholderTextColor='#667085'
-                  onChangeText={setEmailAddress}
+                  onChangeText={(text) => {
+                    setEmailAddress(text);
+                    setError(null);
+                  }}
+                  keyboardType='email-address'
+                  autoComplete='email'
                 />
               </View>
 
@@ -93,10 +120,18 @@ export default function Page() {
                   placeholder='Enter your password'
                   placeholderTextColor='#667085'
                   secureTextEntry={true}
-                  onChangeText={setPassword}
+                  onChangeText={(text) => {
+                    setPassword(text);
+                    setError(null);
+                  }}
+                  autoComplete='password'
                 />
               </View>
             </View>
+
+            {error && (
+              <Text className='text-red-500 text-sm text-center'>{error}</Text>
+            )}
 
             <TouchableOpacity
               className={`bg-darkGreen py-4 rounded-lg ${
@@ -105,9 +140,13 @@ export default function Page() {
               onPress={onSignInPress}
               disabled={isLoading || !emailAddress || !password}
             >
-              <Text className='text-center text-darkWhite font-semibold'>
-                {isLoading ? 'Signing in...' : 'Sign in'}
-              </Text>
+              {isLoading ? (
+                <ActivityIndicator color='#fff' />
+              ) : (
+                <Text className='text-center text-darkWhite font-semibold'>
+                  Sign in
+                </Text>
+              )}
             </TouchableOpacity>
           </View>
 

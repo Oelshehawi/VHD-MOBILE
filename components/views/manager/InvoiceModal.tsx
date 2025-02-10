@@ -2,15 +2,14 @@ import { useState } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { InvoiceType } from '@/types';
 import { formatDateReadable } from '@/utils/date';
-import { PhotoCapture } from './PhotoCapture';
-import { SignatureCapture } from './SignatureCapture';
+import { PhotoCapture } from '../../schedule/PhotoCapture';
+import { SignatureCapture } from '../../schedule/SignatureCapture';
 import { useQuery } from '@powersync/react-native';
 
 interface InvoiceModalProps {
   visible: boolean;
   onClose: () => void;
   invoice: InvoiceType | null;
-  canManage: boolean;
   technicianId: string;
 }
 
@@ -19,11 +18,10 @@ interface InvoiceItem {
   price: number;
 }
 
-export function InvoiceModal({
+export function ManagerInvoiceModal({
   visible,
   onClose,
   invoice: initialInvoice,
-  canManage,
   technicianId,
 }: InvoiceModalProps) {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
@@ -47,13 +45,12 @@ export function InvoiceModal({
         ? JSON.parse(invoice.photos)
         : { before: [], after: [] };
 
-      // Convert _id to id if needed and add type field
       return {
         before: Array.isArray(parsedPhotos.before)
           ? parsedPhotos.before.map((photo: any) => ({
               ...photo,
               id: photo._id || photo.id,
-              _id: photo._id || photo.id, // Keep _id for backward compatibility
+              _id: photo._id || photo.id,
               type: 'before' as const,
               status: photo.status || 'uploaded',
             }))
@@ -62,7 +59,7 @@ export function InvoiceModal({
           ? parsedPhotos.after.map((photo: any) => ({
               ...photo,
               id: photo._id || photo.id,
-              _id: photo._id || photo.id, // Keep _id for backward compatibility
+              _id: photo._id || photo.id,
               type: 'after' as const,
               status: photo.status || 'uploaded',
             }))
@@ -225,59 +222,57 @@ export function InvoiceModal({
                 </Text>
               </View>
 
-              {/* Items Section - Only visible to managers */}
-              {canManage && (
-                <View className='flex flex-col gap-4'>
-                  <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                    Services
-                  </Text>
-                  <View className='flex flex-col gap-3'>
-                    {items.map((item, index) => (
-                      <View
-                        key={index}
-                        className='flex-row justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700'
-                      >
-                        <Text className='text-gray-900 dark:text-white flex-1 text-base'>
-                          {item.description}
-                        </Text>
-                        <Text className='text-gray-900 dark:text-white ml-4 font-medium'>
-                          ${item.price.toFixed(2)}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
+              {/* Items Section */}
+              <View className='flex flex-col gap-4'>
+                <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+                  Services
+                </Text>
+                <View className='flex flex-col gap-3'>
+                  {items.map((item, index) => (
+                    <View
+                      key={index}
+                      className='flex-row justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700'
+                    >
+                      <Text className='text-gray-900 dark:text-white flex-1 text-base'>
+                        {item.description}
+                      </Text>
+                      <Text className='text-gray-900 dark:text-white ml-4 font-medium'>
+                        ${item.price.toFixed(2)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
 
-                  {/* Total Section */}
-                  <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                    <View className='flex flex-col gap-2'>
-                      <View className='flex-row justify-between items-center'>
-                        <Text className='text-gray-600 dark:text-gray-400'>
-                          Subtotal
-                        </Text>
-                        <Text className='text-gray-900 dark:text-white'>
-                          ${subtotal.toFixed(2)}
-                        </Text>
-                      </View>
-                      <View className='flex-row justify-between items-center'>
-                        <Text className='text-gray-600 dark:text-gray-400'>
-                          GST (5%)
-                        </Text>
-                        <Text className='text-gray-900 dark:text-white'>
-                          ${gst.toFixed(2)}
-                        </Text>
-                      </View>
-                      <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
-                        <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                          Total
-                        </Text>
-                        <Text className='text-xl font-bold text-gray-900 dark:text-white'>
-                          ${total.toFixed(2)}
-                        </Text>
-                      </View>
+                {/* Total Section */}
+                <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                  <View className='flex flex-col gap-2'>
+                    <View className='flex-row justify-between items-center'>
+                      <Text className='text-gray-600 dark:text-gray-400'>
+                        Subtotal
+                      </Text>
+                      <Text className='text-gray-900 dark:text-white'>
+                        ${subtotal.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View className='flex-row justify-between items-center'>
+                      <Text className='text-gray-600 dark:text-gray-400'>
+                        GST (5%)
+                      </Text>
+                      <Text className='text-gray-900 dark:text-white'>
+                        ${gst.toFixed(2)}
+                      </Text>
+                    </View>
+                    <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
+                      <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+                        Total
+                      </Text>
+                      <Text className='text-xl font-bold text-gray-900 dark:text-white'>
+                        ${total.toFixed(2)}
+                      </Text>
                     </View>
                   </View>
                 </View>
-              )}
+              </View>
 
               {/* Notes */}
               {invoice.notes && (
@@ -291,7 +286,7 @@ export function InvoiceModal({
                 </View>
               )}
 
-              {/* Work Completion Section - Always visible */}
+              {/* Work Completion Section */}
               {renderWorkCompletionSection()}
             </View>
           </ScrollView>

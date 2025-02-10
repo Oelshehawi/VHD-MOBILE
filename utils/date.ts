@@ -27,9 +27,19 @@ export const formatDateUTC = (date: string | Date): string => {
 /**
  * Format a date in readable format (e.g. Jan 12, 2025) in UTC
  */
-export const formatDateReadable = (date: string | Date): string => {
-  const parsedDate = typeof date === 'string' ? new Date(date) : date;
-  return formatInTimeZone(parsedDate, 'UTC', 'MMM d, yyyy');
+export const formatDateReadable = (
+  date: string | Date | undefined | null
+): string => {
+  if (!date) return '';
+  try {
+    const parsedDate = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(parsedDate.getTime())) {
+      return '';
+    }
+    return formatInTimeZone(parsedDate, 'UTC', 'MMM d, yyyy');
+  } catch (error) {
+    return '';
+  }
 };
 
 /**
