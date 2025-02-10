@@ -51,8 +51,9 @@ export function PhotoCapture({
   const powerSync = usePowerSync();
 
   const handlePhotoSelected = async (result: ImagePicker.ImagePickerResult) => {
-    if (result.canceled || !result.assets?.[0] || isUploading || !invoiceId)
+    if (result.canceled || !result.assets?.[0] || isUploading || !invoiceId) {
       return;
+    }
 
     try {
       setIsUploading(true);
@@ -60,12 +61,15 @@ export function PhotoCapture({
       const base64 = await asset.base64;
 
       if (!base64) {
+        console.error('❌ Failed to get base64 data from image');
         throw new Error('Failed to get base64 data from image');
       }
+
 
       const photoId = `${Date.now()}-${Math.random()
         .toString(36)
         .substring(2, 9)}`;
+
       const tempPhoto = {
         id: photoId,
         url: `data:image/jpeg;base64,${base64}`,
@@ -89,12 +93,12 @@ export function PhotoCapture({
         const newPhotos = {
           before:
             type === 'before'
-              ? [...currentPhotos.before, tempPhoto]
-              : currentPhotos.before,
+              ? [...(currentPhotos.before || []), tempPhoto]
+              : currentPhotos.before || [],
           after:
             type === 'after'
-              ? [...currentPhotos.after, tempPhoto]
-              : currentPhotos.after,
+              ? [...(currentPhotos.after || []), tempPhoto]
+              : currentPhotos.after || [],
           pendingOps: [
             ...(currentPhotos.pendingOps || []),
             {
@@ -114,7 +118,11 @@ export function PhotoCapture({
         ]);
       });
     } catch (error) {
-      console.error('Error handling photo:', error);
+      console.error('❌ Error handling photo:', error, {
+        invoiceId,
+        type,
+        technicianId,
+      });
       Alert.alert(
         'Error',
         error instanceof Error
