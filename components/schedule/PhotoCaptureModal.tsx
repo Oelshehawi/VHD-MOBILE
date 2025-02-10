@@ -28,7 +28,7 @@ export function PhotoCaptureModal({
         mediaTypes: 'images',
         quality: 0.5,
         base64: true,
-        allowsEditing: source === 'camera',
+        allowsEditing: false,
         aspect: source === 'camera' ? [4, 3] : undefined,
         exif: false,
         allowsMultipleSelection: source === 'gallery',
@@ -88,7 +88,7 @@ export function PhotoCaptureModal({
             >
               <Text className='text-2xl'>📸</Text>
               <Text className='text-white text-lg font-semibold'>
-                Take Photo
+                Take Photos
               </Text>
             </TouchableOpacity>
 
@@ -98,7 +98,7 @@ export function PhotoCaptureModal({
             >
               <Text className='text-2xl'>🖼️</Text>
               <Text className='text-white text-lg font-semibold'>
-                Choose Multiple from Gallery
+                Choose from Gallery
               </Text>
             </TouchableOpacity>
 

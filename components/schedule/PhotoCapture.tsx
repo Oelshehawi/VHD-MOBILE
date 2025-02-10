@@ -144,7 +144,10 @@ export function PhotoCapture({
       );
     } finally {
       setIsUploading(false);
-      setShowModal(false);
+      // Only close modal if it's from gallery or if there's an error
+      if (result.assets[0]?.uri?.startsWith('file://')) {
+        setShowModal(false);
+      }
     }
   };
 
