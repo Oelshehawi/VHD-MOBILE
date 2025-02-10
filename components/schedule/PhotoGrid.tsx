@@ -53,15 +53,6 @@ export function PhotoGrid({
             <View className='absolute top-1 right-1 bg-yellow-500 rounded-full px-2 py-1'>
               <Text className='text-white text-xs'>Pending</Text>
             </View>
-            <TouchableOpacity
-              onPress={() =>
-                (photo.id || photo._id) &&
-                onDeletePhoto(photo.id || photo._id!, photo.url)
-              }
-              className='absolute -top-2 -right-2 bg-red-500 rounded-full w-6 h-6 items-center justify-center'
-            >
-              <Text className='text-white text-sm'>✕</Text>
-            </TouchableOpacity>
           </View>
         ))}
 

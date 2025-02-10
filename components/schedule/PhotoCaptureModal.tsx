@@ -19,19 +19,19 @@ export function PhotoCaptureModal({
   onClose,
   onPhotoSelected,
 }: PhotoCaptureModalProps) {
-  
   const handleImageSelection = async (source: 'camera' | 'gallery') => {
     try {
       const hasPermission = await requestPermissions(source);
       if (!hasPermission) return;
 
       const options: ImagePicker.ImagePickerOptions = {
-        mediaTypes: ['images'],
+        mediaTypes: 'images',
         quality: 0.5,
         base64: true,
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: source === 'camera',
+        aspect: source === 'camera' ? [4, 3] : undefined,
         exif: false,
+        allowsMultipleSelection: source === 'gallery',
       };
 
       const result = await (source === 'camera'
@@ -98,7 +98,7 @@ export function PhotoCaptureModal({
             >
               <Text className='text-2xl'>🖼️</Text>
               <Text className='text-white text-lg font-semibold'>
-                Choose from Gallery
+                Choose Multiple from Gallery
               </Text>
             </TouchableOpacity>
 
