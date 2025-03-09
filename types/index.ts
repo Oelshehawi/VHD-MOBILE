@@ -149,8 +149,6 @@ export interface ScheduleResponse {
 export interface AppointmentType {
   id: string;
   startTime: string;
-  endTime: string;
   clientName: string;
-  serviceType: string;
-  status: 'scheduled' | 'completed' | 'cancelled';
+  status?: 'confirmed' | 'pending';
 }

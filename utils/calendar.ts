@@ -48,14 +48,25 @@ export const getAppointmentsForDay = (
   date: Date,
   appointments: AppointmentType[]
 ) => {
-  const dateString = date.toISOString().split('T')[0];
-
   if (!date || !appointments?.length) return [];
+
+  // Format the date to YYYY-MM-DD in UTC
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const dateString = `${year}-${month}-${day}`;
 
   const dayAppointments = appointments.filter((apt) => {
     if (!apt.startTime) return false;
-    const appointmentDate = new Date(apt.startTime).toISOString().split('T')[0];
-    return appointmentDate === dateString;
+
+    // Parse appointment date in UTC
+    const aptDate = new Date(apt.startTime);
+    const aptYear = aptDate.getUTCFullYear();
+    const aptMonth = String(aptDate.getUTCMonth() + 1).padStart(2, '0');
+    const aptDay = String(aptDate.getUTCDate()).padStart(2, '0');
+    const aptDateString = `${aptYear}-${aptMonth}-${aptDay}`;
+
+    return aptDateString === dateString;
   });
 
   return dayAppointments.sort(

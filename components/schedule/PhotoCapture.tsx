@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import { usePowerSync } from '@powersync/react-native';
+import ImageView from 'react-native-image-viewing';
 
 // Toast utility function
 const showToast = (message: string) => {
@@ -30,7 +31,7 @@ interface PhotoCaptureProps {
   photos: PhotoType[];
   type: 'before' | 'after';
   jobTitle: string;
-  invoiceId?: string;
+  scheduleId?: string;
 }
 
 export function PhotoCapture({
@@ -38,7 +39,8 @@ export function PhotoCapture({
   isLoading = false,
   photos = [],
   type,
-  invoiceId,
+  jobTitle,
+  scheduleId,
 }: PhotoCaptureProps) {
   const [showModal, setShowModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -48,12 +50,28 @@ export function PhotoCapture({
   } | null>(null);
   const powerSync = usePowerSync();
 
+  // State for image gallery
+  const [galleryVisible, setGalleryVisible] = useState(false);
+  const [galleryIndex, setGalleryIndex] = useState(0);
+  const [galleryImages, setGalleryImages] = useState<
+    { uri: string; title?: string }[]
+  >([]);
+
+  // Prepare gallery images whenever photos change
+  useEffect(() => {
+    const images = photos.map((photo) => ({
+      uri: photo.url,
+      title: `${type === 'before' ? 'Before' : 'After'} Photo`,
+    }));
+    setGalleryImages(images);
+  }, [photos, type]);
+
   const handlePhotoSelected = async (result: ImagePicker.ImagePickerResult) => {
     if (
       result.canceled ||
       !result.assets?.length ||
       isUploading ||
-      !invoiceId
+      !scheduleId
     ) {
       return;
     }
@@ -62,104 +80,81 @@ export function PhotoCapture({
       setIsUploading(true);
       console.log('Starting photo upload process', {
         assetCount: result.assets.length,
-        invoiceId,
+        scheduleId,
         type,
       });
 
-      await powerSync.writeTransaction(async (tx) => {
-        console.log('Getting current photos from database');
-        const dbResult = await tx.getAll<{ photos: string }>(
-          `SELECT photos FROM invoices WHERE id = ?`,
-          [invoiceId]
-        );
+      // Process new photos with the new metadata approach
+      for (const asset of result.assets) {
+        if (!asset.base64) {
+          throw new Error('No base64 data available for image');
+        }
 
-        const currentPhotos = dbResult?.[0]?.photos
-          ? JSON.parse(dbResult[0].photos)
-          : { before: [], after: [], pendingOps: [] };
+        const photoId = `${Date.now()}-${Math.random()
+          .toString(36)
+          .substring(2, 9)}`;
 
-        console.log('Current photos state:', {
-          before: currentPhotos.before?.length || 0,
-          after: currentPhotos.after?.length || 0,
-          pendingOps: currentPhotos.pendingOps?.length || 0,
-        });
-
-        // Process the compressed photos
-        const newPhotos = result.assets.map((asset) => {
-          if (!asset.base64) {
-            throw new Error('No base64 data available for image');
-          }
-
-          const photoId = `${Date.now()}-${Math.random()
-            .toString(36)
-            .substring(2, 9)}`;
-
-          return {
-            id: photoId,
-            url: `data:image/jpeg;base64,${asset.base64}`,
-            timestamp: new Date().toISOString(),
-            technicianId,
-            type,
-            status: 'pending' as const,
-          };
-        });
-
-        // Create the updated photos object with careful handling of arrays
-        const updatedPhotos = {
-          before:
-            type === 'before'
-              ? [
-                  ...(Array.isArray(currentPhotos.before)
-                    ? currentPhotos.before
-                    : []),
-                  ...newPhotos,
-                ]
-              : Array.isArray(currentPhotos.before)
-              ? currentPhotos.before
-              : [],
-          after:
-            type === 'after'
-              ? [
-                  ...(Array.isArray(currentPhotos.after)
-                    ? currentPhotos.after
-                    : []),
-                  ...newPhotos,
-                ]
-              : Array.isArray(currentPhotos.after)
-              ? currentPhotos.after
-              : [],
-          pendingOps: [
-            ...(Array.isArray(currentPhotos.pendingOps)
-              ? currentPhotos.pendingOps
-              : []),
-            ...newPhotos.map((photo) => ({
-              type: 'add',
-              photoId: photo.id,
-              photoType: type,
-              technicianId,
-              timestamp: new Date().toISOString(),
-            })),
-          ],
+        const newPhoto = {
+          id: photoId,
+          url: `data:image/jpeg;base64,${asset.base64}`,
+          timestamp: new Date().toISOString(),
+          technicianId,
+          type,
+          status: 'pending' as const,
         };
 
-        console.log('Updating photos in database', {
-          newPhotoCount: newPhotos.length,
-          updatedBefore: updatedPhotos.before.length,
-          updatedAfter: updatedPhotos.after.length,
-          updatedPendingOps: updatedPhotos.pendingOps.length,
-        });
+        // Use the new PowerSync metadata approach for tracking operations
+        await powerSync.writeTransaction(async (tx) => {
+          // First get current photos to properly append
+          const dbResult = await tx.getAll<{ photos: string }>(
+            `SELECT photos FROM schedules WHERE id = ?`,
+            [scheduleId]
+          );
 
-        // Update the database with explicit error handling
-        try {
-          await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
-            JSON.stringify(updatedPhotos),
-            invoiceId,
-          ]);
-          console.log('Successfully updated database');
-        } catch (dbError) {
-          console.error('Failed to update database:', dbError);
-          throw dbError;
-        }
-      });
+          const currentPhotos = dbResult?.[0]?.photos
+            ? JSON.parse(dbResult[0].photos)
+            : { before: [], after: [] };
+
+          // Properly append to the correct photo array
+          const updatedPhotos = {
+            before:
+              type === 'before'
+                ? [
+                    ...(Array.isArray(currentPhotos.before)
+                      ? currentPhotos.before
+                      : []),
+                    newPhoto,
+                  ]
+                : Array.isArray(currentPhotos.before)
+                ? currentPhotos.before
+                : [],
+            after:
+              type === 'after'
+                ? [
+                    ...(Array.isArray(currentPhotos.after)
+                      ? currentPhotos.after
+                      : []),
+                    newPhoto,
+                  ]
+                : Array.isArray(currentPhotos.after)
+                ? currentPhotos.after
+                : [],
+          };
+
+          // Use the new json_insert approach with metadata
+          await tx.execute(
+            `UPDATE schedules SET 
+              photos = ?, 
+              _metadata = json_object('insert_photo', json(?))
+            WHERE id = ?`,
+            [
+              JSON.stringify(updatedPhotos),
+              JSON.stringify(newPhoto),
+              scheduleId,
+            ]
+          );
+        });
+      }
 
       showToast(
         `Successfully added ${result.assets.length} photo${
@@ -168,7 +163,7 @@ export function PhotoCapture({
       );
     } catch (error) {
       console.error('❌ Error handling photo:', error, {
-        invoiceId,
+        scheduleId,
         type,
         technicianId,
       });
@@ -185,13 +180,13 @@ export function PhotoCapture({
   };
 
   const handleDeleteConfirm = async () => {
-    if (!photoToDelete || !invoiceId || !powerSync) return;
+    if (!photoToDelete || !scheduleId || !powerSync) return;
 
     try {
       await powerSync.writeTransaction(async (tx) => {
         const result = await tx.getAll<{ photos: string }>(
-          `SELECT photos FROM invoices WHERE id = ?`,
-          [invoiceId]
+          `SELECT photos FROM schedules WHERE id = ?`,
+          [scheduleId]
         );
 
         if (!result?.[0]?.photos) {
@@ -210,51 +205,53 @@ export function PhotoCapture({
           return;
         }
 
-        // Create the new photos object
-        const newPhotos = {
-          before:
-            type === 'before'
-              ? currentPhotos.before.filter(
-                  (p: PhotoType) =>
-                    p.id !== photoToDelete.id && p._id !== photoToDelete.id
-                )
-              : currentPhotos.before,
-          after:
-            type === 'after'
-              ? currentPhotos.after.filter(
-                  (p: PhotoType) =>
-                    p.id !== photoToDelete.id && p._id !== photoToDelete.id
-                )
-              : currentPhotos.after,
-          pendingOps: [
-            ...(currentPhotos.pendingOps || []),
-            {
-              type: 'delete',
-              photoId: photoToDelete.id,
-              photoType: type,
+        // Create the new photos object without the deleted photo
+        const updatedPhotos = {
+          ...currentPhotos,
+          [type]: currentPhotos[type].filter(
+            (p: PhotoType) =>
+              p.id !== photoToDelete.id && p._id !== photoToDelete.id
+          ),
+        };
+
+        // Use the new metadata approach for delete tracking
+        await tx.execute(
+          `UPDATE schedules SET 
+            photos = ?, 
+            _metadata = json_object('delete_photo', json(?))
+          WHERE id = ?`,
+          [
+            JSON.stringify(updatedPhotos),
+            JSON.stringify({
+              id: photoToDelete.id,
+              type,
               url: photoToDelete.url,
               technicianId: photoToDeleteObj.technicianId,
               timestamp: new Date().toISOString(),
-            },
-          ],
-        };
-
-        // Direct string update
-        await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
-          JSON.stringify(newPhotos),
-          invoiceId,
-        ]);
+            }),
+            scheduleId,
+          ]
+        );
       });
+
+      showToast('Photo deleted successfully');
+      setPhotoToDelete(null);
     } catch (error) {
       console.error('Error deleting photo:', error);
       Alert.alert('Error', 'Failed to delete photo. Please try again.');
-    } finally {
-      setPhotoToDelete(null);
     }
   };
 
   const handleDeleteRequest = (photoId: string, url: string) => {
     setPhotoToDelete({ id: photoId, url });
+  };
+
+  // Function to open the gallery
+  const openGallery = (photoIndex: number = 0) => {
+    if (photos.length === 0) return;
+
+    setGalleryIndex(photoIndex);
+    setGalleryVisible(true);
   };
 
   return (
@@ -266,7 +263,7 @@ export function PhotoCapture({
         <Text className='text-sm text-gray-500 dark:text-gray-400'>
           Take photos to document the{' '}
           {type === 'before' ? 'initial' : 'completed'} state
-          {!invoiceId && ' (Save invoice first to enable photos)'}
+          {!scheduleId && ' (Save schedule first to enable photos)'}
         </Text>
       </View>
 
@@ -274,13 +271,14 @@ export function PhotoCapture({
         photos={photos}
         pendingPhotos={photos.filter((p) => p.status === 'pending')}
         onDeletePhoto={handleDeleteRequest}
+        onPhotoPress={openGallery}
       />
 
       <TouchableOpacity
         onPress={() => setShowModal(true)}
-        disabled={isLoading || isUploading || !invoiceId}
+        disabled={isLoading || isUploading || !scheduleId}
         className={`p-4 rounded-lg flex-row justify-center items-center ${
-          isLoading || isUploading || !invoiceId
+          isLoading || isUploading || !scheduleId
             ? 'bg-gray-300'
             : 'bg-darkGreen'
         }`}
@@ -294,6 +292,26 @@ export function PhotoCapture({
         visible={showModal}
         onClose={() => setShowModal(false)}
         onPhotoSelected={handlePhotoSelected}
+      />
+
+      {/* Image Gallery Viewer */}
+      <ImageView
+        images={galleryImages}
+        imageIndex={galleryIndex}
+        visible={galleryVisible}
+        onRequestClose={() => setGalleryVisible(false)}
+        FooterComponent={({ imageIndex }) => (
+          <View className='bg-black/70 p-2 w-full'>
+            <Text className='text-white text-center font-medium'>
+              {jobTitle}
+            </Text>
+            <Text className='text-gray-300 text-center text-sm'>
+              {`${type === 'before' ? 'Before' : 'After'} Photo ${
+                imageIndex + 1
+              } of ${photos.length}`}
+            </Text>
+          </View>
+        )}
       />
 
       {/* Delete Confirmation Modal */}

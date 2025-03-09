@@ -1,19 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
-import { ManagerDashboardView } from '@/components/views/manager/DashboardView';
-import { TechnicianDashboardView } from '@/components/views/technician/DashboardView';
+import { DashboardView } from '@/components/dashboard/DashboardView';
 import { useManagerStatus } from '@/providers/ManagerStatusProvider';
+import { StatusBar } from 'react-native';
 
 export default function Page() {
-  const { userId} = useAuth();
-  
+  const { userId } = useAuth();
   const { isManager } = useManagerStatus();
 
   if (!userId) return null;
 
-  return isManager ? (
-    <ManagerDashboardView userId={userId} />
-  ) : (
-    <TechnicianDashboardView userId={userId} />
+  return (
+    <>
+      <StatusBar barStyle='dark-content' backgroundColor='#F9FAFB' />
+      <DashboardView userId={userId} isManager={isManager} />
+    </>
   );
 }

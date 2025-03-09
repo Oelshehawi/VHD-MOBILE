@@ -2,7 +2,6 @@ import '@azure/core-asynciterator-polyfill';
 import { PowerSyncContext } from '@powersync/react-native';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
-import Constants from 'expo-constants';
 import { System, useSystem } from '../services/database/System';
 
 const TECHNICIAN_MAP: Record<string, string> = {
@@ -20,19 +19,7 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
   const system: System = useSystem();
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-
-  // Check environment on component mount
-  const isExpoGo = Constants.appOwnership === 'expo';
   
-
-  // If in Expo Go, just render children
-  if (isExpoGo) {
-    console.warn(
-      'PowerSync is not supported in Expo Go. Please use a development build.'
-    );
-    return <>{children}</>;
-  }
-
   // Wait for Clerk to load before initializing PowerSync
   useEffect(() => {
 
@@ -44,11 +31,9 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
     const initializePowerSync = async () => {
       if (isSignedIn && !isInitialized) {
         try {
-          console.log('🔄 Initializing PowerSync...');
           setError(null);
           await system.init();
           setIsInitialized(true);
-          console.log('✅ PowerSync initialized successfully');
         } catch (err) {
           const error =
             err instanceof Error

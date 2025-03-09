@@ -11,10 +11,7 @@ import {
   Platform,
 } from 'react-native';
 import SignatureCanvas from 'react-native-signature-canvas';
-import { SignatureType, InvoiceType } from '../../types';
-import { useAuth } from '@clerk/clerk-expo';
 import { usePowerSync } from '@powersync/react-native';
-import { ApiClient } from '@/services/api';
 
 // Toast utility function
 const showToast = (message: string) => {
@@ -30,7 +27,7 @@ const showToast = (message: string) => {
 interface SignatureCaptureProps {
   onSignatureCapture: () => void;
   technicianId: string;
-  invoice: InvoiceType;
+  schedule: ScheduleType | null;
   visible: boolean;
   onClose: () => void;
 }
@@ -38,7 +35,7 @@ interface SignatureCaptureProps {
 export function SignatureCapture({
   onSignatureCapture,
   technicianId,
-  invoice,
+  schedule,
   visible,
   onClose,
 }: SignatureCaptureProps) {
@@ -48,19 +45,15 @@ export function SignatureCapture({
   const [isSaving, setIsSaving] = useState(false);
   const powerSync = usePowerSync();
 
-  // Check if signature exists in photos data
-  const hasSignature = (() => {
-    try {
-      if (!invoice?.photos) return false;
-      const photosData = JSON.parse(invoice.photos);
-      return !!photosData.signature;
-    } catch (error) {
-      console.error('Error parsing photos data:', error);
-      return false;
-    }
-  })();
+  // Check if signature exists
+  const hasSignature = !!schedule?.signature;
 
   const handleSignature = async (signature: string) => {
+    if (!schedule?.id) {
+      Alert.alert('Error', 'Schedule information is missing');
+      return;
+    }
+
     if (!signerName.trim()) {
       Alert.alert('Error', "Please enter the signer's name");
       return;
@@ -84,41 +77,23 @@ export function SignatureCapture({
         type: 'signature' as const,
       };
 
-      // Save to local database using PowerSync
+      // Save to local database using PowerSync with metadata
       await powerSync.writeTransaction(async (tx) => {
-        // Get existing photos to preserve before/after photos and existing pending ops
-        const result = await tx.get<{ photos: string }>(
-          'SELECT photos FROM invoices WHERE id = ?',
-          [invoice.id]
+        // Using the new PowerSync metadata approach
+        await tx.execute(
+          `UPDATE schedules SET 
+            signature = ?, 
+            _metadata = json_object('insert_photo', json(?))
+          WHERE id = ?`,
+          [
+            JSON.stringify(signatureData),
+            JSON.stringify({
+              ...signatureData,
+              type: 'signature',
+            }),
+            schedule.id,
+          ]
         );
-
-        const existingData = result?.photos ? JSON.parse(result.photos) : {};
-
-        // Create updated data with new signature
-        const updatedData = {
-          ...existingData,
-          before: existingData.before || [],
-          after: existingData.after || [],
-          signature: signatureData,
-          pendingOps: [
-            ...(existingData.pendingOps || []).filter(
-              (op: any) => op.photoType !== 'signature'
-            ),
-            {
-              type: 'add',
-              photoId: signatureId,
-              photoType: 'signature',
-              technicianId,
-              timestamp: new Date().toISOString(),
-              signerName: signerName.trim(),
-            },
-          ],
-        };
-
-        await tx.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
-          JSON.stringify(updatedData),
-          invoice.id,
-        ]);
       });
 
       showToast('Signature saved and will sync when online');

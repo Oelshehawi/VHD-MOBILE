@@ -1,8 +1,7 @@
 import { useCallback, useState, useEffect } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
-import { ManagerScheduleView } from '@/components/views/manager/ScheduleView';
-import { TechnicianScheduleView } from '@/components/views/technician/ScheduleView';
+import { ScheduleView } from '../../components/schedule/ScheduleView';
 import { useManagerStatus } from '@/providers/ManagerStatusProvider';
 import { startOfDay } from 'date-fns';
 
@@ -30,19 +29,12 @@ export default function Page() {
           headerShown: false,
         }}
       />
-      {isManager ? (
-        <ManagerScheduleView
-          userId={userId}
-          currentDate={currentDate}
-          onDateChange={handleDateChange}
-        />
-      ) : (
-        <TechnicianScheduleView
-          userId={userId}
-          currentDate={currentDate}
-          onDateChange={handleDateChange}
-        />
-      )}
+      <ScheduleView
+        userId={userId}
+        currentDate={currentDate}
+        onDateChange={handleDateChange}
+        isManager={isManager}
+      />
     </>
   );
 }

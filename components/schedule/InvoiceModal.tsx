@@ -5,12 +5,14 @@ import { formatDateReadable } from '@/utils/date';
 import { PhotoCapture } from './PhotoCapture';
 import { SignatureCapture } from './SignatureCapture';
 import { useQuery } from '@powersync/react-native';
+import { useManagerStatus } from '@/providers/ManagerStatusProvider';
+import { Ionicons } from '@expo/vector-icons';
+import { openMaps } from '@/utils/dashboard';
 
 interface InvoiceModalProps {
   visible: boolean;
   onClose: () => void;
   invoice: InvoiceType | null;
-  canManage: boolean;
   technicianId: string;
 }
 
@@ -23,12 +25,12 @@ export function InvoiceModal({
   visible,
   onClose,
   invoice: initialInvoice,
-  canManage,
   technicianId,
 }: InvoiceModalProps) {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const { isManager } = useManagerStatus();
 
-  // Use PowerSync query directly
+  // Fetch invoice data from PowerSync
   const { data: invoiceData = [] } = useQuery<InvoiceType>(
     initialInvoice?.id
       ? `SELECT * FROM invoices WHERE id = ?`
@@ -36,16 +38,30 @@ export function InvoiceModal({
     [initialInvoice?.id || '']
   );
 
+  // Fetch associated schedule data for photos and signature
+  const { data: scheduleData = [] } = useQuery<any>(
+    initialInvoice?.id
+      ? `SELECT * FROM schedules WHERE invoiceRef = ?`
+      : `SELECT * FROM schedules WHERE 0`,
+    [initialInvoice?.id || '']
+  );
+
   const invoice = invoiceData[0] || null;
+  const schedule = scheduleData[0] || null;
 
   if (!visible || !invoice) return null;
 
-  // Parse photos, signature, and items from JSON strings
+  // Parse photos and signature from schedule JSON strings
   const photos = (() => {
     try {
-      const parsedPhotos = invoice.photos
-        ? JSON.parse(invoice.photos)
-        : { before: [], after: [] };
+      if (!schedule?.photos) {
+        return { before: [], after: [] };
+      }
+
+      const parsedPhotos =
+        typeof schedule.photos === 'string'
+          ? JSON.parse(schedule.photos)
+          : schedule.photos;
 
       // Convert _id to id if needed and add type field
       return {
@@ -69,51 +85,119 @@ export function InvoiceModal({
           : [],
       };
     } catch (error) {
-      console.error('Error parsing photos:', error, invoice.photos);
+      console.error('Error parsing photos:', error, schedule?.photos);
       return { before: [], after: [] };
     }
   })();
 
-  const signature = invoice.signature
-    ? JSON.parse(invoice.signature)
-    : undefined;
+  const signature = (() => {
+    try {
+      if (!schedule?.signature) {
+        return undefined;
+      }
+
+      return typeof schedule.signature === 'string'
+        ? JSON.parse(schedule.signature)
+        : schedule.signature;
+    } catch (error) {
+      console.error('Error parsing signature:', error, schedule?.signature);
+      return undefined;
+    }
+  })();
+
   const items: InvoiceItem[] = invoice.items ? JSON.parse(invoice.items) : [];
 
   const subtotal = items.reduce((sum, item) => sum + (item.price || 0), 0);
   const gst = subtotal * 0.05;
   const total = subtotal + gst;
 
-  const renderWorkCompletionSection = () => {
-    const hasBeforePhotos = photos.before?.length > 0;
-    const hasAfterPhotos = photos.after?.length > 0;
-    const hasSignature = signature;
+  const hasBeforePhotos = photos.before?.length > 0;
+  const hasAfterPhotos = photos.after?.length > 0;
+  const hasSignature = signature;
 
+  const renderWorkCompletionSection = () => {
     return (
       <View className='flex flex-col gap-6 border-t border-gray-200 dark:border-gray-700 pt-6 mt-6'>
         <Text className='text-xl font-bold text-gray-900 dark:text-white'>
           Work Documentation
         </Text>
 
-        {/* Before Photos */}
-        <View className='flex flex-col gap-4'>
-          <PhotoCapture
-            type='before'
-            photos={photos.before}
-            technicianId={technicianId}
-            jobTitle={invoice.jobTitle}
-            invoiceId={invoice.id}
-          />
-        </View>
+        {/* Technician Notes */}
+        {schedule?.technicianNotes && (
+          <View className='flex flex-col gap-4'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+              Technician Notes
+            </Text>
+            <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+              <Text className='text-gray-700 dark:text-gray-300'>
+                {schedule.technicianNotes}
+              </Text>
+            </View>
+          </View>
+        )}
 
-        {/* After Photos */}
+        {/* Work Documentation Status */}
         <View className='flex flex-col gap-4'>
-          <PhotoCapture
-            type='after'
-            photos={photos.after}
-            technicianId={technicianId}
-            jobTitle={invoice.jobTitle}
-            invoiceId={invoice.id}
-          />
+          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+            Documentation Status
+          </Text>
+          <View className='flex-row flex-wrap gap-4'>
+            <View
+              className={`py-2 px-4 rounded-lg ${
+                hasBeforePhotos
+                  ? 'bg-green-50 dark:bg-green-900/20'
+                  : 'bg-gray-100 dark:bg-gray-700'
+              }`}
+            >
+              <Text
+                className={`${
+                  hasBeforePhotos
+                    ? 'text-green-800 dark:text-green-200'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                {hasBeforePhotos
+                  ? '✓ Before Photos'
+                  : '○ Before Photos Missing'}
+              </Text>
+            </View>
+
+            <View
+              className={`py-2 px-4 rounded-lg ${
+                hasAfterPhotos
+                  ? 'bg-green-50 dark:bg-green-900/20'
+                  : 'bg-gray-100 dark:bg-gray-700'
+              }`}
+            >
+              <Text
+                className={`${
+                  hasAfterPhotos
+                    ? 'text-green-800 dark:text-green-200'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                {hasAfterPhotos ? '✓ After Photos' : '○ After Photos Missing'}
+              </Text>
+            </View>
+
+            <View
+              className={`py-2 px-4 rounded-lg ${
+                hasSignature
+                  ? 'bg-green-50 dark:bg-green-900/20'
+                  : 'bg-gray-100 dark:bg-gray-700'
+              }`}
+            >
+              <Text
+                className={`${
+                  hasSignature
+                    ? 'text-green-800 dark:text-green-200'
+                    : 'text-gray-500 dark:text-gray-400'
+                }`}
+              >
+                {hasSignature ? '✓ Signature' : '○ Signature Missing'}
+              </Text>
+            </View>
+          </View>
         </View>
 
         {/* Signature */}
@@ -136,7 +220,7 @@ export function InvoiceModal({
                   setShowSignatureModal(false);
                 }}
                 technicianId={technicianId}
-                invoice={invoice}
+                schedule={schedule}
                 visible={showSignatureModal}
                 onClose={() => setShowSignatureModal(false)}
               />
@@ -162,6 +246,72 @@ export function InvoiceModal({
     );
   };
 
+  // Render the pricing section only for managers
+  const renderPricingSection = () => {
+    if (!isManager) return null;
+
+    return (
+      <View className='flex flex-col gap-6 border-t border-gray-200 dark:border-gray-700 pt-6 mt-6'>
+        <Text className='text-xl font-bold text-gray-900 dark:text-white'>
+          Invoice Details
+        </Text>
+
+        {/* Invoice items */}
+        <View className='flex flex-col gap-4'>
+          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+            Items
+          </Text>
+
+          {items.length === 0 ? (
+            <Text className='text-gray-500 dark:text-gray-400 italic'>
+              No items added
+            </Text>
+          ) : (
+            <View className='flex flex-col gap-4'>
+              {items.map((item, index) => (
+                <View
+                  key={index}
+                  className='flex-row justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg'
+                >
+                  <Text className='text-gray-700 dark:text-gray-300 flex-1'>
+                    {item.description}
+                  </Text>
+                  <Text className='text-gray-700 dark:text-gray-300 font-semibold'>
+                    ${item.price.toFixed(2)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Pricing summary */}
+        <View className='flex flex-col gap-2 bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+          <View className='flex-row justify-between items-center'>
+            <Text className='text-gray-500 dark:text-gray-400'>Subtotal</Text>
+            <Text className='text-gray-700 dark:text-gray-300'>
+              ${subtotal.toFixed(2)}
+            </Text>
+          </View>
+          <View className='flex-row justify-between items-center'>
+            <Text className='text-gray-500 dark:text-gray-400'>GST (5%)</Text>
+            <Text className='text-gray-700 dark:text-gray-300'>
+              ${gst.toFixed(2)}
+            </Text>
+          </View>
+          <View className='flex-row justify-between items-center border-t border-gray-200 dark:border-gray-600 pt-2 mt-2'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+              Total
+            </Text>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+              ${total.toFixed(2)}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  };
+
   return (
     <Modal
       animationType='slide'
@@ -179,7 +329,9 @@ export function InvoiceModal({
                   {invoice.jobTitle}
                 </Text>
                 <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                  Invoice #{invoice.invoiceId}
+                  {isManager
+                    ? `Invoice #${invoice.invoiceId}`
+                    : ""}
                 </Text>
               </View>
               <TouchableOpacity
@@ -195,104 +347,53 @@ export function InvoiceModal({
 
           <ScrollView className='flex-1 px-6 py-4'>
             <View className='flex flex-col gap-6 pb-6'>
-              {/* Dates Section */}
-              <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                <View className='flex flex-col gap-1'>
-                  <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                    Date Issued
-                  </Text>
-                  <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                    {formatDateReadable(invoice.dateIssued)}
-                  </Text>
-                </View>
-                <View className='flex flex-col gap-1'>
-                  <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                    Due Date
-                  </Text>
-                  <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                    {formatDateReadable(invoice.dateDue)}
-                  </Text>
-                </View>
-              </View>
-
-              {/* Location */}
-              <View className='flex flex-col gap-1'>
-                <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                  Location
-                </Text>
-                <Text className='text-base text-gray-900 dark:text-white font-medium'>
-                  {invoice.location}
-                </Text>
-              </View>
-
-              {/* Items Section - Only visible to managers */}
-              {canManage && (
-                <View className='flex flex-col gap-4'>
-                  <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                    Services
-                  </Text>
-                  <View className='flex flex-col gap-3'>
-                    {items.map((item, index) => (
-                      <View
-                        key={index}
-                        className='flex-row justify-between items-center py-3 border-b border-gray-200 dark:border-gray-700'
-                      >
-                        <Text className='text-gray-900 dark:text-white flex-1 text-base'>
-                          {item.description}
-                        </Text>
-                        <Text className='text-gray-900 dark:text-white ml-4 font-medium'>
-                          ${item.price.toFixed(2)}
-                        </Text>
-                      </View>
-                    ))}
+              {/* Dates Section - Show only for managers */}
+              {isManager && (
+                <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                  <View className='flex flex-col gap-1'>
+                    <Text className='text-sm text-gray-500 dark:text-gray-400'>
+                      Date Issued
+                    </Text>
+                    <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                      {formatDateReadable(invoice.dateIssued)}
+                    </Text>
                   </View>
-
-                  {/* Total Section */}
-                  <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                    <View className='flex flex-col gap-2'>
-                      <View className='flex-row justify-between items-center'>
-                        <Text className='text-gray-600 dark:text-gray-400'>
-                          Subtotal
-                        </Text>
-                        <Text className='text-gray-900 dark:text-white'>
-                          ${subtotal.toFixed(2)}
-                        </Text>
-                      </View>
-                      <View className='flex-row justify-between items-center'>
-                        <Text className='text-gray-600 dark:text-gray-400'>
-                          GST (5%)
-                        </Text>
-                        <Text className='text-gray-900 dark:text-white'>
-                          ${gst.toFixed(2)}
-                        </Text>
-                      </View>
-                      <View className='flex-row justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-600'>
-                        <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                          Total
-                        </Text>
-                        <Text className='text-xl font-bold text-gray-900 dark:text-white'>
-                          ${total.toFixed(2)}
-                        </Text>
-                      </View>
-                    </View>
+                  <View className='flex flex-col gap-1'>
+                    <Text className='text-sm text-gray-500 dark:text-gray-400'>
+                      Due Date
+                    </Text>
+                    <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                      {formatDateReadable(invoice.dateDue)}
+                    </Text>
                   </View>
                 </View>
               )}
 
-              {/* Notes */}
-              {invoice.notes && (
-                <View className='flex flex-col gap-2'>
-                  <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-                    Notes
-                  </Text>
-                  <Text className='text-gray-700 dark:text-gray-300'>
-                    {invoice.notes}
-                  </Text>
+              {/* Location Section */}
+              <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                <View className='flex-row justify-between items-center'>
+                  <View className='flex-1'>
+                    <Text className='text-sm text-gray-500 dark:text-gray-400 mb-1'>
+                      Location
+                    </Text>
+                    <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                      {invoice.location}
+                    </Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => openMaps(invoice.jobTitle, invoice.location)}
+                    className='bg-darkGreen p-2 rounded-full ml-2'
+                  >
+                    <Ionicons name='navigate' size={20} color='#ffffff' />
+                  </TouchableOpacity>
                 </View>
-              )}
+              </View>
 
-              {/* Work Completion Section - Always visible */}
+              {/* Work Documentation Section */}
               {renderWorkCompletionSection()}
+
+              {/* Invoice Details Section - Only for managers */}
+              {renderPricingSection()}
             </View>
           </ScrollView>
         </View>

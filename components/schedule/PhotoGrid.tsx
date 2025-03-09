@@ -6,12 +6,14 @@ interface PhotoGridProps {
   photos: PhotoType[];
   pendingPhotos?: PhotoType[];
   onDeletePhoto: (photoId: string, url: string) => void;
+  onPhotoPress?: (photoIndex: number) => void;
 }
 
 export function PhotoGrid({
   photos,
   pendingPhotos = [],
   onDeletePhoto,
+  onPhotoPress,
 }: PhotoGridProps) {
   // Remove duplicate photos by id and url
   const uniquePhotos = photos.reduce((acc: PhotoType[], photo) => {
@@ -39,6 +41,13 @@ export function PhotoGrid({
       )
   );
 
+  // Handle photo press
+  const handlePhotoPress = (photoIndex: number) => {
+    if (onPhotoPress) {
+      onPhotoPress(photoIndex);
+    }
+  };
+
   return (
     <View className='flex-row flex-wrap gap-3'>
       {/* Pending Photos */}
@@ -59,12 +68,17 @@ export function PhotoGrid({
       {/* Uploaded Photos */}
       {uploadedPhotos
         .filter((p) => p.id || p._id)
-        .map((photo) => (
+        .map((photo, index) => (
           <View key={`uploaded-${photo.id || photo._id}`} className='relative'>
-            <Image
-              source={{ uri: photo.url }}
-              className='w-28 h-28 rounded-lg'
-            />
+            <TouchableOpacity
+              onPress={() => handlePhotoPress(index)}
+              activeOpacity={0.8}
+            >
+              <Image
+                source={{ uri: photo.url }}
+                className='w-28 h-28 rounded-lg'
+              />
+            </TouchableOpacity>
             <TouchableOpacity
               onPress={() =>
                 (photo.id || photo._id) &&

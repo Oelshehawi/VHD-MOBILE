@@ -1,7 +1,3 @@
-import { PhotoType } from '@/types';
-import Constants from 'expo-constants';
-
-// Extend PhotoType to include signature-specific fields
 export interface PhotoRequest {
   _id?: string;
   id?: string;
@@ -14,6 +10,57 @@ export interface PhotoRequest {
 }
 
 const PROD_URL = 'https://vhd-psi.vercel.app';
+const LOCAL_URL = 'http://192.168.1.128:3000'; // Replace with your machine's IP
+
+// Environment configuration
+const ENV = {
+  PRODUCTION: {
+    apiUrl: PROD_URL,
+    powerSyncUrl:
+      process.env.EXPO_PUBLIC_POWERSYNC_URL ||
+      'https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com',
+  },
+  DEVELOPMENT: {
+    apiUrl: LOCAL_URL,
+    powerSyncUrl: 'http://192.168.1.128:8080', // Replace with your machine's IP
+  },
+};
+
+// Global setting to control which environment to use
+let CURRENT_ENV: 'PRODUCTION' | 'DEVELOPMENT' = 'DEVELOPMENT';
+
+// Function to set which environment to use
+export function setEnvironment(env: 'PRODUCTION' | 'DEVELOPMENT') {
+  CURRENT_ENV = env;
+  console.log(`Environment set to ${env}`);
+  // Log the current URLs to help with debugging
+  console.log(`API URL: ${ENV[CURRENT_ENV].apiUrl}`);
+  console.log(`PowerSync URL: ${ENV[CURRENT_ENV].powerSyncUrl}`);
+}
+
+// Function to get current PowerSync URL
+export function getPowerSyncUrl() {
+  // If PowerSync URL is empty or invalid, use the production URL as fallback
+  if (!ENV[CURRENT_ENV].powerSyncUrl) {
+    console.warn('PowerSync URL is empty, using production URL as fallback');
+    return ENV.PRODUCTION.powerSyncUrl;
+  }
+  return ENV[CURRENT_ENV].powerSyncUrl;
+}
+
+// Function to update local development IPs if needed
+export function updateDevelopmentIPs(apiIp: string, powerSyncIp: string) {
+  ENV.DEVELOPMENT.apiUrl = `http://${apiIp}:3000`;
+  ENV.DEVELOPMENT.powerSyncUrl = `http://${powerSyncIp}:8080`;
+
+  // If currently in development mode, log the updated URLs
+  if (CURRENT_ENV === 'DEVELOPMENT') {
+    console.log(`Updated Development API URL: ${ENV.DEVELOPMENT.apiUrl}`);
+    console.log(
+      `Updated Development PowerSync URL: ${ENV.DEVELOPMENT.powerSyncUrl}`
+    );
+  }
+}
 
 export class ApiClient {
   private readonly baseUrl: string;
@@ -21,12 +68,13 @@ export class ApiClient {
   private readonly headers: Record<string, string>;
 
   constructor(token: string) {
-    this.baseUrl = PROD_URL;
+    this.baseUrl = ENV[CURRENT_ENV].apiUrl;
     this.token = token;
     this.headers = {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
     };
+    console.log(`ApiClient initialized with baseUrl: ${this.baseUrl}`);
   }
 
   async uploadPhotos(
@@ -34,7 +82,7 @@ export class ApiClient {
     type: 'before' | 'after' | 'signature',
     technicianId: string,
     jobTitle: string,
-    invoiceId: string,
+    scheduleId: string,
     signerName?: string
   ) {
     try {
@@ -58,7 +106,7 @@ export class ApiClient {
             type,
             technicianId,
             jobTitle,
-            invoiceId,
+            scheduleId,
             ...(signerName && { signerName }),
           }),
         });
@@ -90,7 +138,7 @@ export class ApiClient {
   async deletePhoto(
     photoUrl: string,
     type: 'before' | 'after',
-    invoiceId: string
+    scheduleId: string
   ) {
     try {
       const response = await fetch(`${this.baseUrl}/api/deletePhoto`, {
@@ -99,7 +147,7 @@ export class ApiClient {
         body: JSON.stringify({
           photoUrl,
           type,
-          invoiceId,
+          scheduleId,
         }),
       });
 

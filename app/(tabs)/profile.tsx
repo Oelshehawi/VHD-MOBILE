@@ -1,4 +1,11 @@
-import { View, Text, TouchableOpacity, Image, Alert } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  Alert,
+  ScrollView,
+} from 'react-native';
 import { Card } from '../../components/ui/Card';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
@@ -6,6 +13,7 @@ import { formatDateReadable } from '../../utils/date';
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
+import { EnvironmentSwitcher } from '../../components/EnvironmentSwitcher';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -87,7 +95,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <View className='flex-1 bg-gray-950 p-4'>
+    <ScrollView className='flex-1 bg-gray-950 p-4'>
       <Stack.Screen options={{ headerShown: false }} />
 
       {isOffline && (
@@ -141,6 +149,13 @@ export default function ProfileScreen() {
         </View>
       </Card>
 
+      {/* Environment Switcher - only show for developers */}
+      {__DEV__ && (
+        <Card className='mb-4 bg-gray-900 border-gray-800'>
+          <EnvironmentSwitcher />
+        </Card>
+      )}
+
       <TouchableOpacity
         onPress={handleSignOut}
         className={`py-4 rounded-lg mt-auto ${
@@ -151,6 +166,6 @@ export default function ProfileScreen() {
           {isOffline ? 'Offline - Sign Out Unavailable' : 'Sign Out'}
         </Text>
       </TouchableOpacity>
-    </View>
+    </ScrollView>
   );
 }

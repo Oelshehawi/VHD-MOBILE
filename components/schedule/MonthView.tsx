@@ -8,11 +8,7 @@ import {
 } from 'react-native';
 import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
 import { AppointmentType } from '@/types';
-import {
-  convertUTCToLocal,
-  getMonthDays,
-  getAppointmentsForDay,
-} from '@/utils/calendar';
+import { getMonthDays, getAppointmentsForDay } from '@/utils/calendar';
 import { MonthHeader } from './MonthHeader';
 import { DailyAgenda } from './DailyAgenda';
 
@@ -21,7 +17,6 @@ interface MonthViewProps {
   onDateChange: (date: string) => void;
   appointments: AppointmentType[];
   onDayPress: (date: string) => void;
-  onAppointmentPress: (id: string) => void;
 }
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
@@ -43,12 +38,10 @@ export function MonthView({
   onDateChange,
   appointments,
   onDayPress,
-  onAppointmentPress,
 }: MonthViewProps) {
   const [selectedDate, setSelectedDate] = useState(() =>
     startOfDay(new Date(currentDate)).toISOString()
   );
-
   const currentDateObj = startOfDay(new Date(currentDate || selectedDate));
   const allDays = getMonthDays(currentDateObj);
 
@@ -76,6 +69,36 @@ export function MonthView({
     },
     [onDateChange]
   );
+
+  // This would normally be in a stylesheet
+  const getDayTextStyle = (
+    date: Date,
+    isCurrentMonth: boolean,
+    isCurrentDay: boolean,
+    isSelected: boolean
+  ) => {
+    let baseStyle = 'text-sm ';
+
+    // Sunday text is red
+    if (date.getDay() === 0) {
+      baseStyle += 'text-red-500 ';
+    }
+    // Today's date is blue and bold
+    else if (isCurrentDay) {
+      baseStyle += 'text-blue-500 font-bold ';
+    }
+    // Current month dates are white, other month dates are dimmed
+    else {
+      baseStyle += isCurrentMonth ? 'text-gray-200 ' : 'text-gray-600 ';
+    }
+
+    // Selected day is bold
+    if (isSelected) {
+      baseStyle += 'font-bold';
+    }
+
+    return baseStyle;
+  };
 
   return (
     <View className='flex-1 bg-gray-950'>
@@ -127,45 +150,38 @@ export function MonthView({
               >
                 <View className='flex-1'>
                   <Text
-                    className={`text-sm ${
-                      date.getDay() === 0
-                        ? 'text-red-500'
-                        : isCurrentDay
-                        ? 'text-blue-500 font-bold'
-                        : isCurrentMonth
-                        ? 'text-gray-200'
-                        : 'text-gray-600'
-                    } ${isSelected ? 'font-bold' : ''}`}
+                    className={getDayTextStyle(
+                      date,
+                      isCurrentMonth,
+                      isCurrentDay,
+                      isSelected
+                    )}
                   >
                     {format(date, 'd')}
                   </Text>
-                  <View className='mt-1 flex flex-col gap-0.5'>
-                    {dayAppointments.map((apt) => (
-                      <View key={apt.id} className='mb-0.5'>
-                        <View
-                          className={`h-1 rounded-full ${
-                            apt.status === 'cancelled'
-                              ? 'bg-red-500'
-                              : apt.status === 'completed'
-                              ? 'bg-darkGreen'
-                              : 'bg-blue-500'
-                          }`}
-                        />
-                      </View>
-                    ))}
-                  </View>
+
+                  {/* Appointment Indicators */}
+                  {dayAppointments.length > 0 && (
+                    <View className='mt-1 flex flex-col gap-0.5'>
+                      {dayAppointments.map((apt) => (
+                        <View key={apt.id} className='mb-0.5'>
+                          <View
+                            className={`h-1 rounded-full ${
+                              apt.status === 'confirmed'
+                                ? 'bg-darkGreen'
+                                : 'bg-blue-500'
+                            }`}
+                          />
+                        </View>
+                      ))}
+                    </View>
+                  )}
                 </View>
               </TouchableOpacity>
             );
           })}
         </View>
       </ScrollView>
-
-      <DailyAgenda
-        selectedDate={new Date(selectedDate)}
-        appointments={appointments}
-        onAppointmentPress={onAppointmentPress}
-      />
     </View>
   );
 }

@@ -13,8 +13,7 @@ const invoices = new Table(
     location: column.text,
     notes: column.text,
     status: column.text,
-    photos: column.text, // JSON string containing { before: PhotoType[], after: PhotoType[] }
-    signature: column.text, // JSON string of SignatureType
+    // photos and signature are now in schedules table
   },
   { indexes: {} }
 );
@@ -32,6 +31,10 @@ const schedules = new Table(
     payrollPeriod: column.text,
     shifts: column.text,
     startDateTime: column.text,
+    // Added fields from schema update
+    photos: column.text, // JSON string containing { before: PhotoType[], after: PhotoType[] }
+    signature: column.text, // JSON string of SignatureType
+    technicianNotes: column.text, // Notes from technicians
   },
   { indexes: {} }
 );

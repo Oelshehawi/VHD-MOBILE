@@ -2,8 +2,11 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs, Redirect } from 'expo-router';
 import '../global.css';
 import { useAuth } from '@clerk/clerk-expo';
-import { useState, useEffect } from 'react';
-import { useManagerStatus } from '@/providers/ManagerStatusProvider';
+import Logger from 'js-logger';
+
+Logger.useDefaults();
+
+Logger.setLevel(Logger.DEBUG);
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
