@@ -10,12 +10,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
-import {
-  ClerkProvider,
-  ClerkLoaded,
-  useUser,
-  useAuth,
-} from '@clerk/clerk-expo';
+import { ClerkProvider, useUser} from '@clerk/clerk-expo';
 import { tokenCache } from '../cache';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { secureStore } from '@clerk/clerk-expo/secure-store';
@@ -37,12 +32,9 @@ const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function InitialLayout({ children }: { children: React.ReactNode }) {
   const { isLoaded, user } = useUser();
-  const { has } = useAuth();
 
-  // Safely check for management permission
-  const canManage = !!has?.({ permission: 'org:database:allow' });
+  const canManage = user?.publicMetadata.isManager;
 
-  console.log(canManage)
 
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),

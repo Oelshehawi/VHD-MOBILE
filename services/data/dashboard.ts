@@ -4,8 +4,8 @@ import { Schedule, PayrollPeriod, PayrollSchedule } from '@/types';
 export function useCurrentPayrollPeriod() {
   const query = useQuery<PayrollPeriod>(
     `SELECT * FROM payrollperiods 
-     WHERE date(startDate) <= date('now', 'localtime')
-     AND date(endDate) >= date('now', 'localtime')
+     WHERE date(startDate) <= date('now')
+     AND date(endDate) >= date('now')
      LIMIT 1`
   );
 
@@ -37,7 +37,7 @@ export function usePayrollSchedules(
 export function useTodaySchedules() {
   const query = useQuery<Schedule>(
     `SELECT * FROM schedules 
-     WHERE date(startDateTime, 'localtime') = date('now', 'localtime')
+     WHERE date(startDateTime) = date('now')
      ORDER BY startDateTime ASC`
   );
 

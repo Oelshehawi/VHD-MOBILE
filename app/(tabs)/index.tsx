@@ -1,13 +1,13 @@
-import { useAuth } from '@clerk/clerk-expo';
+import { useUser } from '@clerk/clerk-expo';
 import { DashboardView } from '@/components/dashboard/DashboardView';
 import { Stack } from 'expo-router';
 
 export default function Page() {
-  const { userId, has } = useAuth();
+  const { user } = useUser();
   // Use Clerk's has() method to determine if user has management permissions
-  const isManager = !!has?.({ permission: 'org:database:allow' });
+  const isManager = !!user?.publicMetadata.isManager;
 
-  if (!userId) return null;
+  if (!user?.id) return null;
 
   return (
     <>
@@ -16,7 +16,7 @@ export default function Page() {
           headerShown: false,
         }}
       />
-      <DashboardView userId={userId} isManager={isManager} />
+      <DashboardView userId={user?.id} isManager={isManager} />
     </>
   );
 }
