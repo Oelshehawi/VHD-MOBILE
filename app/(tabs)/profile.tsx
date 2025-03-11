@@ -13,7 +13,6 @@ import { formatDateReadable } from '../../utils/date';
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
-import { EnvironmentSwitcher } from '../../components/EnvironmentSwitcher';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -148,13 +147,6 @@ export default function ProfileScreen() {
           </View>
         </View>
       </Card>
-
-      {/* Environment Switcher - only show for developers */}
-      {__DEV__ && (
-        <Card className='mb-4 bg-gray-900 border-gray-800'>
-          <EnvironmentSwitcher />
-        </Card>
-      )}
 
       <TouchableOpacity
         onPress={handleSignOut}

@@ -1,9 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { format, parseISO } from 'date-fns';
-import { AppointmentType, Schedule } from '@/types';
+import {  parseISO } from 'date-fns';
+import {  Schedule } from '@/types';
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
-import { getAppointmentsForDay } from '@/utils/calendar';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
 import { PhotoDocumentationModal } from './PhotoDocumentationModal';

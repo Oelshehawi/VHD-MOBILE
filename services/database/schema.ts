@@ -1,4 +1,11 @@
-import { column, Schema, Table } from '@powersync/react-native';
+import {
+  Column,
+  column,
+  ColumnType,
+  Schema,
+  Table,
+} from '@powersync/react-native';
+import { AttachmentTable } from '@powersync/attachments';
 
 const invoices = new Table(
   {
@@ -31,7 +38,8 @@ const schedules = new Table(
     payrollPeriod: column.text,
     shifts: column.text,
     startDateTime: column.text,
-    // Added fields from schema update
+    // Photos and signatures are now handled by the attachments table
+    // The legacy fields are kept for backward compatibility
     photos: column.text, // JSON string containing { before: PhotoType[], after: PhotoType[] }
     signature: column.text, // JSON string of SignatureType
     technicianNotes: column.text, // Notes from technicians
@@ -53,6 +61,7 @@ const payrollperiods = new Table(
   { indexes: {} }
 );
 
+// Add the attachments table from PowerSync
 export const AppSchema = new Schema({
   invoices,
   schedules,

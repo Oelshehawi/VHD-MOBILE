@@ -135,15 +135,31 @@ export class ApiClient {
     }
   }
 
+  /**
+   * Delete a photo from Cloudinary
+   * @param photoUrl URL of the photo to delete
+   * @param type Type of photo (before/after)
+   * @param scheduleId ID of the schedule
+   * @returns Delete result
+   */
   async deletePhoto(
     photoUrl: string,
     type: 'before' | 'after',
     scheduleId: string
   ) {
+    if (!photoUrl.startsWith('http')) {
+      // For local photos, we don't need to delete from Cloudinary
+      return { success: true };
+    }
+
     try {
+      // Make API call to delete photo - using DELETE method
       const response = await fetch(`${this.baseUrl}/api/deletePhoto`, {
         method: 'DELETE',
-        headers: this.headers,
+        headers: {
+          ...this.headers,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
           photoUrl,
           type,
@@ -152,17 +168,25 @@ export class ApiClient {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
         throw new Error(
           errorData.details ||
             errorData.error ||
-            `Server returned HTTP ${response.status}`
+            errorData.message ||
+            `Delete failed with status ${response.status}`
         );
       }
 
-      return await response.json();
+      const result = await response.json();
+      return result;
     } catch (error) {
-      console.error('❌ Error deleting photo:', error);
       throw error;
     }
   }

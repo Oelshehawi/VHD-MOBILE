@@ -7,22 +7,24 @@ import {
   Alert,
   Modal,
   SafeAreaView,
-  ToastAndroid,
-  Platform,
 } from 'react-native';
 import SignatureCanvas from 'react-native-signature-canvas';
 import { usePowerSync } from '@powersync/react-native';
+import {
+  PhotoType,
+  showToast,
+  createOptimisticPhoto,
+  createPendingOp,
+  parsePhotosData,
+} from '@/utils/photos';
 
-// Toast utility function
-const showToast = (message: string) => {
-  if (Platform.OS === 'android') {
-    ToastAndroid.show(message, ToastAndroid.SHORT);
-  } else {
-    // For iOS, you might want to use a custom toast component
-    // For now, we'll use Alert
-    Alert.alert('Success', message);
-  }
-};
+// Define ScheduleType interface to fix TS error
+interface ScheduleType {
+  id: string;
+  jobTitle?: string;
+  signature?: PhotoType;
+  photos?: string; // JSON string
+}
 
 interface SignatureCaptureProps {
   onSignatureCapture: () => void;
@@ -62,35 +64,43 @@ export function SignatureCapture({
     try {
       setIsSaving(true);
 
-      const signatureId = `sig_${Date.now()}-${Math.random()
-        .toString(36)
-        .substr(2, 9)}`;
-
-      // Create signature object
-      const signatureData = {
-        id: signatureId,
-        url: signature,
-        timestamp: new Date().toISOString(),
+      // Create signature object using utility function
+      const signatureData = createOptimisticPhoto(
+        signature,
         technicianId,
-        signerName: signerName.trim(),
-        status: 'pending',
-        type: 'signature' as const,
-      };
+        'signature',
+        signerName.trim()
+      );
 
-      // Save to local database using PowerSync with metadata
+      // Save to local database with pendingOps
       await powerSync.writeTransaction(async (tx) => {
-        // Using the new PowerSync metadata approach
+        // Get current photos data
+        const dbResult = await tx.getAll<{ photos: string }>(
+          `SELECT photos FROM schedules WHERE id = ?`,
+          [schedule.id]
+        );
+
+        // Parse photos data using utility function
+        const currentPhotos = parsePhotosData(dbResult?.[0]?.photos);
+
+        // Create pending operation for the signature
+        const pendingOp = createPendingOp('add', signatureData, schedule.id);
+
+        // Update photos object with pendingOp
+        const updatedPhotos = {
+          ...currentPhotos,
+          pendingOps: [...currentPhotos.pendingOps, pendingOp],
+        };
+
+        // Update database without using metadata
         await tx.execute(
           `UPDATE schedules SET 
-            signature = ?, 
-            _metadata = json_object('insert_photo', json(?))
+            signature = ?,
+            photos = ?
           WHERE id = ?`,
           [
             JSON.stringify(signatureData),
-            JSON.stringify({
-              ...signatureData,
-              type: 'signature',
-            }),
+            JSON.stringify(updatedPhotos),
             schedule.id,
           ]
         );
