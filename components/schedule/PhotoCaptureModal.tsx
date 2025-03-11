@@ -55,7 +55,7 @@ export function PhotoCaptureModal({
 
       const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: 'images',
-        quality: 0.7, // Initial compression at capture
+        quality: 1, // Initial compression at capture
         base64: true,
         allowsEditing: false,
         exif: false,

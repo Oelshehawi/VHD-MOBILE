@@ -54,12 +54,12 @@ export const showToast = (message: string) => {
  */
 export const compressImage = async (uri: string): Promise<string> => {
   try {
-    // Using the current recommended API
+    // Single point of compression with better quality settings
     const result = await manipulateAsync(
       uri,
-      [{ resize: { width: 2048 } }], // Standard 2K resolution
+      [{ resize: { width: 2048 } }], // Keep 2K resolution for good detail
       {
-        compress: 0.8, // Good quality but smaller size
+        compress: 0.9, // Increase quality to 90% (less compression)
         format: SaveFormat.JPEG,
         base64: true,
       }

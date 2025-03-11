@@ -19,6 +19,10 @@ function TabBarIcon(props: {
 export default function TabLayout() {
   const { isSignedIn, isLoaded } = useUser();
 
+  if (!isSignedIn) {
+    return <Redirect href='/sign-in' />;
+  }
+
   useEffect(() => {
     if (isLoaded) {
       SplashScreen.hideAsync();
