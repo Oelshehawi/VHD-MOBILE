@@ -9,7 +9,7 @@ export interface PhotoRequest {
   signerName?: string;
 }
 
-const PROD_URL = 'https://vhd-psi.vercel.app';
+const PROD_URL = process.env.EXPO_PUBLIC_API_URL || '';
 const LOCAL_URL = 'http://192.168.1.128:3000'; // Replace with your machine's IP
 
 // Environment configuration
@@ -17,8 +17,7 @@ const ENV = {
   PRODUCTION: {
     apiUrl: PROD_URL,
     powerSyncUrl:
-      process.env.EXPO_PUBLIC_POWERSYNC_URL ||
-      'https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com',
+      process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
   DEVELOPMENT: {
     apiUrl: LOCAL_URL,

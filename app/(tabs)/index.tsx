@@ -1,18 +1,21 @@
-import { useEffect, useState } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
 import { DashboardView } from '@/components/dashboard/DashboardView';
-import { useManagerStatus } from '@/providers/ManagerStatusProvider';
-import { StatusBar } from 'react-native';
+import { Stack } from 'expo-router';
 
 export default function Page() {
-  const { userId } = useAuth();
-  const { isManager } = useManagerStatus();
+  const { userId, has } = useAuth();
+  // Use Clerk's has() method to determine if user has management permissions
+  const isManager = !!has?.({ permission: 'org:database:allow' });
 
   if (!userId) return null;
 
   return (
     <>
-      <StatusBar barStyle='dark-content' backgroundColor='#F9FAFB' />
+      <Stack.Screen
+        options={{
+          headerShown: false,
+        }}
+      />
       <DashboardView userId={userId} isManager={isManager} />
     </>
   );

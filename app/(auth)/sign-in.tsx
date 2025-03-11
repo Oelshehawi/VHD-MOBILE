@@ -1,297 +1,208 @@
-import { useSignIn, useAuth, isClerkRuntimeError } from '@clerk/clerk-expo';
-import { useRouter } from 'expo-router';
+import React, { useState, useEffect } from 'react';
 import {
+  View,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
-  Image,
+  ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ActivityIndicator,
-  Alert,
+  Image,
 } from 'react-native';
-import React, { useState, useEffect } from 'react';
-import { setManagerStatus } from '@/cache';
+import { useRouter } from 'expo-router';
+import { useSignIn, isClerkRuntimeError } from '@clerk/clerk-expo';
 import { useLocalCredentials } from '@clerk/clerk-expo/local-credentials';
-import NetInfo from '@react-native-community/netinfo';
+import { Ionicons } from '@expo/vector-icons';
+import { useNetInfo } from '@react-native-community/netinfo';
 
 export default function Page() {
-  const { signIn, setActive, isLoaded } = useSignIn();
-  const { getToken } = useAuth();
   const router = useRouter();
+  const { signIn, setActive, isLoaded } = useSignIn();
   const { hasCredentials, setCredentials, authenticate, biometricType } =
     useLocalCredentials();
+  const netInfo = useNetInfo();
+  const isOffline = !netInfo.isConnected;
 
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [biometricLoading, setBiometricLoading] = useState(false);
-  const [isOffline, setIsOffline] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [usingSavedCredentials, setUsingSavedCredentials] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Monitor network status
+  // Check if biometric authentication is available
+  const [showBiometricOption, setShowBiometricOption] = useState(false);
+
   useEffect(() => {
-    const unsubscribe = NetInfo.addEventListener((state) => {
-      setIsOffline(!state.isConnected);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // Try biometric login on initial load if available
-  useEffect(() => {
-    // Only auto-prompt for biometric login if credentials exist
-    if (isLoaded && hasCredentials && biometricType) {
-      handleBiometricSignIn();
-    }
-  }, [isLoaded, hasCredentials, biometricType]);
+    const checkBiometrics = async () => {
+      if (hasCredentials) {
+        setShowBiometricOption(true);
+      }
+    };
+    checkBiometrics();
+  }, [hasCredentials]);
 
   const handleBiometricSignIn = async () => {
-    if (!isLoaded || biometricLoading) return;
+    if (!isLoaded) return;
+    setIsLoading(true);
+    setError(null);
 
     try {
-      setBiometricLoading(true);
-      setError(null);
-
-      const signInAttempt = await authenticate();
-
-      if (signInAttempt.status === 'complete') {
-        await setActive({ session: signInAttempt.createdSessionId });
-
-        // Get manager status token after session is active
-        const token = await getToken({ template: 'manager-status' });
-        if (token) {
-          await setManagerStatus(token);
-        }
-
-        router.replace('/');
-      } else {
-        console.error(
-          '❌ Biometric sign in incomplete:',
-          JSON.stringify(signInAttempt, null, 2)
-        );
-        setError(
-          'Unable to sign in with biometrics. Please use email and password.'
-        );
-      }
-    } catch (err: any) {
-      console.error('❌ Biometric sign in error:', err);
-
-      // Don't show an error message if user cancelled biometric auth
-      if (
-        err.message &&
-        !err.message.includes('canceled') &&
-        !err.message.includes('cancelled')
-      ) {
-        setError(
-          'Biometric authentication failed. Please use email and password.'
-        );
-      }
+      await onSignInPress(true);
+    } catch (err) {
+      console.error('Biometric authentication failed:', err);
+      setError(
+        'Biometric authentication failed. Please try again or use email/password.'
+      );
     } finally {
-      setBiometricLoading(false);
+      setIsLoading(false);
     }
   };
 
-  const onSignInPress = React.useCallback(async () => {
-    if (!isLoaded) {
+  const onSignInPress = async (useLocal: boolean = false) => {
+    if (!isLoaded) return;
+    setIsLoading(true);
+    setError(null);
+
+    // Check required fields for email/password sign-in
+    if (!useLocal && (!emailAddress || !password)) {
+      setError('Please enter both email and password');
+      setIsLoading(false);
+      return;
+    }
+
+    // Check if offline before attempting sign in
+    if (isOffline) {
+      setError(
+        'You appear to be offline. Please check your connection and try again.'
+      );
+      setIsLoading(false);
       return;
     }
 
     try {
-      setIsLoading(true);
-      setError(null);
+      const signInAttempt =
+        hasCredentials && useLocal
+          ? await authenticate()
+          : await signIn.create({
+              identifier: emailAddress,
+              password,
+            });
 
-      if (!emailAddress || !password) {
-        setError('Please enter both email and password');
-        return;
-      }
-
-      // Check if offline before attempting sign in
-      if (isOffline) {
-        setError(
-          'You appear to be offline. Please check your connection and try again.'
-        );
-        return;
-      }
-
-      const signInAttempt = await signIn.create({
-        identifier: emailAddress,
-        password,
-      });
-
+      // If sign-in process is complete,
+      // set the created session as active and redirect the user
       if (signInAttempt.status === 'complete') {
-        // Save credentials for biometric login
-        await setCredentials({
-          identifier: emailAddress,
-          password,
-        });
+        console.log('status is complete', signInAttempt.status);
 
-        await setActive({ session: signInAttempt.createdSessionId });
-
-        // Get manager status token after session is active
-        const token = await getToken({ template: 'manager-status' });
-        if (token) {
-          await setManagerStatus(token);
+        if (!useLocal) {
+          await setCredentials({
+            identifier: emailAddress,
+            password,
+          });
         }
 
+        await setActive({ session: signInAttempt.createdSessionId });
         router.replace('/');
       } else {
-        console.error(
-          '❌ Sign in incomplete:',
-          JSON.stringify(signInAttempt, null, 2)
-        );
-        setError('Unable to sign in. Please check your credentials.');
+        // If the status is not complete, check why.
+        console.error(JSON.stringify(signInAttempt, null, 2));
+        setError('Sign-in incomplete. Please try again.');
       }
     } catch (err: any) {
-      console.error('❌ Sign in error:', err);
-
+      // Better error handling with specific messages for different error types
       if (isClerkRuntimeError(err)) {
         if (err.code === 'network_error') {
-          setError('Network error occurred. Please check your connection.');
+          console.error('Network error occurred!');
+          setError(
+            'Network error occurred. Please check your connection and try again.'
+          );
         } else {
           setError(err.message || 'An error occurred during sign in');
         }
       } else {
+        console.error('Sign-in error:', JSON.stringify(err, null, 2));
         setError(
-          err?.errors?.[0]?.message || 'An error occurred during sign in'
+          err.errors?.[0]?.message || 'Sign-in failed. Please try again.'
         );
       }
     } finally {
       setIsLoading(false);
     }
-  }, [isLoaded, emailAddress, password, getToken, isOffline]);
+  };
 
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      className='flex-1 bg-darkGray'
+      className='flex-1'
     >
       <ScrollView
         contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps='handled'
+        className='bg-white dark:bg-gray-900'
       >
-        <View className='flex-1 justify-between px-6 py-12'>
-          {/* Network Status Banner */}
-          {isOffline && (
-            <View className='bg-yellow-600/20 p-3 rounded-lg mb-4'>
-              <Text className='text-yellow-200 text-center'>
-                You are currently offline. Some features may be limited.
-              </Text>
-            </View>
-          )}
-
-          {/* Logo and Welcome Section */}
-          <View className='flex items-center gap-4 mb-12'>
-            <View className='w-24 h-24 bg-darkGreen rounded-2xl items-center justify-center mb-4'>
-              <Text className='text-4xl'>🏠</Text>
-            </View>
-            <Text className='text-3xl font-bold text-darkWhite text-center'>
-              Welcome Back
-            </Text>
-            <Text className='text-gray-400 text-center'>
-              Sign in to continue to VHD App
-            </Text>
+        <View className='flex-1 justify-center p-8'>
+          <View className='mb-8 items-center'>
+            <Image
+              source={require('@/assets/images/icon.png')}
+              className='h-20 w-80 mb-2'
+              resizeMode='contain'
+            />
           </View>
 
-          {/* Biometric Sign In Button */}
-          {hasCredentials && biometricType && (
-            <View className='mb-8'>
-              <TouchableOpacity
-                className={`bg-darkGreen py-4 rounded-lg flex-row justify-center items-center ${
-                  biometricLoading ? 'opacity-70' : ''
-                }`}
-                onPress={handleBiometricSignIn}
-                disabled={biometricLoading}
-              >
-                {biometricLoading ? (
-                  <ActivityIndicator color='#fff' />
-                ) : (
-                  <>
-                    <Text className='text-center text-darkWhite font-semibold mr-2'>
-                      {biometricType === 'face-recognition'
-                        ? 'Sign in with Face ID'
-                        : 'Sign in with Touch ID'}
-                    </Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <Text className='text-center text-gray-400 mt-2 text-sm'>
-                or use your email and password
-              </Text>
+          <Text className='text-2xl font-bold mb-6 text-center text-gray-800 dark:text-white'>
+            Sign In
+          </Text>
+
+          {error && (
+            <View className='mb-4 p-3 bg-red-50 border border-red-200 rounded-lg'>
+              <Text className='text-red-700'>{error}</Text>
             </View>
           )}
 
-          {/* Form Section */}
-          <View className='flex gap-6'>
-            <View className='flex gap-4'>
-              <View>
-                <Text className='text-darkWhite mb-2 font-medium'>
-                  Email Address
-                </Text>
-                <TextInput
-                  className='w-full bg-lightGray px-4 py-3 rounded-lg text-darkGray'
-                  autoCapitalize='none'
-                  value={emailAddress}
-                  placeholder='Enter your email'
-                  placeholderTextColor='#667085'
-                  onChangeText={(text) => {
-                    setEmailAddress(text);
-                    setError(null);
-                  }}
-                  keyboardType='email-address'
-                  autoComplete='email'
-                />
-              </View>
-
-              <View>
-                <Text className='text-darkWhite mb-2 font-medium'>
-                  Password
-                </Text>
-                <TextInput
-                  className='w-full bg-lightGray px-4 py-3 rounded-lg text-darkGray'
-                  value={password}
-                  placeholder='Enter your password'
-                  placeholderTextColor='#667085'
-                  secureTextEntry={true}
-                  onChangeText={(text) => {
-                    setPassword(text);
-                    setError(null);
-                  }}
-                  autoComplete='password'
-                />
-              </View>
-            </View>
-
-            {error && (
-              <Text className='text-red-500 text-sm text-center'>{error}</Text>
-            )}
-
+          {/* Biometric Sign In Option */}
+          {showBiometricOption && (
             <TouchableOpacity
-              className={`bg-darkGreen py-4 rounded-lg ${
-                isLoading ? 'opacity-70' : ''
-              }`}
-              onPress={onSignInPress}
-              disabled={isLoading || !emailAddress || !password}
+              className='mb-6 flex-row items-center justify-center bg-green-600 py-3 px-4 rounded-lg'
+              onPress={handleBiometricSignIn}
+              disabled={isLoading}
             >
-              {isLoading ? (
-                <ActivityIndicator color='#fff' />
-              ) : (
-                <Text className='text-center text-darkWhite font-semibold'>
-                  Sign in
-                </Text>
-              )}
+              <Ionicons name='finger-print' size={24} color='white' />
+              <Text className='text-white font-bold ml-2'>
+                Sign in with{' '}
+                {biometricType === 'fingerprint' ? 'Fingerprint' : 'Face ID'}
+              </Text>
             </TouchableOpacity>
-          </View>
+          )}
 
-          {/* Footer */}
-          <View className='mt-8'>
-            <Text className='text-gray-400 text-center text-sm'>
-              © 2024 VHD. All rights reserved.
-            </Text>
-          </View>
+          <Text className='text-gray-600 dark:text-gray-300 mb-2'>
+            Email Address
+          </Text>
+          <TextInput
+            autoCapitalize='none'
+            value={emailAddress}
+            onChangeText={setEmailAddress}
+            className='bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white py-3 px-4 rounded-lg mb-4'
+          />
+
+          <Text className='text-gray-600 dark:text-gray-300 mb-2'>
+            Password
+          </Text>
+          <TextInput
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            className='bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white py-3 px-4 rounded-lg mb-6'
+          />
+
+          <TouchableOpacity
+            className='bg-green-600 py-3 px-4 rounded-lg'
+            onPress={() => onSignInPress(false)}
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <ActivityIndicator color='white' />
+            ) : (
+              <Text className='text-white font-bold text-center'>Sign In</Text>
+            )}
+          </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>

@@ -19,10 +19,9 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
   const system: System = useSystem();
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<Error | null>(null);
-  
+
   // Wait for Clerk to load before initializing PowerSync
   useEffect(() => {
-
     if (!isLoaded) {
       console.log('Waiting for Clerk to load...');
       return;

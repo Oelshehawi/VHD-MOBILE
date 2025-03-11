@@ -1,19 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
 import { InvoiceType } from '@/types';
 import { formatDateReadable } from '@/utils/date';
-import { PhotoCapture } from './PhotoCapture';
 import { SignatureCapture } from './SignatureCapture';
 import { useQuery } from '@powersync/react-native';
-import { useManagerStatus } from '@/providers/ManagerStatusProvider';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
 
 interface InvoiceModalProps {
   visible: boolean;
   onClose: () => void;
-  invoice: InvoiceType | null;
+  scheduleId: string;
   technicianId: string;
+  isManager: boolean;
 }
 
 interface InvoiceItem {
@@ -24,30 +23,32 @@ interface InvoiceItem {
 export function InvoiceModal({
   visible,
   onClose,
-  invoice: initialInvoice,
+  scheduleId,
   technicianId,
+  isManager,
 }: InvoiceModalProps) {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
-  const { isManager } = useManagerStatus();
 
-  // Fetch invoice data from PowerSync
-  const { data: invoiceData = [] } = useQuery<InvoiceType>(
-    initialInvoice?.id
-      ? `SELECT * FROM invoices WHERE id = ?`
-      : `SELECT * FROM invoices WHERE 0`,
-    [initialInvoice?.id || '']
+  // First fetch the schedule using the scheduleId
+  const { data: scheduleData = [] } = useQuery<any>(
+    scheduleId
+      ? `SELECT * FROM schedules WHERE id = ?`
+      : `SELECT * FROM schedules WHERE 0`,
+    [scheduleId || '']
   );
 
-  // Fetch associated schedule data for photos and signature
-  const { data: scheduleData = [] } = useQuery<any>(
-    initialInvoice?.id
-      ? `SELECT * FROM schedules WHERE invoiceRef = ?`
-      : `SELECT * FROM schedules WHERE 0`,
-    [initialInvoice?.id || '']
+  const schedule = scheduleData[0] || null;
+  const invoiceRef = schedule?.invoiceRef;
+
+  // Then fetch the invoice using the invoiceRef from the schedule
+  const { data: invoiceData = [] } = useQuery<InvoiceType>(
+    invoiceRef
+      ? `SELECT * FROM invoices WHERE id = ?`
+      : `SELECT * FROM invoices WHERE 0`,
+    [invoiceRef || '']
   );
 
   const invoice = invoiceData[0] || null;
-  const schedule = scheduleData[0] || null;
 
   if (!visible || !invoice) return null;
 
@@ -329,9 +330,7 @@ export function InvoiceModal({
                   {invoice.jobTitle}
                 </Text>
                 <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                  {isManager
-                    ? `Invoice #${invoice.invoiceId}`
-                    : ""}
+                  {isManager ? `Invoice #${invoice.invoiceId}` : ''}
                 </Text>
               </View>
               <TouchableOpacity

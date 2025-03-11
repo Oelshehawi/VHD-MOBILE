@@ -29,7 +29,8 @@ export class System {
       await this.powersync.init();
 
       const powerSyncUrl = getPowerSyncUrl();
-      this.backendConnector.setEndpoint(powerSyncUrl);
+      console.log(powerSyncUrl);
+      this.backendConnector.setEndpoint(process.env.EXPO_PUBLIC_POWERSYNC_URL!);
 
       await this.powersync.connect(this.backendConnector);
 

@@ -75,6 +75,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
         className='border-l-4 border-l-darkGreen p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm'
         onPress={() => openMaps(schedule.jobTitle, schedule.location)}
       >
+        <StatusBar barStyle='light-content' backgroundColor='#22543D' />
         <View className='flex-row justify-between items-start'>
           <View className='flex-1'>
             <Text className='font-semibold text-gray-900 dark:text-gray-200 text-lg'>

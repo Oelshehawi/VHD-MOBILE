@@ -1,17 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import {  parseISO } from 'date-fns';
-import {  Schedule } from '@/types';
+import { parseISO } from 'date-fns';
+import { Schedule } from '@/types';
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
 import { PhotoDocumentationModal } from './PhotoDocumentationModal';
+import { InvoiceModal } from './InvoiceModal';
 
 interface DailyAgendaProps {
   selectedDate: string; // ISO string in UTC
   schedules: Schedule[];
   onSchedulePress: (id: string) => void;
   isManager?: boolean;
+  userId: string;
 }
 
 // Helper function to safely extract technician ID
@@ -29,12 +31,16 @@ export function DailyAgenda({
   selectedDate,
   schedules,
   onSchedulePress,
-  isManager = false,
+  isManager,
+  userId,
 }: DailyAgendaProps) {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
     null
   );
+  const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
+  const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] =
+    useState<Schedule | null>(null);
 
   // Group schedules by time slot for better visualization
   const groupedSchedules = schedules.reduce(
@@ -64,7 +70,7 @@ export function DailyAgenda({
   // Handle map navigation without interfering with schedule press
   const handleMapPress = (e: any, jobTitle: string, location: string) => {
     e.stopPropagation(); // Prevent the parent TouchableOpacity from being triggered
-    openMaps(jobTitle, location);
+    openMaps(location, jobTitle);
   };
 
   // Handle photo documentation access
@@ -72,6 +78,18 @@ export function DailyAgenda({
     e.stopPropagation(); // Prevent the schedule card from being triggered
     setSelectedSchedule(schedule);
     setPhotoModalVisible(true);
+  };
+
+  // Function to handle invoice press
+  const handleInvoicePress = (e: any, schedule: Schedule) => {
+    e.stopPropagation(); // Prevent the schedule card from being triggered
+    if (schedule.invoiceRef) {
+      setSelectedScheduleForInvoice(schedule);
+      setInvoiceModalVisible(true);
+    } else {
+      // Fallback to original behavior if no invoiceRef
+      onSchedulePress(schedule.id);
+    }
   };
 
   return (
@@ -156,7 +174,7 @@ export function DailyAgenda({
                       return (
                         <TouchableOpacity
                           key={schedule.id}
-                          onPress={() => onSchedulePress(schedule.id)}
+                          onPress={(e) => handleInvoicePress(e, schedule)}
                           className={`${statusColor} rounded-lg overflow-hidden border-l-4 ${statusBorder}`}
                         >
                           <View className='p-4'>
@@ -241,14 +259,22 @@ export function DailyAgenda({
       {selectedSchedule && (
         <PhotoDocumentationModal
           visible={photoModalVisible}
-          onClose={() => {
-            setPhotoModalVisible(false);
-            setSelectedSchedule(null);
-          }}
+          onClose={() => setPhotoModalVisible(false)}
           scheduleId={selectedSchedule.id}
           jobTitle={selectedSchedule.jobTitle}
-          technicianId={getTechnicianId(selectedSchedule.assignedTechnicians)}
           location={selectedSchedule.location}
+          technicianId={getTechnicianId(selectedSchedule.assignedTechnicians)}
+        />
+      )}
+
+      {/* Invoice Modal */}
+      {selectedScheduleForInvoice && (
+        <InvoiceModal
+          visible={invoiceModalVisible}
+          onClose={() => setInvoiceModalVisible(false)}
+          scheduleId={selectedScheduleForInvoice.id}
+          technicianId={userId}
+          isManager={isManager || false}
         />
       )}
     </View>

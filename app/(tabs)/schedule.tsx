@@ -1,13 +1,13 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
 import { ScheduleView } from '../../components/schedule/ScheduleView';
-import { useManagerStatus } from '@/providers/ManagerStatusProvider';
 import { startOfDay } from 'date-fns';
 
 export default function Page() {
-  const { userId } = useAuth();
-  const { isManager } = useManagerStatus();
+  const { userId, has } = useAuth();
+  // Use Clerk's has() method to determine if user has management permissions
+  const isManager = !!has?.({ permission: 'org:database:allow' });
 
   const [currentDate, setCurrentDate] = useState(() => {
     // Use date-fns to get start of today in local time

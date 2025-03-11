@@ -10,10 +10,14 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
-import { ClerkProvider, ClerkLoaded, useUser } from '@clerk/clerk-expo';
+import {
+  ClerkProvider,
+  ClerkLoaded,
+  useUser,
+  useAuth,
+} from '@clerk/clerk-expo';
 import { tokenCache } from '../cache';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
-import { ManagerStatusProvider } from '../providers/ManagerStatusProvider';
 import { secureStore } from '@clerk/clerk-expo/secure-store';
 
 export {
@@ -32,7 +36,14 @@ SplashScreen.preventAutoHideAsync();
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function InitialLayout({ children }: { children: React.ReactNode }) {
-  const { isLoaded } = useUser();
+  const { isLoaded, user } = useUser();
+  const { has } = useAuth();
+
+  // Safely check for management permission
+  const canManage = !!has?.({ permission: 'org:database:allow' });
+
+  console.log(canManage)
+
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
@@ -43,7 +54,6 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
       SplashScreen.hideAsync();
     }
   }, [isLoaded]);
-
 
   return <>{children}</>;
 }
@@ -61,11 +71,9 @@ export default function RootLayout() {
         <ThemeProvider
           value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
         >
-          <ManagerStatusProvider>
-            <PowerSyncProvider>
-              <Slot />
-            </PowerSyncProvider>
-          </ManagerStatusProvider>
+          <PowerSyncProvider>
+            <Slot />
+          </PowerSyncProvider>
         </ThemeProvider>
       </InitialLayout>
     </ClerkProvider>

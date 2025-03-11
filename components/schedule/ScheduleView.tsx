@@ -1,10 +1,9 @@
 import React, { useState, useCallback } from 'react';
 import { SafeAreaView, StatusBar } from 'react-native';
 import { useQuery } from '@powersync/react-native';
-import { Schedule, InvoiceType, AppointmentType } from '@/types';
+import { Schedule, AppointmentType } from '@/types';
 import { MonthView } from './MonthView';
 import { DailyAgenda } from './DailyAgenda';
-import { InvoiceModal } from './InvoiceModal';
 
 interface ScheduleViewProps {
   userId: string;
@@ -19,17 +18,13 @@ export function ScheduleView({
   onDateChange,
   isManager,
 }: ScheduleViewProps) {
-  const [selectedInvoice, setSelectedInvoice] = useState<InvoiceType | null>(
-    null
-  );
-  const [showModal, setShowModal] = useState(false);
-  const [selectedDate, setSelectedDate] = useState(currentDate);
+  const [selectedDate, setSelectedDate] = useState<string>(currentDate);
 
   // Get schedules for the selected date - adjust query based on role
   const { data: schedules = [] } = useQuery<Schedule>(
     isManager
-      ? `SELECT * FROM schedules WHERE date(startDateTime) = date(?) ORDER BY startDateTime`
-      : `SELECT * FROM schedules WHERE date(startDateTime) = date(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
+      ? `SELECT * FROM schedules WHERE DATE(startDateTime) = DATE(?) ORDER BY startDateTime`
+      : `SELECT * FROM schedules WHERE DATE(startDateTime) = DATE(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
     isManager ? [selectedDate] : [selectedDate, `%${userId}%`]
   );
 
@@ -70,23 +65,10 @@ export function ScheduleView({
   );
 
   // Function to handle schedule press in DailyAgenda
-  const handleSchedulePress = useCallback(
-    (id: string) => {
-      const schedule = schedules.find((s) => s.id === id);
-      if (schedule && schedule.invoiceRef) {
-        // Use the invoiceRef to set selected invoice
-        const invoiceId = schedule.invoiceRef;
-        setSelectedInvoice({ id: invoiceId } as InvoiceType);
-        setShowModal(true);
-      }
-    },
-    [schedules]
-  );
-
-  // Function to close invoice modal
-  const handleCloseInvoice = useCallback(() => {
-    setShowModal(false);
-    setSelectedInvoice(null);
+  const handleSchedulePress = useCallback((id: string) => {
+    // This is now just a placeholder function that can be extended later
+    // if additional functionality is needed
+    console.log(`Schedule pressed: ${id}`);
   }, []);
 
   return (
@@ -107,17 +89,8 @@ export function ScheduleView({
         schedules={schedules}
         onSchedulePress={handleSchedulePress}
         isManager={isManager}
+        userId={userId}
       />
-
-      {/* Invoice Modal */}
-      {selectedInvoice && (
-        <InvoiceModal
-          visible={showModal}
-          onClose={handleCloseInvoice}
-          invoice={selectedInvoice}
-          technicianId={userId}
-        />
-      )}
     </SafeAreaView>
   );
 }

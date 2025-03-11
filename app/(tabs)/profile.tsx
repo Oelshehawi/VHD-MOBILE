@@ -73,6 +73,7 @@ export default function ProfileScreen() {
         );
         return;
       }
+
       await signOut();
       await SecureStore.deleteItemAsync(USER_CACHE_KEY);
     } catch (error) {
