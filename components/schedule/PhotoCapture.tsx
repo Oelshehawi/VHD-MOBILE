@@ -52,6 +52,7 @@ export function PhotoCapture({
     id: string;
     url: string;
   } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const powerSync = usePowerSync();
 
   // State for image gallery
@@ -86,51 +87,75 @@ export function PhotoCapture({
     try {
       setIsUploading(true);
 
-      // Process new photos with the pendingOps approach
-      for (const asset of result.assets) {
-        if (!asset.base64) {
-          throw new Error('No base64 data available for image');
+      // Process photos in batches to avoid memory issues
+      const BATCH_SIZE = 3; // Process 3 photos at a time
+      const totalPhotos = result.assets.length;
+      let processedCount = 0;
+
+      // Extract all base64 data first to ensure we have valid data before starting
+      const allBase64Data = await extractBase64FromPickerResult(result);
+
+      // Process in batches
+      for (let i = 0; i < allBase64Data.length; i += BATCH_SIZE) {
+        const batch = allBase64Data.slice(i, i + BATCH_SIZE);
+        const newPhotos: PhotoType[] = [];
+        const newPendingOps: PendingOp[] = [];
+
+        // Create photo objects for this batch
+        for (const base64Data of batch) {
+          // Create photo object using utility function
+          const newPhoto = createOptimisticPhoto(
+            base64Data,
+            technicianId,
+            type
+          );
+
+          newPhotos.push(newPhoto);
+
+          // Create a pending operation
+          const pendingOp = createPendingOp('add', newPhoto, scheduleId);
+
+          newPendingOps.push(pendingOp);
         }
 
-        // Create photo object using utility function
-        const newPhoto = createOptimisticPhoto(
-          asset.base64,
-          technicianId,
-          type
-        );
-
         // Add a short delay to see the loading state (remove in production if not needed)
-        await delay(1500);
+        await delay(500); // Shorter delay for batches
 
-        // Create an optimistic update for immediate UI feedback
+        // Update database with all photos in this batch
         await powerSync.writeTransaction(async (tx) => {
-          // First get current photos to properly append
+          // Get current photos
           const dbResult = await tx.getAll<{ photos: string }>(
             `SELECT photos FROM schedules WHERE id = ?`,
             [scheduleId]
           );
 
-          // Parse photos data using utility function
+          // Parse photos data
           const currentPhotos = parsePhotosData(dbResult?.[0]?.photos);
 
-          // Create pending operation for upload
-          const pendingOp = createPendingOp('add', newPhoto, scheduleId);
-
-          // Prepare updated photos object
+          // Update photos and pending operations
           const updatedPhotos = {
             ...currentPhotos,
-            [type]: [...currentPhotos[type], newPhoto],
-            pendingOps: [...currentPhotos.pendingOps, pendingOp],
+            [type]: [...currentPhotos[type], ...newPhotos],
+            pendingOps: [...currentPhotos.pendingOps, ...newPendingOps],
           };
 
-          // Update database with optimistic changes
+          // Write to database
           await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
             JSON.stringify(updatedPhotos),
             scheduleId,
           ]);
         });
+
+        // Update progress
+        processedCount += batch.length;
+
+        // Show progress toast for large batches
+        if (totalPhotos > BATCH_SIZE && processedCount < totalPhotos) {
+          showToast(`Processed ${processedCount} of ${totalPhotos} photos...`);
+        }
       }
 
+      // Final success message
       showToast(
         `Successfully added ${result.assets.length} photo${
           result.assets.length > 1 ? 's' : ''
@@ -153,9 +178,12 @@ export function PhotoCapture({
    * Confirm and handle photo deletion
    */
   const handleDeleteConfirm = async () => {
-    if (!photoToDelete || !scheduleId || !powerSync) return;
+    if (!photoToDelete || !scheduleId || !powerSync || isDeleting) return;
 
     try {
+      // Set deleting state to true to disable the button
+      setIsDeleting(true);
+
       // Keep track of the photo details for optimistic update
       const photoUrl = photoToDelete.url;
       const photoId = photoToDelete.id;
@@ -227,6 +255,9 @@ export function PhotoCapture({
       showToast('Photo deletion queued and will sync when online');
     } catch (error) {
       Alert.alert('Error', 'Failed to delete photo. Please try again.');
+    } finally {
+      // Reset deleting state
+      setIsDeleting(false);
     }
   };
 
@@ -322,7 +353,7 @@ export function PhotoCapture({
       <Modal
         transparent={true}
         visible={!!photoToDelete}
-        onRequestClose={() => setPhotoToDelete(null)}
+        onRequestClose={() => !isDeleting && setPhotoToDelete(null)}
         animationType='fade'
       >
         <SafeAreaView className='flex-1 justify-center items-center bg-black/50'>
@@ -337,14 +368,33 @@ export function PhotoCapture({
               <TouchableOpacity
                 onPress={() => setPhotoToDelete(null)}
                 className='py-2 px-3'
+                disabled={isDeleting}
               >
-                <Text className='text-blue-500 font-semibold'>Cancel</Text>
+                <Text
+                  className={`font-semibold ${
+                    isDeleting ? 'text-gray-400' : 'text-blue-500'
+                  }`}
+                >
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleDeleteConfirm}
-                className='bg-red-500 py-2 px-4 rounded-lg'
+                className={`py-2 px-4 rounded-lg ${
+                  isDeleting ? 'bg-red-300' : 'bg-red-500'
+                }`}
+                disabled={isDeleting}
               >
-                <Text className='text-white font-semibold'>Delete</Text>
+                {isDeleting ? (
+                  <View className='flex-row items-center'>
+                    <ActivityIndicator size='small' color='#ffffff' />
+                    <Text className='text-white font-semibold ml-2'>
+                      Deleting...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text className='text-white font-semibold'>Delete</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>

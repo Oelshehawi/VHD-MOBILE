@@ -36,7 +36,23 @@
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-    "plugins": ["expo-router", "expo-sqlite"],
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Allow $(Vancouver Hood Doctors) to use Face ID."
+        }
+      ],
+      [
+        "expo-secure-store",
+        {
+          "configureAndroidBackup": true,
+          "faceIDPermission": "Allow $(Vancouver Hood Doctors) to access your Face ID biometric data."
+        }
+      ]
+    ],
     "experiments": {
       "typedRoutes": true
     },

@@ -30,6 +30,7 @@
     "expo-font": "~13.0.2",
     "expo-image-manipulator": "~13.0.6",
     "expo-image-picker": "~16.0.4",
+    "expo-local-authentication": "^15.0.2",
     "expo-router": "~4.0.16",
     "expo-secure-store": "^14.0.0",
     "expo-splash-screen": "~0.29.19",

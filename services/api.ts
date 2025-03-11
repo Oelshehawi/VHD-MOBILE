@@ -77,64 +77,6 @@ export class ApiClient {
     console.log(`ApiClient initialized with baseUrl: ${this.baseUrl}`);
   }
 
-  async uploadPhotos(
-    images: string[],
-    type: 'before' | 'after' | 'signature',
-    technicianId: string,
-    jobTitle: string,
-    scheduleId: string,
-    signerName?: string
-  ) {
-    try {
-      // Split images into smaller batches of 2 to avoid 413 errors
-      const BATCH_SIZE = 2;
-      const batches = [];
-      for (let i = 0; i < images.length; i += BATCH_SIZE) {
-        batches.push(images.slice(i, i + BATCH_SIZE));
-      }
-
-      const allResults = [];
-      for (const [index, batch] of batches.entries()) {
-        const response = await fetch(`${this.baseUrl}/api/upload`, {
-          method: 'POST',
-          headers: {
-            ...this.headers,
-            Accept: 'application/json',
-          },
-          body: JSON.stringify({
-            images: batch,
-            type,
-            technicianId,
-            jobTitle,
-            scheduleId,
-            ...(signerName && { signerName }),
-          }),
-        });
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          throw new Error(
-            errorData.details ||
-              errorData.error?.message ||
-              `Server returned HTTP ${response.status}`
-          );
-        }
-
-        const result = await response.json();
-        allResults.push(result);
-      }
-
-      // Combine all batch results
-      return {
-        data: allResults.flatMap((r) => r.data || []),
-        success: true,
-      };
-    } catch (error) {
-      console.error('Error uploading photos:', error);
-      throw error;
-    }
-  }
-
   /**
    * Delete a photo from Cloudinary
    * @param photoUrl URL of the photo to delete
@@ -187,6 +129,96 @@ export class ApiClient {
       const result = await response.json();
       return result;
     } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Upload photos to Cloudinary
+   */
+  async uploadPhotos(
+    images: string[],
+    type: 'before' | 'after' | 'signature',
+    technicianId: string,
+    jobTitle: string,
+    scheduleId: string,
+    signerName?: string
+  ) {
+    try {
+      // Skip empty arrays
+      if (!images || images.length === 0) {
+        return { success: true, photos: [] };
+      }
+
+      // Ensure all data is properly initialized
+      if (!technicianId) technicianId = 'unknown';
+      if (!jobTitle) jobTitle = 'unknown';
+      if (!scheduleId) scheduleId = 'unknown';
+
+      const requestBody = {
+        images,
+        type,
+        technicianId,
+        jobTitle,
+        scheduleId,
+        signerName,
+      };
+
+      // Make API call
+      const response = await fetch(`${this.baseUrl}/api/upload`, {
+        method: 'POST',
+        headers: {
+          ...this.headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
+        throw new Error(
+          errorData.details ||
+            errorData.error ||
+            errorData.message ||
+            `Upload failed with status ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+          photos: [],
+        };
+      }
+
       throw error;
     }
   }

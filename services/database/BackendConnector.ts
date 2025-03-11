@@ -226,15 +226,27 @@ export class BackendConnector implements PowerSyncBackendConnector {
                       continue;
                     }
 
+                    // Important: Instead of immediately removing the photo from the UI,
+                    // we should keep a reference to it in a "deleted" array but still
+                    // mark it for deletion in PowerSync
+
                     // Explicitly call with valid photoType
-                    await this.apiClient.deletePhoto(
+                    const result = await this.apiClient.deletePhoto(
                       pendingOp.url,
                       photoType,
                       scheduleId
                     );
 
-                    // Mark as processed on success
-                    this.markOperationProcessed(pendingOp, scheduleId);
+                    // Only mark as processed after API call succeeds
+                    if (result && result.success) {
+                      this.markOperationProcessed(pendingOp, scheduleId);
+                    } else {
+                      // Keep for retry if the API call didn't explicitly succeed
+                      this.incrementRetryCount(pendingOp, scheduleId);
+                      if (!this.isOperationProcessed(pendingOp, scheduleId)) {
+                        remainingOps.push(pendingOp);
+                      }
+                    }
                   } catch (error) {
                     // Increment retry count
                     this.incrementRetryCount(pendingOp, scheduleId);

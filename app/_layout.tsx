@@ -7,14 +7,14 @@ import {
 import { useFonts } from 'expo-font';
 import { Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
-import { ClerkProvider, ClerkLoaded, useAuth } from '@clerk/clerk-expo';
+import { ClerkProvider, ClerkLoaded, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '../cache';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { ManagerStatusProvider } from '../providers/ManagerStatusProvider';
-import NetInfo from '@react-native-community/netinfo';
+import { secureStore } from '@clerk/clerk-expo/secure-store';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -32,21 +32,18 @@ SplashScreen.preventAutoHideAsync();
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 function InitialLayout({ children }: { children: React.ReactNode }) {
-  const { isLoaded } = useAuth();
+  const { isLoaded } = useUser();
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
 
   useEffect(() => {
-    if (isLoaded && fontsLoaded) {
+    if (isLoaded) {
       SplashScreen.hideAsync();
     }
-  }, [isLoaded, fontsLoaded]);
+  }, [isLoaded]);
 
-  if (!isLoaded || !fontsLoaded) {
-    return null;
-  }
 
   return <>{children}</>;
 }
@@ -54,11 +51,11 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   const colorScheme = useColorScheme();
 
-
   return (
     <ClerkProvider
       publishableKey={CLERK_PUBLISHABLE_KEY!}
       tokenCache={tokenCache}
+      __experimental_resourceCache={secureStore}
     >
       <InitialLayout>
         <ThemeProvider
