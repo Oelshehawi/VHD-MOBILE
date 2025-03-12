@@ -91,7 +91,6 @@ export default function Page() {
       // If sign-in process is complete,
       // set the created session as active and redirect the user
       if (signInAttempt.status === 'complete') {
-        console.log('status is complete', signInAttempt.status);
 
         if (!useLocal) {
           await setCredentials({

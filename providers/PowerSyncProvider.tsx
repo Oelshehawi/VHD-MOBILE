@@ -23,7 +23,6 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
   // Wait for Clerk to load before initializing PowerSync
   useEffect(() => {
     if (!isLoaded) {
-      console.log('Waiting for Clerk to load...');
       return;
     }
 

@@ -27,10 +27,10 @@ export class System {
 
     try {
       await this.powersync.init();
+      
+      // this.backendConnector.setEndpoint(process.env.EXPO_PUBLIC_POWERSYNC_URL!);
 
-      const powerSyncUrl = getPowerSyncUrl();
-      console.log(powerSyncUrl);
-      this.backendConnector.setEndpoint(process.env.EXPO_PUBLIC_POWERSYNC_URL!);
+      this.backendConnector.setEndpoint('http://192.168.1.128:8080');
 
       await this.powersync.connect(this.backendConnector);
 

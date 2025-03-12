@@ -64,12 +64,6 @@ export function ScheduleView({
     [onDateChange]
   );
 
-  // Function to handle schedule press in DailyAgenda
-  const handleSchedulePress = useCallback((id: string) => {
-    // This is now just a placeholder function that can be extended later
-    // if additional functionality is needed
-    console.log(`Schedule pressed: ${id}`);
-  }, []);
 
   return (
     <SafeAreaView className='flex-1 bg-white dark:bg-gray-900'>
@@ -87,7 +81,6 @@ export function ScheduleView({
       <DailyAgenda
         selectedDate={selectedDate}
         schedules={schedules}
-        onSchedulePress={handleSchedulePress}
         isManager={isManager}
         userId={userId}
       />

@@ -71,6 +71,12 @@ export function PhotoDocumentationModal({
       try {
         setIsLoading(true);
 
+        // Reset states at the beginning of each load to avoid showing stale data
+        if (isMounted) {
+          setBeforePhotos([]);
+          setAfterPhotos([]);
+        }
+
         // The first row from the query result
         const photosData = data[0]?.photos;
 
@@ -82,19 +88,25 @@ export function PhotoDocumentationModal({
                 : photosData;
 
             if (isMounted) {
-              setBeforePhotos(
-                Array.isArray(photosObj.before) ? photosObj.before : []
-              );
-              setAfterPhotos(
-                Array.isArray(photosObj.after) ? photosObj.after : []
-              );
+              const before = Array.isArray(photosObj.before)
+                ? photosObj.before
+                : [];
+              const after = Array.isArray(photosObj.after)
+                ? photosObj.after
+                : [];
+
+              setBeforePhotos(before);
+              setAfterPhotos(after);
             }
           } catch (parseError) {
             console.error('Error parsing photos data:', parseError);
+            // Reset states on parse error already handled at beginning
           }
         }
+        // No else needed since we reset the states at the beginning
       } catch (error) {
         console.error(`Error loading photos:`, error);
+        // Reset states already handled at beginning
       } finally {
         if (isMounted) setIsLoading(false);
       }

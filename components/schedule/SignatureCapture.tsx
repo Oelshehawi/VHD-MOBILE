@@ -195,7 +195,6 @@ export function SignatureCapture({
             <SignatureCanvas
               ref={signatureRef}
               onOK={handleSignature}
-              onEmpty={() => console.log('Empty')}
               descriptionText=''
               clearText='Clear'
               confirmText={

@@ -16,26 +16,17 @@ const LOCAL_URL = 'http://192.168.1.128:3000'; // Replace with your machine's IP
 const ENV = {
   PRODUCTION: {
     apiUrl: PROD_URL,
-    powerSyncUrl:
-      process.env.EXPO_PUBLIC_POWERSYNC_URL,
+    powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
   DEVELOPMENT: {
     apiUrl: LOCAL_URL,
-    powerSyncUrl: 'http://192.168.1.128:8080', // Replace with your machine's IP
+    powerSyncUrl: 'http://192.168.1.128:8080',
   },
 };
 
 // Global setting to control which environment to use
-let CURRENT_ENV: 'PRODUCTION' | 'DEVELOPMENT' = 'DEVELOPMENT';
+let CURRENT_ENV: 'PRODUCTION' | 'DEVELOPMENT' = 'DEVELOPMENT'; // Set default to PRODUCTION for preview builds
 
-// Function to set which environment to use
-export function setEnvironment(env: 'PRODUCTION' | 'DEVELOPMENT') {
-  CURRENT_ENV = env;
-  console.log(`Environment set to ${env}`);
-  // Log the current URLs to help with debugging
-  console.log(`API URL: ${ENV[CURRENT_ENV].apiUrl}`);
-  console.log(`PowerSync URL: ${ENV[CURRENT_ENV].powerSyncUrl}`);
-}
 
 // Function to get current PowerSync URL
 export function getPowerSyncUrl() {
@@ -45,20 +36,6 @@ export function getPowerSyncUrl() {
     return ENV.PRODUCTION.powerSyncUrl;
   }
   return ENV[CURRENT_ENV].powerSyncUrl;
-}
-
-// Function to update local development IPs if needed
-export function updateDevelopmentIPs(apiIp: string, powerSyncIp: string) {
-  ENV.DEVELOPMENT.apiUrl = `http://${apiIp}:3000`;
-  ENV.DEVELOPMENT.powerSyncUrl = `http://${powerSyncIp}:8080`;
-
-  // If currently in development mode, log the updated URLs
-  if (CURRENT_ENV === 'DEVELOPMENT') {
-    console.log(`Updated Development API URL: ${ENV.DEVELOPMENT.apiUrl}`);
-    console.log(
-      `Updated Development PowerSync URL: ${ENV.DEVELOPMENT.powerSyncUrl}`
-    );
-  }
 }
 
 export class ApiClient {
@@ -153,7 +130,8 @@ export class ApiClient {
     technicianId: string,
     jobTitle: string,
     scheduleId: string,
-    signerName?: string
+    signerName?: string,
+    photoId?: string
   ) {
     try {
       // Skip empty arrays
@@ -173,6 +151,7 @@ export class ApiClient {
         jobTitle,
         scheduleId,
         signerName,
+        photoId,
       };
 
       // Make API call

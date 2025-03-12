@@ -1,4 +1,4 @@
-import React from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
@@ -11,19 +11,43 @@ import { PhotoType } from '@/utils/photos';
 // Extended PhotoType to handle MongoDB-style documents
 interface MongoPhotoType extends PhotoType {
   _id?: string | { $oid: string };
+  scheduleId?: string;
 }
 
 interface PhotoGridProps {
   photos: MongoPhotoType[];
   onDeletePhoto: (photoId: string, url: string) => void;
   onPhotoPress?: (photoIndex: number) => void;
+  currentScheduleId?: string;
 }
 
 export function PhotoGrid({
   photos,
   onDeletePhoto,
   onPhotoPress,
+  currentScheduleId,
 }: PhotoGridProps) {
+  // For tracking photos currently being deleted
+  const [deletingPhotoIds, setDeletingPhotoIds] = useState<string[]>([]);
+
+
+  // Enhanced delete handler with visual feedback
+  const handleDelete = (photoId: string, url: string) => {
+    const reliableId = getReliablePhotoId({
+      _id: photoId,
+      url,
+    } as MongoPhotoType);
+    setDeletingPhotoIds((prev) => [...prev, reliableId]);
+
+    // Call the parent component's delete handler
+    onDeletePhoto(photoId, url);
+
+    // Remove from deletingPhotoIds after a short delay (simulate completion)
+    setTimeout(() => {
+      setDeletingPhotoIds((prev) => prev.filter((id) => id !== reliableId));
+    }, 5000);
+  };
+
   if (photos.length === 0) {
     return (
       <View className='h-[150px] bg-gray-50 rounded-xl justify-center items-center border border-gray-200 border-dashed my-2'>
@@ -112,7 +136,7 @@ export function PhotoGrid({
                 const photoId = getReliablePhotoId(photo);
 
                 // Call the delete handler with ID and URL
-                onDeletePhoto(photoId, photo.url || '');
+                handleDelete(photoId, photo.url || '');
               }}
               className='absolute top-2 right-2 bg-red-500 w-[22px] h-[22px] rounded-full items-center justify-center opacity-90'
               hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}

@@ -16,6 +16,7 @@ export interface PhotoType {
   status?: 'pending' | 'uploaded' | 'failed';
   signerName?: string;
   _id?: string | { $oid: string }; // Support for MongoDB ObjectId format
+  processed?: boolean; // Add this to track if a photo has been processed for upload
 }
 
 export interface PendingOp {
@@ -26,6 +27,7 @@ export interface PendingOp {
   timestamp: string;
   url?: string;
   scheduleId?: string;
+  signerName?: string;
 }
 
 export interface PhotosData {
@@ -218,7 +220,8 @@ export const createPendingOp = (
   // Use forced photoType or photo.type, or default to 'before'
   const photoType = forcedPhotoType || photo.type || 'before';
 
-  return {
+  // Create the base pending operation
+  const pendingOp: PendingOp = {
     type,
     photoId,
     photoType,
@@ -227,6 +230,13 @@ export const createPendingOp = (
     url: photo.url,
     scheduleId,
   };
+
+  // For signature type, include the signerName if available
+  if (photoType === 'signature' && photo.signerName) {
+    (pendingOp as any).signerName = photo.signerName;
+  }
+
+  return pendingOp;
 };
 
 /**
@@ -357,5 +367,6 @@ export const createOptimisticPhoto = (
     type,
     status: 'pending',
     signerName,
+    processed: false,
   };
 };

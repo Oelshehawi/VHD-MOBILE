@@ -87,80 +87,72 @@ export function PhotoCapture({
     try {
       setIsUploading(true);
 
-      // Process photos in batches to avoid memory issues
-      const BATCH_SIZE = 3; // Process 3 photos at a time
-      const totalPhotos = result.assets.length;
-      let processedCount = 0;
-
-      // Extract all base64 data first to ensure we have valid data before starting
+      // Process all photos at once to avoid potential duplicate uploads
       const allBase64Data = await extractBase64FromPickerResult(result);
 
-      // Process in batches
-      for (let i = 0; i < allBase64Data.length; i += BATCH_SIZE) {
-        const batch = allBase64Data.slice(i, i + BATCH_SIZE);
-        const newPhotos: PhotoType[] = [];
-        const newPendingOps: PendingOp[] = [];
+      const newPhotos: PhotoType[] = [];
+      const newPendingOps: PendingOp[] = [];
 
-        // Create photo objects for this batch
-        for (const base64Data of batch) {
-          // Create photo object using utility function
-          const newPhoto = createOptimisticPhoto(
-            base64Data,
-            technicianId,
-            type
-          );
+      // Create photo objects for all images
+      for (const base64Data of allBase64Data) {
+        // Create photo object using utility function but ensure status is set
+        const newPhoto = createOptimisticPhoto(base64Data, technicianId, type);
 
-          newPhotos.push(newPhoto);
+        // Explicitly set the status to pending
+        newPhoto.status = 'pending';
 
-          // Create a pending operation
-          const pendingOp = createPendingOp('add', newPhoto, scheduleId);
+        newPhotos.push(newPhoto);
 
-          newPendingOps.push(pendingOp);
-        }
-
-        // Add a short delay to see the loading state (remove in production if not needed)
-        await delay(500); // Shorter delay for batches
-
-        // Update database with all photos in this batch
-        await powerSync.writeTransaction(async (tx) => {
-          // Get current photos
-          const dbResult = await tx.getAll<{ photos: string }>(
-            `SELECT photos FROM schedules WHERE id = ?`,
-            [scheduleId]
-          );
-
-          // Parse photos data
-          const currentPhotos = parsePhotosData(dbResult?.[0]?.photos);
-
-          // Update photos and pending operations
-          const updatedPhotos = {
-            ...currentPhotos,
-            [type]: [...currentPhotos[type], ...newPhotos],
-            pendingOps: [...currentPhotos.pendingOps, ...newPendingOps],
-          };
-
-          // Write to database
-          await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
-            JSON.stringify(updatedPhotos),
-            scheduleId,
-          ]);
-        });
-
-        // Update progress
-        processedCount += batch.length;
-
-        // Show progress toast for large batches
-        if (totalPhotos > BATCH_SIZE && processedCount < totalPhotos) {
-          showToast(`Processed ${processedCount} of ${totalPhotos} photos...`);
-        }
+        // Create a pending operation
+        const pendingOp = createPendingOp('add', newPhoto, scheduleId);
+        newPendingOps.push(pendingOp);
       }
+
+      // Add a short delay to see the loading state (remove in production if not needed)
+      await delay(500);
+
+      // Update database with all photos in a single transaction
+      await powerSync.writeTransaction(async (tx) => {
+        // Get current photos
+        const dbResult = await tx.getAll<{ photos: string }>(
+          `SELECT photos FROM schedules WHERE id = ?`,
+          [scheduleId]
+        );
+
+        // Parse photos data
+        const currentPhotos = parsePhotosData(dbResult?.[0]?.photos);
+
+        // Avoid duplicates by checking photo IDs
+        const existingPhotoIds = new Set(currentPhotos[type].map((p) => p.id));
+        const uniqueNewPhotos = newPhotos.filter(
+          (p) => !existingPhotoIds.has(p.id)
+        );
+
+        if (uniqueNewPhotos.length < newPhotos.length) {
+    
+        }
+
+        // Update photos and pending operations
+        const updatedPhotos = {
+          ...currentPhotos,
+          [type]: [...currentPhotos[type], ...uniqueNewPhotos],
+          pendingOps: [...currentPhotos.pendingOps, ...newPendingOps],
+        };
+
+        // Write to database
+        await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
+          JSON.stringify(updatedPhotos),
+          scheduleId,
+        ]);
+      });
 
       // Final success message
       showToast(
-        `Successfully added ${result.assets.length} photo${
-          result.assets.length > 1 ? 's' : ''
+        `Successfully added ${newPhotos.length} photo${
+          newPhotos.length > 1 ? 's' : ''
         }`
       );
+
     } catch (error) {
       Alert.alert(
         'Error',
@@ -265,6 +257,9 @@ export function PhotoCapture({
    * Request photo deletion
    */
   const handleDeleteRequest = (photoId: string, url: string) => {
+
+
+    // Show delete confirmation dialog
     setPhotoToDelete({ id: photoId, url });
   };
 
@@ -340,6 +335,7 @@ export function PhotoCapture({
         photos={photos}
         onDeletePhoto={handleDeleteRequest}
         onPhotoPress={openGallery}
+        currentScheduleId={scheduleId}
       />
 
       {/* Photo capture modal */}

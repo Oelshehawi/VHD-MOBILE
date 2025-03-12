@@ -11,7 +11,6 @@ import { InvoiceModal } from './InvoiceModal';
 interface DailyAgendaProps {
   selectedDate: string; // ISO string in UTC
   schedules: Schedule[];
-  onSchedulePress: (id: string) => void;
   isManager?: boolean;
   userId: string;
 }
@@ -30,7 +29,6 @@ const getTechnicianId = (technicians: any): string => {
 export function DailyAgenda({
   selectedDate,
   schedules,
-  onSchedulePress,
   isManager,
   userId,
 }: DailyAgendaProps) {
@@ -87,8 +85,7 @@ export function DailyAgenda({
       setSelectedScheduleForInvoice(schedule);
       setInvoiceModalVisible(true);
     } else {
-      // Fallback to original behavior if no invoiceRef
-      onSchedulePress(schedule.id);
+
     }
   };
 
