@@ -13,6 +13,8 @@ import { formatDateReadable } from '../../utils/date';
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
+// Import functions to get URLs
+import { getPowerSyncUrl, getApiUrl, setEnvironment } from '../../services/api';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -21,6 +23,9 @@ export default function ProfileScreen() {
   const { user } = useUser();
   const [isOffline, setIsOffline] = useState(false);
   const [cachedUser, setCachedUser] = useState<any>(null);
+  // Get URLs for display
+  const powerSyncUrl = getPowerSyncUrl();
+  const apiUrl = getApiUrl();
 
   // Check network status and load cached user data
   useEffect(() => {
@@ -78,6 +83,20 @@ export default function ProfileScreen() {
       await SecureStore.deleteItemAsync(USER_CACHE_KEY);
     } catch (error) {
       console.error('Error signing out:', error);
+    }
+  };
+
+  // Toggle environment for testing
+  const toggleEnvironment = () => {
+    // Only allow toggling in development mode
+    if (__DEV__) {
+      const newEnv = apiUrl.includes('192.168') ? 'PRODUCTION' : 'DEVELOPMENT';
+      setEnvironment(newEnv);
+      // Force reload to apply changes
+      Alert.alert(
+        'Environment Changed',
+        `Switched to ${newEnv} environment. Changes will apply on app restart.`
+      );
     }
   };
 
@@ -147,6 +166,68 @@ export default function ProfileScreen() {
             </View>
           </View>
         </View>
+      </Card>
+
+      {/* New card for connection information */}
+      <Card className='mb-4 bg-gray-900 border-gray-800'>
+        <TouchableOpacity
+          onPress={toggleEnvironment}
+          activeOpacity={__DEV__ ? 0.7 : 1}
+        >
+          <View className='p-4'>
+            <View className='flex-row justify-between'>
+              <Text className='text-lg font-semibold text-gray-200 mb-4'>
+                Connection Details
+              </Text>
+              {__DEV__ && (
+                <Text className='text-xs text-darkGreen'>
+                  (Tap to toggle in dev mode)
+                </Text>
+              )}
+            </View>
+            <View className='space-y-3'>
+              <View>
+                <Text className='text-sm text-gray-400'>API URL</Text>
+                <Text
+                  className='text-gray-200 text-xs'
+                  numberOfLines={1}
+                  ellipsizeMode='middle'
+                >
+                  {apiUrl || 'Not configured'}
+                </Text>
+              </View>
+              <View>
+                <Text className='text-sm text-gray-400'>PowerSync URL</Text>
+                <Text
+                  className='text-gray-200 text-xs'
+                  numberOfLines={1}
+                  ellipsizeMode='middle'
+                >
+                  {powerSyncUrl || 'Not configured'}
+                </Text>
+              </View>
+              <View>
+                <Text className='text-sm text-gray-400'>Environment</Text>
+                <Text className='text-gray-200'>
+                  {apiUrl?.includes('192.168') ? 'DEVELOPMENT' : 'PRODUCTION'}
+                </Text>
+              </View>
+              <View>
+                <Text className='text-sm text-gray-400'>Network Status</Text>
+                <View className='flex-row items-center'>
+                  <View
+                    className={`h-2 w-2 rounded-full mr-2 ${
+                      isOffline ? 'bg-red-500' : 'bg-green-500'
+                    }`}
+                  />
+                  <Text className='text-gray-200'>
+                    {isOffline ? 'Offline' : 'Online'}
+                  </Text>
+                </View>
+              </View>
+            </View>
+          </View>
+        </TouchableOpacity>
       </Card>
 
       <TouchableOpacity

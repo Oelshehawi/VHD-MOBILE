@@ -1,11 +1,8 @@
 import {
-  Column,
   column,
-  ColumnType,
   Schema,
   Table,
 } from '@powersync/react-native';
-import { AttachmentTable } from '@powersync/attachments';
 
 const invoices = new Table(
   {

@@ -24,9 +24,37 @@ const ENV = {
   },
 };
 
-// Global setting to control which environment to use
-let CURRENT_ENV: 'PRODUCTION' | 'DEVELOPMENT' = 'DEVELOPMENT'; // Set default to PRODUCTION for preview builds
+// Determine if running in preview build or development
+// For preview builds, use PRODUCTION, otherwise default to DEVELOPMENT
+function isPreviewBuild(): boolean {
+  // Check if running in EAS build environment or if the manifest indicates a preview build
+  // Usually preview builds have specific environment variables or settings
+  return (
+    process.env.EAS_BUILD === 'true' ||
+    process.env.EXPO_PUBLIC_RELEASE_CHANNEL?.includes('preview') ||
+    process.env.EXPO_PUBLIC_APP_VARIANT?.includes('preview') ||
+    // Check if we have production URLs configured but not local ones
+    (!!process.env.EXPO_PUBLIC_API_URL && !__DEV__)
+  );
+}
 
+// Global setting to control which environment to use - based on preview detection
+let CURRENT_ENV: 'PRODUCTION' | 'DEVELOPMENT' = isPreviewBuild()
+  ? 'PRODUCTION'
+  : 'DEVELOPMENT';
+
+// Function to explicitly set the environment (useful for testing)
+export function setEnvironment(env: 'PRODUCTION' | 'DEVELOPMENT') {
+  CURRENT_ENV = env;
+  console.log(`Environment set to ${env}`);
+  console.log(`API URL: ${ENV[CURRENT_ENV].apiUrl}`);
+  console.log(`PowerSync URL: ${ENV[CURRENT_ENV].powerSyncUrl}`);
+}
+
+// Log environment on initialization
+console.log(`App initialized in ${CURRENT_ENV} environment`);
+console.log(`API URL: ${ENV[CURRENT_ENV].apiUrl}`);
+console.log(`PowerSync URL: ${ENV[CURRENT_ENV].powerSyncUrl}`);
 
 // Function to get current PowerSync URL
 export function getPowerSyncUrl() {
@@ -36,6 +64,11 @@ export function getPowerSyncUrl() {
     return ENV.PRODUCTION.powerSyncUrl;
   }
   return ENV[CURRENT_ENV].powerSyncUrl;
+}
+
+// Function to get API URL
+export function getApiUrl() {
+  return ENV[CURRENT_ENV].apiUrl;
 }
 
 export class ApiClient {

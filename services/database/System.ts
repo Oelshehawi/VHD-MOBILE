@@ -27,15 +27,18 @@ export class System {
 
     try {
       await this.powersync.init();
-      
-      // this.backendConnector.setEndpoint(process.env.EXPO_PUBLIC_POWERSYNC_URL!);
 
-      this.backendConnector.setEndpoint('http://192.168.1.128:8080');
+      const powerSyncUrl = getPowerSyncUrl();
+
+      console.log(powerSyncUrl);
+
+      this.backendConnector.setEndpoint(powerSyncUrl as string);
 
       await this.powersync.connect(this.backendConnector);
 
       this.isInitialized = true;
     } catch (error) {
+      console.error('Error initializing PowerSync:', error);
       throw error;
     }
   }

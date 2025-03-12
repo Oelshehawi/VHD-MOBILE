@@ -14,32 +14,18 @@ import { useRouter } from 'expo-router';
 import { useSignIn, isClerkRuntimeError } from '@clerk/clerk-expo';
 import { useLocalCredentials } from '@clerk/clerk-expo/local-credentials';
 import { Ionicons } from '@expo/vector-icons';
-import { useNetInfo } from '@react-native-community/netinfo';
 
 export default function Page() {
   const router = useRouter();
   const { signIn, setActive, isLoaded } = useSignIn();
   const { hasCredentials, setCredentials, authenticate, biometricType } =
     useLocalCredentials();
-  const netInfo = useNetInfo();
-  const isOffline = !netInfo.isConnected;
 
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Check if biometric authentication is available
-  const [showBiometricOption, setShowBiometricOption] = useState(false);
-
-  useEffect(() => {
-    const checkBiometrics = async () => {
-      if (hasCredentials) {
-        setShowBiometricOption(true);
-      }
-    };
-    checkBiometrics();
-  }, [hasCredentials]);
 
   const handleBiometricSignIn = async () => {
     if (!isLoaded) return;
@@ -58,7 +44,7 @@ export default function Page() {
     }
   };
 
-  const onSignInPress = async (useLocal: boolean = false) => {
+  const onSignInPress = async (useLocal: boolean) => {
     if (!isLoaded) return;
     setIsLoading(true);
     setError(null);
@@ -66,15 +52,6 @@ export default function Page() {
     // Check required fields for email/password sign-in
     if (!useLocal && (!emailAddress || !password)) {
       setError('Please enter both email and password');
-      setIsLoading(false);
-      return;
-    }
-
-    // Check if offline before attempting sign in
-    if (isOffline) {
-      setError(
-        'You appear to be offline. Please check your connection and try again.'
-      );
       setIsLoading(false);
       return;
     }
@@ -157,7 +134,7 @@ export default function Page() {
           )}
 
           {/* Biometric Sign In Option */}
-          {showBiometricOption && (
+          {hasCredentials && biometricType && (
             <TouchableOpacity
               className='mb-6 flex-row items-center justify-center bg-green-600 py-3 px-4 rounded-lg'
               onPress={handleBiometricSignIn}
