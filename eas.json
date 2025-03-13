@@ -47,6 +47,14 @@
         "EXPO_PUBLIC_POWERSYNC_URL": "https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com"
       },
       "channel": "production"
+    },
+    "development-simulator": {
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": true
+      },
+      "environment": "development"
     }
   },
   "submit": {

@@ -5,7 +5,7 @@ import { Schedule } from '@/types';
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
-import { PhotoDocumentationModal } from './PhotoDocumentationModal';
+import { PhotoDocumentationModal } from '../PhotoComponents/PhotoDocumentationModal';
 import { InvoiceModal } from './InvoiceModal';
 
 interface DailyAgendaProps {
@@ -260,6 +260,7 @@ export function DailyAgenda({
           scheduleId={selectedSchedule.id}
           jobTitle={selectedSchedule.jobTitle}
           location={selectedSchedule.location}
+          startDate={selectedSchedule.startDateTime}
           technicianId={getTechnicianId(selectedSchedule.assignedTechnicians)}
         />
       )}

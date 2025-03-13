@@ -12,11 +12,11 @@ export interface PhotoType {
   url: string;
   timestamp: string;
   technicianId: string;
-  type: 'before' | 'after' | 'signature';
+  type: 'before' | 'after';
   status?: 'pending' | 'uploaded' | 'failed';
-  signerName?: string;
-  _id?: string | { $oid: string }; // Support for MongoDB ObjectId format
-  processed?: boolean; // Add this to track if a photo has been processed for upload
+  _id?: string | { $oid: string };
+  processed?: boolean;
+  attachmentId?: string;
 }
 
 export interface PendingOp {
@@ -30,9 +30,16 @@ export interface PendingOp {
   signerName?: string;
 }
 
+export interface SignatureType {
+  id: string;
+  url: string;
+  timestamp: string;
+  signerName: string;
+  technicianId: string;
+}
+
 export interface PhotosData {
-  before: PhotoType[];
-  after: PhotoType[];
+  photos: PhotoType[];
   pendingOps: PendingOp[];
 }
 
@@ -124,17 +131,28 @@ export const createPhotoObject = (
   technicianId: string,
   type: 'before' | 'after' | 'signature',
   signerName?: string
-): PhotoType => {
+): PhotoType | SignatureType => {
   const photoId = randomUUID();
 
+  // If it's a signature type, return a SignatureType object
+  if (type === 'signature' && signerName) {
+    return {
+      id: photoId,
+      url: `data:image/jpeg;base64,${base64Data}`,
+      timestamp: new Date().toISOString(),
+      technicianId,
+      signerName,
+    };
+  }
+
+  // Otherwise, return a PhotoType object
   return {
     id: photoId,
     url: `data:image/jpeg;base64,${base64Data}`,
     timestamp: new Date().toISOString(),
     technicianId,
-    type,
+    type: type as 'before' | 'after', // Cast to before/after only
     status: 'pending',
-    ...(signerName && { signerName }),
   };
 };
 
@@ -204,62 +222,36 @@ export const extractBase64FromPickerResult = async (
 };
 
 /**
- * Create a new pending operation for photo uploads or deletions
- */
-export const createPendingOp = (
-  type: 'add' | 'delete',
-  photo: PhotoType | Partial<PhotoType>,
-  scheduleId?: string,
-  forcedPhotoType?: 'before' | 'after' | 'signature'
-): PendingOp => {
-  // Generate a photoId if one doesn't exist
-  const photoId =
-    photo.id ||
-    `generated_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
-
-  // Use forced photoType or photo.type, or default to 'before'
-  const photoType = forcedPhotoType || photo.type || 'before';
-
-  // Create the base pending operation
-  const pendingOp: PendingOp = {
-    type,
-    photoId,
-    photoType,
-    technicianId: photo.technicianId || '',
-    timestamp: new Date().toISOString(),
-    url: photo.url,
-    scheduleId,
-  };
-
-  // For signature type, include the signerName if available
-  if (photoType === 'signature' && photo.signerName) {
-    (pendingOp as any).signerName = photo.signerName;
-  }
-
-  return pendingOp;
-};
-
-/**
  * Parse photos JSON from the database
  */
-export const parsePhotosData = (photosJson?: string): PhotosData => {
-  if (!photosJson) {
-    return { before: [], after: [], pendingOps: [] };
+export const parsePhotosData = (data?: any): PhotosData => {
+  if (!data) {
+    return { photos: [], pendingOps: [] };
   }
 
   try {
-    const parsedData = JSON.parse(photosJson);
+    const photosString = data?.photos;
 
-    // Ensure all required arrays exist
+    if (!photosString) {
+      return { photos: [], pendingOps: [] };
+    }
+
+    // Parse the photos string into an array of photo objects
+    const photoArray =
+      typeof photosString === 'string'
+        ? JSON.parse(photosString)
+        : photosString;
+
+    // Ensure photoArray is an array, otherwise return empty arrays
+    const photos = Array.isArray(photoArray) ? photoArray : [];
+
     return {
-      before: Array.isArray(parsedData.before) ? parsedData.before : [],
-      after: Array.isArray(parsedData.after) ? parsedData.after : [],
-      pendingOps: Array.isArray(parsedData.pendingOps)
-        ? parsedData.pendingOps
-        : [],
+      photos,
+      pendingOps: [], // We're not dealing with pendingOps in this context
     };
   } catch (error) {
-    return { before: [], after: [], pendingOps: [] };
+    console.error('Error parsing photos data:', error);
+    return { photos: [], pendingOps: [] };
   }
 };
 
@@ -354,9 +346,23 @@ export const createOptimisticPhoto = (
   technicianId: string,
   type: 'before' | 'after' | 'signature',
   signerName?: string
-): PhotoType => {
+): PhotoType | SignatureType => {
   const photoId = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
 
+  // If it's a signature, return a SignatureType
+  if (type === 'signature' && signerName) {
+    return {
+      id: photoId,
+      url: base64Data.startsWith('data:')
+        ? base64Data
+        : `data:image/jpeg;base64,${base64Data}`,
+      timestamp: new Date().toISOString(),
+      technicianId,
+      signerName,
+    };
+  }
+
+  // Otherwise return a PhotoType
   return {
     id: photoId,
     url: base64Data.startsWith('data:')
@@ -364,9 +370,85 @@ export const createOptimisticPhoto = (
       : `data:image/jpeg;base64,${base64Data}`,
     timestamp: new Date().toISOString(),
     technicianId,
-    type,
+    type: type as 'before' | 'after', // Cast to restrict to before/after only
     status: 'pending',
-    signerName,
     processed: false,
   };
+};
+
+/**
+ * Record a photo addition operation in the insert-only table
+ * @param tx PowerSync transaction
+ * @param scheduleId Schedule ID
+ * @param photoId Photo ID
+ * @param technicianId Technician ID
+ * @param photoType Type of photo (before/after)
+ * @param cloudinaryUrl The final URL returned from Cloudinary after upload
+ * @param attachmentId Optional attachment ID
+ */
+export const recordPhotoAddOperation = async (
+  tx: any,
+  scheduleId: string,
+  photoId: string,
+  technicianId: string,
+  photoType: 'before' | 'after' | 'signature',
+  cloudinaryUrl: string,
+  attachmentId?: string
+) => {
+  await tx.execute(
+    `INSERT INTO add_photo_operations 
+    (id, scheduleId, photoId, timestamp, technicianId, type, cloudinaryUrl, attachmentId) 
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      `add_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      scheduleId,
+      photoId,
+      new Date().toISOString(),
+      technicianId,
+      photoType,
+      cloudinaryUrl,
+      attachmentId || null,
+    ]
+  );
+};
+
+/**
+ * Record a photo deletion operation in the insert-only table
+ * @param tx PowerSync transaction
+ * @param scheduleId Schedule ID
+ * @param photoId Photo ID
+ * @param technicianId Technician ID
+ * @param photoType Type of photo (before/after)
+ */
+export const recordPhotoDeleteOperation = async (
+  tx: any,
+  scheduleId: string,
+  photoId: string,
+  technicianId: string,
+  photoType: 'before' | 'after' | 'signature'
+) => {
+  await tx.execute(
+    `INSERT INTO delete_photo_operations 
+    (id, scheduleId, photoId, timestamp, technicianId, type) 
+    VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      `del_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+      scheduleId,
+      photoId,
+      new Date().toISOString(),
+      technicianId,
+      photoType,
+    ]
+  );
+};
+
+/**
+ * Helper function to create a unique operation ID
+ * @param prefix Prefix for the ID
+ * @returns A unique operation ID
+ */
+export const createOperationId = (prefix: string = 'op'): string => {
+  return `${prefix}_${Date.now()}_${Math.random()
+    .toString(36)
+    .substring(2, 9)}`;
 };

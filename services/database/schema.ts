@@ -1,8 +1,13 @@
 import {
+  Column,
   column,
+  ColumnType,
   Schema,
   Table,
 } from '@powersync/react-native';
+import { AttachmentTable } from '@powersync/attachments';
+
+export const SCHEDULES_TABLE = 'schedules';
 
 const invoices = new Table(
   {
@@ -35,13 +40,44 @@ const schedules = new Table(
     payrollPeriod: column.text,
     shifts: column.text,
     startDateTime: column.text,
-    // Photos and signatures are now handled by the attachments table
-    // The legacy fields are kept for backward compatibility
-    photos: column.text, // JSON string containing { before: PhotoType[], after: PhotoType[] }
+    photos: column.text, // JSON string containing photo data
     signature: column.text, // JSON string of SignatureType
     technicianNotes: column.text, // Notes from technicians
   },
-  { indexes: {} }
+  { indexes: { invoices: ['invoiceRef'] } }
+);
+
+// Insert-only table for photo deletion operations
+const delete_photo_operations = new Table(
+  {
+    // id column (text) is automatically included
+    scheduleId: column.text, // Reference to schedule
+    remote_uri: column.text, // URL of the photo to delete
+    photoId: column.text, // ID of the photo to delete
+    timestamp: column.text, // When the delete operation occurred
+    technicianId: column.text, // Who deleted the photo
+    type: column.text, // Type of the photo ('before'/'after')
+  },
+  {
+    insertOnly: true,
+    indexes: { schedules: ['scheduleId'] },
+  }
+);
+
+// Insert-only table for photo addition operations
+const add_photo_operations = new Table(
+  {
+    // id column (text) is automatically included
+    scheduleId: column.text, // Reference to schedule
+    timestamp: column.text, // When the photo was taken
+    technicianId: column.text, // Who added the photo
+    type: column.text, // Type of the photo ('before'/'after')
+    cloudinaryUrl: column.text, // URL returned from Cloudinary after upload
+  },
+  {
+    insertOnly: true,
+    indexes: { schedules: ['scheduleId'] },
+  }
 );
 
 const payrollperiods = new Table(
@@ -63,6 +99,34 @@ export const AppSchema = new Schema({
   invoices,
   schedules,
   payrollperiods,
+  delete_photo_operations,
+  add_photo_operations,
+  attachments: new AttachmentTable({
+    name: 'attachments',
+    additionalColumns: [
+      new Column({
+        name: 'scheduleId',
+        type: ColumnType.TEXT,
+      }),
+      new Column({
+        name: 'jobTitle',
+        type: ColumnType.TEXT,
+      }),
+      new Column({
+        name: 'type',
+        type: ColumnType.TEXT,
+      }),
+      new Column({
+        name: 'startDate',
+        type: ColumnType.TEXT,
+      }),
+      new Column({
+        name: 'technicianId',
+        type: ColumnType.TEXT,
+      }),
+    ],
+  }),
 });
 
 export type Database = (typeof AppSchema)['types'];
+export type Schedule = Database['schedules'];

@@ -1,32 +1,39 @@
-import React, { useState, useEffect } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Alert,
-  Modal,
-  SafeAreaView,
-  ActivityIndicator,
-} from 'react-native';
+import { useState, useEffect } from 'react';
+import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import ImageView from 'react-native-image-viewing';
 import {
+  ATTACHMENT_TABLE,
+  AttachmentRecord,
+  AttachmentState,
+} from '@powersync/attachments';
+import {
   PhotoType,
-  PendingOp,
-  PhotosData,
   showToast,
-  extractBase64FromPickerResult,
-  createPendingOp,
   parsePhotosData,
   findPhotoInCollection,
-  createOptimisticPhoto,
+  recordPhotoDeleteOperation,
 } from '@/utils/photos';
 import { usePowerSync } from '@powersync/react-native';
+import { useSystem } from '@/services/database/System';
+import { DeletePhotoModal } from './DeletePhotoModal';
+import { LoadingModal } from './LoadingModal';
+import * as FileSystem from 'expo-file-system';
 
-// Helper to add a delay for testing loading states
-const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+// Enhanced PhotoType to include attachment-related fields
+interface EnhancedPhotoType extends PhotoType {
+  attachmentId?: string;
+}
+
+// Define extended attachment type locally
+interface ExtendedAttachmentRecord extends AttachmentRecord {
+  scheduleId?: string;
+  jobTitle?: string;
+  type?: 'before' | 'after';
+  startDate?: string;
+}
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -36,14 +43,16 @@ interface PhotoCaptureProps {
   jobTitle: string;
   scheduleId?: string;
   isLoading?: boolean;
+  startDate?: string;
 }
 
 export function PhotoCapture({
   technicianId,
   photos = [],
   type,
-  jobTitle,
   scheduleId,
+  jobTitle,
+  startDate,
   isLoading: externalLoading = false,
 }: PhotoCaptureProps) {
   const [showModal, setShowModal] = useState(false);
@@ -51,9 +60,11 @@ export function PhotoCapture({
   const [photoToDelete, setPhotoToDelete] = useState<{
     id: string;
     url: string;
+    attachmentId?: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const powerSync = usePowerSync();
+  const system = useSystem();
 
   // State for image gallery
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -79,7 +90,8 @@ export function PhotoCapture({
       result.canceled ||
       !result.assets?.length ||
       isUploading ||
-      !scheduleId
+      !scheduleId ||
+      !system?.attachmentQueue
     ) {
       return;
     }
@@ -87,73 +99,85 @@ export function PhotoCapture({
     try {
       setIsUploading(true);
 
-      // Process all photos at once to avoid potential duplicate uploads
-      const allBase64Data = await extractBase64FromPickerResult(result);
+      // Get the queue from system
+      const queue = system.attachmentQueue;
 
-      const newPhotos: PhotoType[] = [];
-      const newPendingOps: PendingOp[] = [];
+      // Array to store the new photo objects
+      const newPhotos: EnhancedPhotoType[] = [];
 
-      // Create photo objects for all images
-      for (const base64Data of allBase64Data) {
-        // Create photo object using utility function but ensure status is set
-        const newPhoto = createOptimisticPhoto(base64Data, technicianId, type);
+      // Process all photos directly from URI without base64 conversion
+      for (const asset of result.assets) {
+        try {
+          // Get file info to check if it exists
+          const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+          if (!fileInfo.exists) {
+            console.error(`File does not exist: ${asset.uri}`);
+            continue;
+          }
 
-        // Explicitly set the status to pending
-        newPhoto.status = 'pending';
+          // Use the direct URI method instead of reading and converting to base64
+          const attachmentRecord = (await queue.savePhotoFromUri(
+            asset.uri,
+            scheduleId,
+            jobTitle,
+            type,
+            startDate,
+            technicianId
+          )) as ExtendedAttachmentRecord;
 
-        newPhotos.push(newPhoto);
+          // Create a new photo object with the attachment reference
+          const newPhoto: EnhancedPhotoType = {
+            id: `photo_${Date.now()}_${Math.random()
+              .toString(36)
+              .substring(2, 9)}`,
+            url: `local://${attachmentRecord.id}`, // Local URL scheme that will be resolved later
+            timestamp: new Date().toISOString(),
+            technicianId: technicianId,
+            type: type,
+            status: 'pending',
+            attachmentId: attachmentRecord.id,
+          };
 
-        // Create a pending operation
-        const pendingOp = createPendingOp('add', newPhoto, scheduleId);
-        newPendingOps.push(pendingOp);
+          newPhotos.push(newPhoto);
+        } catch (assetError) {
+          console.error('Error processing photo asset:', assetError);
+        }
       }
 
-      // Add a short delay to see the loading state (remove in production if not needed)
-      await delay(500);
+      // If we have new photos, update the database
+      if (newPhotos.length > 0) {
+        await powerSync.writeTransaction(async (tx) => {
+          // Get current photos data
+          const result = await tx.getAll<{ photos: string }>(
+            `SELECT photos FROM schedules WHERE id = ?`,
+            [scheduleId]
+          );
 
-      // Update database with all photos in a single transaction
-      await powerSync.writeTransaction(async (tx) => {
-        // Get current photos
-        const dbResult = await tx.getAll<{ photos: string }>(
-          `SELECT photos FROM schedules WHERE id = ?`,
-          [scheduleId]
-        );
+          // Parse current photos
+          const currentPhotos = parsePhotosData(result?.[0]?.photos);
 
-        // Parse photos data
-        const currentPhotos = parsePhotosData(dbResult?.[0]?.photos);
+          // Add new photos to the existing photos array
+          const updatedPhotos = {
+            ...currentPhotos,
+            photos: [...currentPhotos.photos, ...newPhotos],
+          };
 
-        // Avoid duplicates by checking photo IDs
-        const existingPhotoIds = new Set(currentPhotos[type].map((p) => p.id));
-        const uniqueNewPhotos = newPhotos.filter(
-          (p) => !existingPhotoIds.has(p.id)
-        );
+          // Update the photos in the database
+          await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
+            JSON.stringify(updatedPhotos),
+            scheduleId,
+          ]);
+        });
+      }
 
-        if (uniqueNewPhotos.length < newPhotos.length) {
-    
-        }
-
-        // Update photos and pending operations
-        const updatedPhotos = {
-          ...currentPhotos,
-          [type]: [...currentPhotos[type], ...uniqueNewPhotos],
-          pendingOps: [...currentPhotos.pendingOps, ...newPendingOps],
-        };
-
-        // Write to database
-        await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
-          JSON.stringify(updatedPhotos),
-          scheduleId,
-        ]);
-      });
-
-      // Final success message
+      // Show success message for UI feedback
       showToast(
-        `Successfully added ${newPhotos.length} photo${
+        `Added ${newPhotos.length} photo${
           newPhotos.length > 1 ? 's' : ''
-        }`
+        } - uploading in background`
       );
-
     } catch (error) {
+      console.error('Error handling selected photos:', error);
       Alert.alert(
         'Error',
         error instanceof Error
@@ -179,11 +203,9 @@ export function PhotoCapture({
       // Keep track of the photo details for optimistic update
       const photoUrl = photoToDelete.url;
       const photoId = photoToDelete.id;
+      const attachmentId = photoToDelete.attachmentId;
 
-      // Add a short delay to see the loading state (remove in production if not needed)
-      await delay(1500);
-
-      // Optimistic update to immediately remove the photo from UI
+      // Delete the photo in a transaction
       await powerSync.writeTransaction(async (tx) => {
         const result = await tx.getAll<{ photos: string }>(
           `SELECT photos FROM schedules WHERE id = ?`,
@@ -194,58 +216,92 @@ export function PhotoCapture({
         const currentPhotos = parsePhotosData(result?.[0]?.photos);
 
         // Find the photo to delete using utility function or direct URL match
-        let photoToDeleteObj = findPhotoInCollection(currentPhotos[type], {
+        let photoToDeleteObj = findPhotoInCollection(currentPhotos.photos, {
           id: photoId,
           url: photoUrl,
-        });
+        }) as EnhancedPhotoType | null;
 
         // If not found by ID/URL combination, try to find just by URL
         if (!photoToDeleteObj) {
           photoToDeleteObj =
-            currentPhotos[type].find((p) => p.url === photoUrl) || null;
+            (currentPhotos.photos.find(
+              (p) => p.url === photoUrl
+            ) as EnhancedPhotoType) || null;
         }
 
         if (!photoToDeleteObj) {
           throw new Error('Photo not found');
         }
 
-        // Create a complete photo object with all required fields for the PendingOp
-        const completePhotoObj = {
+        // Create a complete photo object with all required fields
+        const completePhotoObj: EnhancedPhotoType = {
           ...photoToDeleteObj,
           id: photoToDeleteObj.id || photoId || `gen_${Date.now()}`,
           type: photoToDeleteObj.type || type,
           technicianId: photoToDeleteObj.technicianId || technicianId,
           timestamp: photoToDeleteObj.timestamp || new Date().toISOString(),
+          attachmentId: photoToDeleteObj.attachmentId || attachmentId,
         };
-
-        // Create pending operation for deletion with explicit type
-        const pendingOp = createPendingOp(
-          'delete',
-          completePhotoObj,
-          scheduleId,
-          type // Explicitly pass the photo type
-        );
 
         // Create the new photos object without the deleted photo
         const updatedPhotos = {
           ...currentPhotos,
-          [type]: currentPhotos[type].filter((p) => p.url !== photoUrl),
-          pendingOps: [...currentPhotos.pendingOps, pendingOp],
+          photos: currentPhotos.photos.filter((p) => p.url !== photoUrl),
         };
 
-        // Update database with optimistic changes
+        // 1. Insert into delete_photo_operations table (insertOnly table for tracking deletions)
+        await recordPhotoDeleteOperation(
+          tx,
+          scheduleId,
+          completePhotoObj.id,
+          technicianId,
+          completePhotoObj.type
+        );
+
+        // 2. Update database with optimistic changes to the photos array
         await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
           JSON.stringify(updatedPhotos),
           scheduleId,
         ]);
+
+        // Delete the attachment if it exists and is a local attachment
+        if (
+          attachmentId &&
+          photoUrl.startsWith('local://') &&
+          system &&
+          system.attachmentQueue
+        ) {
+          try {
+            // Create a mock AttachmentRecord to delete
+            const attachmentRecord: AttachmentRecord = {
+              id: attachmentId,
+              filename: `${type}_photo.jpg`,
+              state: 'synced' as unknown as AttachmentState,
+              timestamp: Date.now(),
+              size: 0,
+            };
+
+            // The delete method might need the transaction
+            await system.attachmentQueue.delete(attachmentRecord, tx);
+            console.log(`Deleted attachment with ID: ${attachmentId}`);
+          } catch (deleteError) {
+            console.error('Error deleting attachment:', deleteError);
+          }
+        } else if (attachmentId) {
+          // If no attachment system or non-local URL, just delete from attachments table
+          await tx.execute(`DELETE FROM ${ATTACHMENT_TABLE} WHERE id = ?`, [
+            attachmentId,
+          ]);
+        }
       });
+
+      // Show success message
+      showToast('Photo deleted successfully');
 
       // Immediately clear the dialog
       setPhotoToDelete(null);
-
-      // Show success message
-      showToast('Photo deletion queued and will sync when online');
     } catch (error) {
+      console.error('Error deleting photo:', error);
       Alert.alert('Error', 'Failed to delete photo. Please try again.');
     } finally {
       // Reset deleting state
@@ -256,11 +312,13 @@ export function PhotoCapture({
   /**
    * Request photo deletion
    */
-  const handleDeleteRequest = (photoId: string, url: string) => {
-
-
+  const handleDeleteRequest = (
+    photoId: string,
+    url: string,
+    attachmentId?: string
+  ) => {
     // Show delete confirmation dialog
-    setPhotoToDelete({ id: photoId, url });
+    setPhotoToDelete({ id: photoId, url, attachmentId });
   };
 
   /**
@@ -346,56 +404,12 @@ export function PhotoCapture({
       />
 
       {/* Delete confirmation */}
-      <Modal
-        transparent={true}
+      <DeletePhotoModal
         visible={!!photoToDelete}
-        onRequestClose={() => !isDeleting && setPhotoToDelete(null)}
-        animationType='fade'
-      >
-        <SafeAreaView className='flex-1 justify-center items-center bg-black/50'>
-          <View className='bg-white rounded-2xl w-[85%] p-6 shadow-md'>
-            <Text className='text-lg font-bold mb-3 text-center'>
-              Delete Photo
-            </Text>
-            <Text className='text-sm text-gray-600 mb-5 text-center leading-5'>
-              Are you sure you want to delete this photo? This cannot be undone.
-            </Text>
-            <View className='flex-row justify-end gap-3'>
-              <TouchableOpacity
-                onPress={() => setPhotoToDelete(null)}
-                className='py-2 px-3'
-                disabled={isDeleting}
-              >
-                <Text
-                  className={`font-semibold ${
-                    isDeleting ? 'text-gray-400' : 'text-blue-500'
-                  }`}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleDeleteConfirm}
-                className={`py-2 px-4 rounded-lg ${
-                  isDeleting ? 'bg-red-300' : 'bg-red-500'
-                }`}
-                disabled={isDeleting}
-              >
-                {isDeleting ? (
-                  <View className='flex-row items-center'>
-                    <ActivityIndicator size='small' color='#ffffff' />
-                    <Text className='text-white font-semibold ml-2'>
-                      Deleting...
-                    </Text>
-                  </View>
-                ) : (
-                  <Text className='text-white font-semibold'>Delete</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
+        onClose={() => setPhotoToDelete(null)}
+        onConfirm={handleDeleteConfirm}
+        isDeleting={isDeleting}
+      />
 
       {/* Image viewer gallery */}
       <ImageView
@@ -408,24 +422,7 @@ export function PhotoCapture({
       />
 
       {/* Loading indicator */}
-      {isLoading && (
-        <Modal transparent={true} visible={true} animationType='fade'>
-          <View className='flex-1 justify-center items-center bg-black/30'>
-            <View className='bg-white rounded-2xl p-6 w-4/5 items-center shadow-lg'>
-              <ActivityIndicator
-                size='large'
-                color={type === 'before' ? '#3b82f6' : '#10b981'}
-              />
-              <Text className='text-base font-semibold mt-3 mb-1'>
-                Processing...
-              </Text>
-              <Text className='text-sm text-gray-500 text-center'>
-                Please wait while we process your photos.
-              </Text>
-            </View>
-          </View>
-        </Modal>
-      )}
+      <LoadingModal visible={isLoading} type={type} />
     </View>
   );
 }

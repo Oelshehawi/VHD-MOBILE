@@ -90,19 +90,38 @@ export function JobPhotoHistory({
                 ? format(new Date(job.startDateTime), 'MMM d, yyyy')
                 : 'Unknown Date';
 
-              return {
-                id: job.id as string,
-                jobTitle: (job.jobTitle as string) || 'Untitled Job',
-                date: dateString,
-                photos: {
-                  before: Array.isArray(photosObj.before)
-                    ? (photosObj.before as EnhancedPhotoType[])
-                    : [],
-                  after: Array.isArray(photosObj.after)
-                    ? (photosObj.after as EnhancedPhotoType[])
-                    : [],
-                },
-              };
+              // Check if we're dealing with the new or old schema
+              if (Array.isArray(photosObj.photos)) {
+                // New schema with single photos array
+                return {
+                  id: job.id as string,
+                  jobTitle: (job.jobTitle as string) || 'Untitled Job',
+                  date: dateString,
+                  photos: {
+                    before: photosObj.photos.filter(
+                      (p) => p.type === 'before'
+                    ) as EnhancedPhotoType[],
+                    after: photosObj.photos.filter(
+                      (p) => p.type === 'after'
+                    ) as EnhancedPhotoType[],
+                  },
+                };
+              } else {
+                // Legacy schema with before/after arrays
+                return {
+                  id: job.id as string,
+                  jobTitle: (job.jobTitle as string) || 'Untitled Job',
+                  date: dateString,
+                  photos: {
+                    before: Array.isArray(photosObj.before)
+                      ? (photosObj.before as EnhancedPhotoType[])
+                      : [],
+                    after: Array.isArray(photosObj.after)
+                      ? (photosObj.after as EnhancedPhotoType[])
+                      : [],
+                  },
+                };
+              }
             } catch (error) {
               console.error('Error processing job:', error);
               return null;

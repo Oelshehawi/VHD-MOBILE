@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,10 +6,9 @@ import {
   TouchableOpacity,
   SafeAreaView,
 } from 'react-native';
-import { PhotoCapture } from './PhotoCapture';
+import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
-import { PhotoType } from '@/utils/photos';
-import { useSystem } from '@/services/database/System';
+import { parsePhotosData, PhotoType } from '@/utils/photos';
 import { useQuery } from '@powersync/react-native';
 
 interface PhotoDocumentationModalProps {
@@ -19,31 +18,11 @@ interface PhotoDocumentationModalProps {
   jobTitle: string;
   technicianId: string;
   location: string;
+  startDate: string;
 }
 
 // Tab type for the modal navigation
 type TabType = 'before' | 'after' | 'history';
-
-// Interface for the gallery image object
-interface GalleryImage {
-  uri: string;
-  title?: string;
-  type?: 'before' | 'after' | 'signature';
-}
-
-// Interface for photo with optional _id for backward compatibility
-interface EnhancedPhotoType extends PhotoType {
-  _id?: string;
-}
-
-// Interface for grouped photos by job
-interface JobPhotoGroup {
-  scheduleId: string;
-  date: string;
-  jobTitle: string;
-  photos: EnhancedPhotoType[];
-  galleryImages: GalleryImage[];
-}
 
 export function PhotoDocumentationModal({
   visible,
@@ -51,78 +30,36 @@ export function PhotoDocumentationModal({
   scheduleId,
   jobTitle,
   technicianId,
+  startDate,
 }: PhotoDocumentationModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('before');
-  const [beforePhotos, setBeforePhotos] = useState<PhotoType[]>([]);
-  const [afterPhotos, setAfterPhotos] = useState<PhotoType[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
 
   // Query photos directly from the schedules table
-  const { data } = useQuery(`SELECT photos FROM schedules WHERE id = ?`, [
-    scheduleId,
-  ]);
+  const { data, isLoading: isQueryLoading } = useQuery(
+    `SELECT photos FROM schedules WHERE id = ?`,
+    [scheduleId]
+  );
 
-  // Load photos when the modal becomes visible or tab changes
-  useEffect(() => {
-    if (!visible || !scheduleId || !data || data.length === 0) return;
+  // Parse photos data with useMemo to avoid unnecessary processing
+  const parsedPhotosData = useMemo(() => {
+    if (!data || data.length === 0) return { photos: [] };
 
-    let isMounted = true;
-    const loadPhotos = async () => {
-      try {
-        setIsLoading(true);
+    try {
+      return parsePhotosData(data[0]);
+    } catch (error) {
+      console.error('Error parsing photos data:', error);
+      return { photos: [] };
+    }
+  }, [data]);
 
-        // Reset states at the beginning of each load to avoid showing stale data
-        if (isMounted) {
-          setBeforePhotos([]);
-          setAfterPhotos([]);
-        }
+  // Filter photos by type using useMemo for better performance
+  const beforePhotos = useMemo(() => {
+    return parsedPhotosData.photos.filter((photo) => photo.type === 'before');
+  }, [parsedPhotosData]);
 
-        // The first row from the query result
-        const photosData = data[0]?.photos;
-
-        if (photosData) {
-          try {
-            const photosObj =
-              typeof photosData === 'string'
-                ? JSON.parse(photosData)
-                : photosData;
-
-            if (isMounted) {
-              const before = Array.isArray(photosObj.before)
-                ? photosObj.before
-                : [];
-              const after = Array.isArray(photosObj.after)
-                ? photosObj.after
-                : [];
-
-              setBeforePhotos(before);
-              setAfterPhotos(after);
-            }
-          } catch (parseError) {
-            console.error('Error parsing photos data:', parseError);
-            // Reset states on parse error already handled at beginning
-          }
-        }
-        // No else needed since we reset the states at the beginning
-      } catch (error) {
-        console.error(`Error loading photos:`, error);
-        // Reset states already handled at beginning
-      } finally {
-        if (isMounted) setIsLoading(false);
-      }
-    };
-
-    loadPhotos();
-
-    // Set up refresh interval
-    const refreshInterval = setInterval(loadPhotos, 5000);
-
-    // Clean up
-    return () => {
-      isMounted = false;
-      clearInterval(refreshInterval);
-    };
-  }, [scheduleId, visible, data]);
+  const afterPhotos = useMemo(() => {
+    return parsedPhotosData.photos.filter((photo) => photo.type === 'after');
+  }, [parsedPhotosData]);
 
   if (!visible) return null;
 
@@ -184,6 +121,8 @@ export function PhotoDocumentationModal({
                 type='before'
                 jobTitle={jobTitle}
                 scheduleId={scheduleId}
+                isLoading={isQueryLoading}
+                startDate={startDate}
               />
             )}
 
@@ -194,6 +133,8 @@ export function PhotoDocumentationModal({
                 type='after'
                 jobTitle={jobTitle}
                 scheduleId={scheduleId}
+                isLoading={isQueryLoading}
+                startDate={startDate}
               />
             )}
 

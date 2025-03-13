@@ -2,12 +2,9 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs, Redirect, SplashScreen } from 'expo-router';
 import '../global.css';
 import { ClerkLoaded, useUser } from '@clerk/clerk-expo';
-import Logger from 'js-logger';
 import { useEffect } from 'react';
+import { useSystem } from '@/services/database/System';
 
-Logger.useDefaults();
-
-Logger.setLevel(Logger.DEBUG);
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
@@ -18,6 +15,7 @@ function TabBarIcon(props: {
 
 export default function TabLayout() {
   const { isSignedIn, isLoaded } = useUser();
+  const system = useSystem();
 
   if (!isSignedIn) {
     return <Redirect href='/sign-in' />;
@@ -28,6 +26,8 @@ export default function TabLayout() {
       SplashScreen.hideAsync();
     }
   }, [isLoaded]);
+
+  // system?.attachmentQueue?.logAttachments();
 
   return (
     <ClerkLoaded>

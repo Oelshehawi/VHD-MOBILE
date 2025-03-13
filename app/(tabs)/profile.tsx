@@ -14,7 +14,11 @@ import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
 // Import functions to get URLs
-import { getPowerSyncUrl, getApiUrl, setEnvironment } from '../../services/api';
+import {
+  getPowerSyncUrl,
+  getApiUrl,
+  setEnvironment,
+} from '../../services/ApiClient';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 

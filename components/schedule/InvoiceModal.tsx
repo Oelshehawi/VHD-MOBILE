@@ -64,27 +64,57 @@ export function InvoiceModal({
           ? JSON.parse(schedule.photos)
           : schedule.photos;
 
-      // Convert _id to id if needed and add type field
-      return {
-        before: Array.isArray(parsedPhotos.before)
-          ? parsedPhotos.before.map((photo: any) => ({
-              ...photo,
-              id: photo._id || photo.id,
-              _id: photo._id || photo.id, // Keep _id for backward compatibility
-              type: 'before' as const,
-              status: photo.status || 'uploaded',
-            }))
-          : [],
-        after: Array.isArray(parsedPhotos.after)
-          ? parsedPhotos.after.map((photo: any) => ({
-              ...photo,
-              id: photo._id || photo.id,
-              _id: photo._id || photo.id, // Keep _id for backward compatibility
-              type: 'after' as const,
-              status: photo.status || 'uploaded',
-            }))
-          : [],
-      };
+      // Check if we're using the new schema (single array with type) or legacy schema (before/after arrays)
+      if (Array.isArray(parsedPhotos.photos)) {
+        // New schema - filter by type
+        const beforePhotos = parsedPhotos.photos
+          .filter((photo: any) => photo.type === 'before')
+          .map((photo: any) => ({
+            ...photo,
+            id: photo._id || photo.id,
+            _id: photo._id || photo.id, // Keep _id for backward compatibility
+            type: 'before' as const,
+            status: photo.status || 'uploaded',
+          }));
+
+        const afterPhotos = parsedPhotos.photos
+          .filter((photo: any) => photo.type === 'after')
+          .map((photo: any) => ({
+            ...photo,
+            id: photo._id || photo.id,
+            _id: photo._id || photo.id, // Keep _id for backward compatibility
+            type: 'after' as const,
+            status: photo.status || 'uploaded',
+          }));
+
+        return {
+          before: beforePhotos,
+          after: afterPhotos,
+        };
+      } else {
+        // Legacy schema with before/after arrays
+        // Convert _id to id if needed and add type field
+        return {
+          before: Array.isArray(parsedPhotos.before)
+            ? parsedPhotos.before.map((photo: any) => ({
+                ...photo,
+                id: photo._id || photo.id,
+                _id: photo._id || photo.id, // Keep _id for backward compatibility
+                type: 'before' as const,
+                status: photo.status || 'uploaded',
+              }))
+            : [],
+          after: Array.isArray(parsedPhotos.after)
+            ? parsedPhotos.after.map((photo: any) => ({
+                ...photo,
+                id: photo._id || photo.id,
+                _id: photo._id || photo.id, // Keep _id for backward compatibility
+                type: 'after' as const,
+                status: photo.status || 'uploaded',
+              }))
+            : [],
+        };
+      }
     } catch (error) {
       console.error('Error parsing photos:', error, schedule?.photos);
       return { before: [], after: [] };

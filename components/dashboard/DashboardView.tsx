@@ -25,7 +25,6 @@ interface DashboardViewProps {
 
 export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const [showSchedules, setShowSchedules] = useState(false);
-  const [refreshing, setRefreshing] = useState(false);
   const { data: todaySchedules = [] } = useTodaySchedules();
   const { data: currentPayroll = [] } = useCurrentPayrollPeriod();
   const { data: payrollSchedules = [] } = usePayrollSchedules(
@@ -40,13 +39,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
     0
   );
 
-  const onRefresh = React.useCallback(() => {
-    setRefreshing(true);
-    // Simulate a refresh
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1000);
-  }, []);
+
 
   const renderScheduleItem = (schedule: any) => {
     if (!schedule?.startDateTime) return null;
@@ -162,9 +155,6 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
 
       <ScrollView
         className='flex-1'
-        refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-        }
       >
         <View className='p-4 flex flex-col gap-4'>
           {/* Welcome Section */}

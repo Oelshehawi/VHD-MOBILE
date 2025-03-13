@@ -88,8 +88,8 @@ export function getApiUrl() {
 
 export class ApiClient {
   private readonly baseUrl: string;
-  private readonly token: string;
-  private readonly headers: Record<string, string>;
+  private token: string;
+  private headers: Record<string, string>;
   private readonly cloudinaryUrl?: string;
   private readonly storageOptions?: CloudinaryStorageOptions;
 
@@ -122,10 +122,18 @@ export class ApiClient {
   // Method for CloudinaryStorageAdapter to get upload URL
   async getUploadUrl<T>(
     path: string,
-    options: { body: { fileName: string; mediaType?: string } }
+    options: {
+      body: {
+        fileName: string;
+        jobTitle: string;
+        type: string;
+        startDate: string;
+        mediaType?: string;
+      };
+    }
   ): Promise<ApiResponse<T>> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/cloudinary-upload`, {
+      const response = await fetch(`${this.baseUrl}/api/cloudinaryUpload`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify(options.body),
@@ -209,7 +217,12 @@ export class ApiClient {
     return {
       upsert: async (record: any) => {
         try {
-          // Implementation will depend on your backend API
+          // Special handling for add_photo_operations - use the update-photos endpoint
+          if (table === 'add_photo_operations') {
+            return await this.processPhotoAddOperation(record);
+          }
+
+          // Default handling for other tables
           const response = await fetch(`${this.baseUrl}/api/${table}`, {
             method: 'POST',
             headers: this.headers,
@@ -315,184 +328,32 @@ export class ApiClient {
   }
 
   /**
-   * Delete a photo from Cloudinary
-   * @param photoUrl URL of the photo to delete
-   * @param type Type of photo (before/after)
-   * @param scheduleId ID of the schedule
-   * @returns Delete result
-   */
-  async deletePhoto(
-    photoUrl: string,
-    type: 'before' | 'after',
-    scheduleId: string
-  ) {
-    if (!photoUrl.startsWith('http')) {
-      // For local photos, we don't need to delete from Cloudinary
-      return { success: true };
-    }
-
-    try {
-      // Make API call to delete photo - using DELETE method
-      const response = await fetch(`${this.baseUrl}/api/deletePhoto`, {
-        method: 'DELETE',
-        headers: {
-          ...this.headers,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          photoUrl,
-          type,
-          scheduleId,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch (e) {
-          errorData = { error: errorText || `HTTP status ${response.status}` };
-        }
-
-        throw new Error(
-          errorData.details ||
-            errorData.error ||
-            errorData.message ||
-            `Delete failed with status ${response.status}`
-        );
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      // For network errors, indicate that the operation should be retried
-      if (
-        error instanceof TypeError &&
-        error.message.includes('Network request failed')
-      ) {
-        return {
-          success: false,
-          error: 'Network error, will retry later',
-          shouldRetry: true,
-        };
-      }
-
-      throw error;
-    }
-  }
-
-  /**
-   * Upload photos to Cloudinary
-   */
-  async uploadPhotos(
-    images: string[],
-    type: 'before' | 'after' | 'signature',
-    technicianId: string,
-    jobTitle: string,
-    scheduleId: string,
-    signerName?: string,
-    photoId?: string
-  ) {
-    try {
-      // Skip empty arrays
-      if (!images || images.length === 0) {
-        return { success: true, photos: [] };
-      }
-
-      // Ensure all data is properly initialized
-      if (!technicianId) technicianId = 'unknown';
-      if (!jobTitle) jobTitle = 'unknown';
-      if (!scheduleId) scheduleId = 'unknown';
-
-      const requestBody = {
-        images,
-        type,
-        technicianId,
-        jobTitle,
-        scheduleId,
-        signerName,
-        photoId,
-      };
-
-      // Make API call
-      const response = await fetch(`${this.baseUrl}/api/upload`, {
-        method: 'POST',
-        headers: {
-          ...this.headers,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch (e) {
-          errorData = { error: errorText || `HTTP status ${response.status}` };
-        }
-
-        throw new Error(
-          errorData.details ||
-            errorData.error ||
-            errorData.message ||
-            `Upload failed with status ${response.status}`
-        );
-      }
-
-      const result = await response.json();
-      return result;
-    } catch (error) {
-      // For network errors, indicate that the operation should be retried
-      if (
-        error instanceof TypeError &&
-        error.message.includes('Network request failed')
-      ) {
-        return {
-          success: false,
-          error: 'Network error, will retry later',
-          shouldRetry: true,
-          photos: [],
-        };
-      }
-
-      throw error;
-    }
-  }
-
-  /**
    * Update photos in the database after they've been uploaded to Cloudinary
-   * @param photos Array of photo objects with URLs and metadata
-   * @param type Type of photos (before/after/signature)
+   * @param cloudinaryUrl URL of the uploaded photo
+   * @param type Type of photo (before/after)
    * @param scheduleId ID of the schedule to update
-   * @param signerName Optional signer name for signature types
+   * @param technicianId ID of the technician who took the photo
+   * @param timestamp When the photo was taken
    * @returns Result of the update operation
    */
   async updatePhotos(
-    photos: Array<{
-      id: string;
-      url: string;
-      timestamp: string | Date;
-      technicianId: string;
-      type: 'before' | 'after' | 'signature';
-    }>,
-    type: 'before' | 'after' | 'signature',
+    cloudinaryUrl: string,
+    type: 'before' | 'after',
     scheduleId: string,
-    signerName?: string
+    technicianId: string,
+    timestamp: string
   ) {
     try {
-      // Skip empty arrays
-      if (!photos || photos.length === 0) {
-        return { success: true, photos: [] };
+      if (!cloudinaryUrl || !scheduleId) {
+        return { success: false, error: 'Missing required fields' };
       }
 
       const requestBody = {
         scheduleId,
-        photos,
+        cloudinaryUrl,
         type,
-        signerName,
+        technicianId,
+        timestamp,
       };
 
       // Make API call to update photos
@@ -534,11 +395,52 @@ export class ApiClient {
           success: false,
           error: 'Network error, will retry later',
           shouldRetry: true,
-          photos: [],
         };
       }
 
       throw error;
+    }
+  }
+
+  // Add method to update token
+  setToken(newToken: string) {
+    this.token = newToken;
+    this.headers = {
+      ...this.headers,
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.token}`,
+    };
+  }
+
+  /**
+   * Process a record from the add_photo_operations table
+   * This method translates the add_photo_operations record into a call to updatePhotos
+   * @param record The record from add_photo_operations table
+   * @returns Result of the update operation
+   */
+  async processPhotoAddOperation(record: any) {
+    try {
+      if (!record.scheduleId || !record.cloudinaryUrl || !record.type) {
+        return {
+          success: false,
+          error: 'Missing required fields in record',
+        };
+      }
+
+      // Simply pass the fields directly to updatePhotos
+      return await this.updatePhotos(
+        record.cloudinaryUrl,
+        record.type as 'before' | 'after',
+        record.scheduleId,
+        record.technicianId || '',
+        record.timestamp || new Date().toISOString()
+      );
+    } catch (error) {
+      console.error('Error processing photo add operation:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
     }
   }
 }

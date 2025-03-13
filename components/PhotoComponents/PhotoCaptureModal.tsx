@@ -55,8 +55,7 @@ export function PhotoCaptureModal({
 
       const options: ImagePicker.ImagePickerOptions = {
         mediaTypes: 'images',
-        quality: 1, // Initial compression at capture
-        base64: true,
+        quality: 1,
         allowsEditing: false,
         exif: false,
         allowsMultipleSelection: source === 'gallery',
@@ -66,7 +65,25 @@ export function PhotoCaptureModal({
         ? ImagePicker.launchCameraAsync(options)
         : ImagePicker.launchImageLibraryAsync(options));
 
-      if (!result.canceled) {
+      console.log(
+        'PhotoCaptureModal - Selection result:',
+        result.canceled
+          ? 'Canceled'
+          : `Selected ${result.assets?.length || 0} photos`
+      );
+
+      if (!result.canceled && result.assets) {
+        // Log the first asset URI (safe to show in logs)
+        if (result.assets.length > 0) {
+          const firstAsset = result.assets[0];
+          console.log('First asset details:', {
+            uri: firstAsset.uri.split('/').pop(), // Just log filename part of URI for privacy
+            width: firstAsset.width,
+            height: firstAsset.height,
+            fileSize: firstAsset.fileSize || 'unknown',
+          });
+        }
+
         // Pass the result to the parent component for processing
         onPhotoSelected(result);
       }

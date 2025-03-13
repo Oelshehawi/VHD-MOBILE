@@ -22,6 +22,7 @@
     "@powersync/react-native": "^1.18.0",
     "@react-native-community/netinfo": "^11.4.1",
     "@react-navigation/native": "^7.0.14",
+    "base64-arraybuffer": "^1.0.2",
     "date-fns": "^4.1.0",
     "date-fns-tz": "^3.2.0",
     "expo": "~52.0.24",
