@@ -254,6 +254,7 @@ export function InvoiceModal({
                 schedule={schedule}
                 visible={showSignatureModal}
                 onClose={() => setShowSignatureModal(false)}
+                startDate={schedule?.startDateTime}
               />
             </View>
           ) : (

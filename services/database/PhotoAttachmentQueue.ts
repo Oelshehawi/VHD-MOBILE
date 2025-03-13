@@ -7,15 +7,15 @@ import {
   AttachmentRecord,
   AttachmentState,
 } from '@powersync/attachments';
-import { SCHEDULES_TABLE } from './schema';
 
 // Extend AttachmentRecord to include the scheduleId property
 export interface ExtendedAttachmentRecord extends AttachmentRecord {
   scheduleId?: string;
   jobTitle?: string;
-  type?: 'before' | 'after';
+  type?: 'before' | 'after' | 'signature';
   startDate?: string;
   technicianId?: string;
+  signerName?: string;
 }
 
 export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
@@ -82,6 +82,11 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       params.push(record.technicianId);
     }
 
+    if (record.signerName) {
+      updates.push('signerName = ?');
+      params.push(record.signerName);
+    }
+
     if (updates.length > 0) {
       try {
         // Add the ID to params for the WHERE clause
@@ -115,6 +120,11 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
         if (record.technicianId) {
           (savedRecord as ExtendedAttachmentRecord).technicianId =
             record.technicianId;
+        }
+
+        if (record.signerName) {
+          (savedRecord as ExtendedAttachmentRecord).signerName =
+            record.signerName;
         }
       } catch (error) {
         console.error('Error updating attachment custom fields:', error);
@@ -178,18 +188,20 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
    * @param sourceUri URI of the existing image file
    * @param scheduleId ID of the schedule this photo belongs to
    * @param jobTitle Title of the job
-   * @param type Type of photo (before or after)
+   * @param type Type of photo (before or after) or signature
    * @param startDate Date when the schedule starts
    * @param technicianId ID of the technician who took the photo
+   * @param signerName Name of the person signing (for signature type only)
    * @returns Attachment record
    */
   async savePhotoFromUri(
     sourceUri: string,
     scheduleId: string,
     jobTitle?: string,
-    type?: 'before' | 'after',
+    type?: 'before' | 'after' | 'signature',
     startDate?: string,
-    technicianId?: string
+    technicianId?: string,
+    signerName?: string
   ): Promise<ExtendedAttachmentRecord> {
     try {
       // Create a new attachment record with scheduleId, jobTitle, and type
@@ -199,6 +211,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
         type,
         startDate,
         technicianId,
+        signerName,
       });
 
       // Set the local URI path

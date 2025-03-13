@@ -186,7 +186,7 @@ export class ApiClient {
   // Method for CloudinaryStorageAdapter to get delete URL
   async getDeleteUrl<T>(
     path: string,
-    options: { body: { fileName: string } }
+    options: { body: { cloudinaryUrl: string } }
   ): Promise<ApiResponse<T>> {
     try {
       const response = await fetch(`${this.baseUrl}/api/cloudinary-delete`, {
@@ -220,6 +220,11 @@ export class ApiClient {
           // Special handling for add_photo_operations - use the update-photos endpoint
           if (table === 'add_photo_operations') {
             return await this.processPhotoAddOperation(record);
+          }
+
+          // Special handling for delete_photo_operations - use the delete-photo endpoint
+          if (table === 'delete_photo_operations') {
+            return await this.processPhotoDeleteOperation(record);
           }
 
           // Default handling for other tables
@@ -341,7 +346,8 @@ export class ApiClient {
     type: 'before' | 'after',
     scheduleId: string,
     technicianId: string,
-    timestamp: string
+    timestamp: string,
+    signerName?: string
   ) {
     try {
       if (!cloudinaryUrl || !scheduleId) {
@@ -354,6 +360,7 @@ export class ApiClient {
         type,
         technicianId,
         timestamp,
+        signerName,
       };
 
       // Make API call to update photos
@@ -433,10 +440,77 @@ export class ApiClient {
         record.type as 'before' | 'after',
         record.scheduleId,
         record.technicianId || '',
-        record.timestamp || new Date().toISOString()
+        record.timestamp || new Date().toISOString(),
+        record.signerName || ''
       );
     } catch (error) {
       console.error('Error processing photo add operation:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Process a record from the delete_photo_operations table
+   * This method sends a delete request to the delete-photo endpoint
+   * which handles both Cloudinary and database deletion
+   * @param record The record from delete_photo_operations table
+   * @returns Result of the delete operation
+   */
+  async processPhotoDeleteOperation(record: any) {
+    try {
+      if (!record.scheduleId || !record.remote_uri) {
+        return {
+          success: false,
+          error: 'Missing required fields in record',
+        };
+      }
+
+      // Send the delete request to the unified endpoint
+      const response = await fetch(`${this.baseUrl}/api/deletePhoto`, {
+        method: 'POST',
+        headers: this.headers,
+        body: JSON.stringify({
+          scheduleId: record.scheduleId,
+          cloudinaryUrl: record.remote_uri,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
+        throw new Error(
+          errorData.details ||
+            errorData.error ||
+            errorData.message ||
+            `Delete failed with status ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+        };
+      }
+
+      console.error('Error processing photo delete operation:', error);
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 // Interface for enhanced photo type with backward compatibility
 interface EnhancedPhotoType extends PhotoType {
   _id?: string;
+  signerName?: string;
 }
 
 // Interface for the gallery image object
@@ -48,6 +49,7 @@ export function JobPhotoHistory({
       photos: {
         before: EnhancedPhotoType[];
         after: EnhancedPhotoType[];
+        signature: EnhancedPhotoType[];
       };
     }[]
   >([]);
@@ -90,38 +92,29 @@ export function JobPhotoHistory({
                 ? format(new Date(job.startDateTime), 'MMM d, yyyy')
                 : 'Unknown Date';
 
-              // Check if we're dealing with the new or old schema
-              if (Array.isArray(photosObj.photos)) {
-                // New schema with single photos array
-                return {
-                  id: job.id as string,
-                  jobTitle: (job.jobTitle as string) || 'Untitled Job',
-                  date: dateString,
-                  photos: {
-                    before: photosObj.photos.filter(
-                      (p) => p.type === 'before'
-                    ) as EnhancedPhotoType[],
-                    after: photosObj.photos.filter(
-                      (p) => p.type === 'after'
-                    ) as EnhancedPhotoType[],
-                  },
-                };
-              } else {
-                // Legacy schema with before/after arrays
-                return {
-                  id: job.id as string,
-                  jobTitle: (job.jobTitle as string) || 'Untitled Job',
-                  date: dateString,
-                  photos: {
-                    before: Array.isArray(photosObj.before)
-                      ? (photosObj.before as EnhancedPhotoType[])
-                      : [],
-                    after: Array.isArray(photosObj.after)
-                      ? (photosObj.after as EnhancedPhotoType[])
-                      : [],
-                  },
-                };
-              }
+              // Process photos array - always use the new schema
+              const photosArray = Array.isArray(photosObj.photos)
+                ? photosObj.photos
+                : Array.isArray(photosObj)
+                ? photosObj
+                : [];
+
+              return {
+                id: job.id as string,
+                jobTitle: (job.jobTitle as string) || 'Untitled Job',
+                date: dateString,
+                photos: {
+                  before: photosArray.filter(
+                    (p: EnhancedPhotoType) => p.type === 'before'
+                  ) as EnhancedPhotoType[],
+                  after: photosArray.filter(
+                    (p: EnhancedPhotoType) => p.type === 'after'
+                  ) as EnhancedPhotoType[],
+                  signature: photosArray.filter(
+                    (p: EnhancedPhotoType) => p.type === 'signature'
+                  ) as EnhancedPhotoType[],
+                },
+              };
             } catch (error) {
               console.error('Error processing job:', error);
               return null;
@@ -131,7 +124,8 @@ export function JobPhotoHistory({
           .filter(
             (job) =>
               (job?.photos?.before?.length ?? 0) > 0 ||
-              (job?.photos?.after?.length ?? 0) > 0
+              (job?.photos?.after?.length ?? 0) > 0 ||
+              (job?.photos?.signature?.length ?? 0) > 0
           );
 
         // Use type assertion to fix the type error
@@ -143,6 +137,7 @@ export function JobPhotoHistory({
             photos: {
               before: EnhancedPhotoType[];
               after: EnhancedPhotoType[];
+              signature: EnhancedPhotoType[];
             };
           }[]
         );
@@ -159,7 +154,7 @@ export function JobPhotoHistory({
   // Open gallery to view photos
   const openGallery = (
     jobIndex: number,
-    photoType: 'before' | 'after',
+    photoType: 'before' | 'after' | 'signature',
     photoIndex: number = 0
   ) => {
     const job = previousJobs[jobIndex];
@@ -178,12 +173,24 @@ export function JobPhotoHistory({
       type: 'after' as const,
     }));
 
-    const allImages = [...beforeImages, ...afterImages];
+    const signatureImages = job.photos.signature.map((photo) => ({
+      uri: photo.url,
+      title: `Signature: ${photo.signerName || 'Unknown'}`,
+      type: 'signature' as const,
+    }));
+
+    const allImages = [...beforeImages, ...afterImages, ...signatureImages];
 
     if (allImages.length === 0) return;
 
-    // Calculate the correct index
-    const startIndex = photoType === 'after' ? beforeImages.length : 0;
+    // Calculate the correct index based on the type
+    let startIndex = 0;
+    if (photoType === 'after') {
+      startIndex = beforeImages.length;
+    } else if (photoType === 'signature') {
+      startIndex = beforeImages.length + afterImages.length;
+    }
+
     const finalIndex = startIndex + photoIndex;
 
     setGalleryImages(allImages);
@@ -201,7 +208,7 @@ export function JobPhotoHistory({
   }: {
     item: EnhancedPhotoType;
     jobIndex: number;
-    photoType: 'before' | 'after';
+    photoType: 'before' | 'after' | 'signature';
     photoIndex: number;
   }) => (
     <Pressable
@@ -220,12 +227,18 @@ export function JobPhotoHistory({
               backgroundColor:
                 photoType === 'before'
                   ? 'rgba(59, 130, 246, 0.8)'
-                  : 'rgba(16, 185, 129, 0.8)',
+                  : photoType === 'after'
+                  ? 'rgba(16, 185, 129, 0.8)'
+                  : 'rgba(139, 92, 246, 0.8)', // Purple for signatures
             },
           ]}
         >
           <Text style={styles.photoTypeLabelText}>
-            {photoType === 'before' ? 'Before' : 'After'}
+            {photoType === 'before'
+              ? 'Before'
+              : photoType === 'after'
+              ? 'After'
+              : 'Signature'}
           </Text>
         </View>
       </ImageBackground>
@@ -328,6 +341,33 @@ export function JobPhotoHistory({
                 />
               </View>
             )}
+
+            {/* Signature Section */}
+            {item.photos.signature.length > 0 && (
+              <View style={styles.photoSection}>
+                <Text style={styles.sectionLabel}>
+                  <Ionicons name='pencil-outline' size={16} color='#8b5cf6' />{' '}
+                  Signatures
+                </Text>
+                <FlatList
+                  horizontal
+                  data={item.photos.signature}
+                  keyExtractor={(photo, idx) =>
+                    `${item.id}-signature-${photo.id || idx}`
+                  }
+                  renderItem={({ item: photo, index: photoIndex }) =>
+                    renderPhotoItem({
+                      item: photo,
+                      jobIndex,
+                      photoType: 'signature',
+                      photoIndex,
+                    })
+                  }
+                  showsHorizontalScrollIndicator={false}
+                  contentContainerStyle={styles.photoList}
+                />
+              </View>
+            )}
           </View>
         )}
       />
@@ -346,9 +386,10 @@ export function JobPhotoHistory({
             <Text style={styles.gallerySubtitle}>
               {galleryJobDate} -{' '}
               {galleryImages[galleryIndex]?.type === 'before'
-                ? 'Before'
-                : 'After'}{' '}
-              Photo
+                ? 'Before Photo'
+                : galleryImages[galleryIndex]?.type === 'after'
+                ? 'After Photo'
+                : 'Signature'}
             </Text>
           </View>
         )}

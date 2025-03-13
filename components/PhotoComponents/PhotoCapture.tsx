@@ -4,18 +4,8 @@ import * as ImagePicker from 'expo-image-picker';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import ImageView from 'react-native-image-viewing';
-import {
-  ATTACHMENT_TABLE,
-  AttachmentRecord,
-  AttachmentState,
-} from '@powersync/attachments';
-import {
-  PhotoType,
-  showToast,
-  parsePhotosData,
-  findPhotoInCollection,
-  recordPhotoDeleteOperation,
-} from '@/utils/photos';
+import { AttachmentRecord } from '@powersync/attachments';
+import { PhotoType, showToast } from '@/utils/photos';
 import { usePowerSync } from '@powersync/react-native';
 import { useSystem } from '@/services/database/System';
 import { DeletePhotoModal } from './DeletePhotoModal';
@@ -44,6 +34,11 @@ interface PhotoCaptureProps {
   scheduleId?: string;
   isLoading?: boolean;
   startDate?: string;
+}
+
+// Define type for query results
+interface AttachmentOperation {
+  attachmentId?: string;
 }
 
 export function PhotoCapture({
@@ -124,50 +119,9 @@ export function PhotoCapture({
             startDate,
             technicianId
           )) as ExtendedAttachmentRecord;
-
-          // Create a new photo object with the attachment reference
-          const newPhoto: EnhancedPhotoType = {
-            id: `photo_${Date.now()}_${Math.random()
-              .toString(36)
-              .substring(2, 9)}`,
-            url: `local://${attachmentRecord.id}`, // Local URL scheme that will be resolved later
-            timestamp: new Date().toISOString(),
-            technicianId: technicianId,
-            type: type,
-            status: 'pending',
-            attachmentId: attachmentRecord.id,
-          };
-
-          newPhotos.push(newPhoto);
         } catch (assetError) {
           console.error('Error processing photo asset:', assetError);
         }
-      }
-
-      // If we have new photos, update the database
-      if (newPhotos.length > 0) {
-        await powerSync.writeTransaction(async (tx) => {
-          // Get current photos data
-          const result = await tx.getAll<{ photos: string }>(
-            `SELECT photos FROM schedules WHERE id = ?`,
-            [scheduleId]
-          );
-
-          // Parse current photos
-          const currentPhotos = parsePhotosData(result?.[0]?.photos);
-
-          // Add new photos to the existing photos array
-          const updatedPhotos = {
-            ...currentPhotos,
-            photos: [...currentPhotos.photos, ...newPhotos],
-          };
-
-          // Update the photos in the database
-          await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
-            JSON.stringify(updatedPhotos),
-            scheduleId,
-          ]);
-        });
       }
 
       // Show success message for UI feedback
@@ -194,7 +148,14 @@ export function PhotoCapture({
    * Confirm and handle photo deletion
    */
   const handleDeleteConfirm = async () => {
-    if (!photoToDelete || !scheduleId || !powerSync || isDeleting) return;
+    if (
+      !photoToDelete ||
+      !scheduleId ||
+      !powerSync ||
+      !system?.attachmentQueue ||
+      isDeleting
+    )
+      return;
 
     try {
       // Set deleting state to true to disable the button
@@ -202,100 +163,61 @@ export function PhotoCapture({
 
       // Keep track of the photo details for optimistic update
       const photoUrl = photoToDelete.url;
-      const photoId = photoToDelete.id;
-      const attachmentId = photoToDelete.attachmentId;
 
-      // Delete the photo in a transaction
+      // Begin a transaction to ensure atomicity
       await powerSync.writeTransaction(async (tx) => {
-        const result = await tx.getAll<{ photos: string }>(
-          `SELECT photos FROM schedules WHERE id = ?`,
-          [scheduleId]
+        // First, insert into delete_photo_operations table to record the deletion
+        // This will be synced to the server which will handle both Cloudinary and DB deletion
+        await tx.execute(
+          `INSERT INTO delete_photo_operations (id, scheduleId, remote_uri) VALUES (?, ?, ?)`,
+          [
+            `del_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`,
+            scheduleId,
+            photoUrl,
+          ]
         );
 
-        // Parse photos data using utility function
-        const currentPhotos = parsePhotosData(result?.[0]?.photos);
-
-        // Find the photo to delete using utility function or direct URL match
-        let photoToDeleteObj = findPhotoInCollection(currentPhotos.photos, {
-          id: photoId,
-          url: photoUrl,
-        }) as EnhancedPhotoType | null;
-
-        // If not found by ID/URL combination, try to find just by URL
-        if (!photoToDeleteObj) {
-          photoToDeleteObj =
-            (currentPhotos.photos.find(
-              (p) => p.url === photoUrl
-            ) as EnhancedPhotoType) || null;
-        }
-
-        if (!photoToDeleteObj) {
-          throw new Error('Photo not found');
-        }
-
-        // Create a complete photo object with all required fields
-        const completePhotoObj: EnhancedPhotoType = {
-          ...photoToDeleteObj,
-          id: photoToDeleteObj.id || photoId || `gen_${Date.now()}`,
-          type: photoToDeleteObj.type || type,
-          technicianId: photoToDeleteObj.technicianId || technicianId,
-          timestamp: photoToDeleteObj.timestamp || new Date().toISOString(),
-          attachmentId: photoToDeleteObj.attachmentId || attachmentId,
-        };
-
-        // Create the new photos object without the deleted photo
-        const updatedPhotos = {
-          ...currentPhotos,
-          photos: currentPhotos.photos.filter((p) => p.url !== photoUrl),
-        };
-
-        // 1. Insert into delete_photo_operations table (insertOnly table for tracking deletions)
-        await recordPhotoDeleteOperation(
-          tx,
-          scheduleId,
-          completePhotoObj.id,
-          technicianId,
-          completePhotoObj.type
+        // Next, try to find the attachment record by looking up the attachment ID
+        // from the add_photo_operations table using the cloudinary URL
+        const attachmentOperations = await tx.getAll<AttachmentOperation>(
+          `SELECT attachmentId FROM add_photo_operations WHERE cloudinaryUrl = ? AND scheduleId = ?`,
+          [photoUrl, scheduleId]
         );
 
-        // 2. Update database with optimistic changes to the photos array
-        await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
-          JSON.stringify(updatedPhotos),
-          scheduleId,
-        ]);
-
-        // Delete the attachment if it exists and is a local attachment
         if (
-          attachmentId &&
-          photoUrl.startsWith('local://') &&
-          system &&
-          system.attachmentQueue
+          attachmentOperations.length > 0 &&
+          attachmentOperations[0]?.attachmentId
         ) {
-          try {
-            // Create a mock AttachmentRecord to delete
-            const attachmentRecord: AttachmentRecord = {
-              id: attachmentId,
-              filename: `${type}_photo.jpg`,
-              state: 'synced' as unknown as AttachmentState,
-              timestamp: Date.now(),
-              size: 0,
-            };
+          const attachmentId = attachmentOperations[0].attachmentId;
 
-            // The delete method might need the transaction
-            await system.attachmentQueue.delete(attachmentRecord, tx);
-            console.log(`Deleted attachment with ID: ${attachmentId}`);
-          } catch (deleteError) {
-            console.error('Error deleting attachment:', deleteError);
+          // Find the attachment record
+          const attachments = await tx.getAll<AttachmentRecord>(
+            `SELECT * FROM attachments WHERE id = ?`,
+            [attachmentId]
+          );
+
+          if (attachments.length > 0 && system.attachmentQueue) {
+            // We have the attachment record, so we can delete it from the local queue
+            try {
+              // We've already confirmed attachmentQueue exists and typed the attachment properly
+              await system.attachmentQueue.delete(attachments[0]);
+              console.log(`Deleted attachment record for ${photoUrl}`);
+            } catch (attachmentError) {
+              console.error(
+                'Error deleting attachment record:',
+                attachmentError
+              );
+              // Continue with the deletion process even if attachment deletion fails
+            }
+          } else {
+            console.log(`No attachment record found for ID ${attachmentId}`);
           }
-        } else if (attachmentId) {
-          // If no attachment system or non-local URL, just delete from attachments table
-          await tx.execute(`DELETE FROM ${ATTACHMENT_TABLE} WHERE id = ?`, [
-            attachmentId,
-          ]);
+        } else {
+          console.log(`No attachment ID found for URL ${photoUrl}`);
         }
       });
 
-      // Show success message
+      // Show success message for user feedback
       showToast('Photo deleted successfully');
 
       // Immediately clear the dialog
@@ -312,13 +234,9 @@ export function PhotoCapture({
   /**
    * Request photo deletion
    */
-  const handleDeleteRequest = (
-    photoId: string,
-    url: string,
-    attachmentId?: string
-  ) => {
+  const handleDeleteRequest = (photoId: string, url: string) => {
     // Show delete confirmation dialog
-    setPhotoToDelete({ id: photoId, url, attachmentId });
+    setPhotoToDelete({ id: photoId, url });
   };
 
   /**
@@ -348,7 +266,6 @@ export function PhotoCapture({
         };
   };
 
-  const colorTheme = getColorTheme();
   const isLoading = externalLoading || isUploading;
 
   return (

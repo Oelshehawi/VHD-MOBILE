@@ -43,7 +43,7 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
     try {
       // Retrieve attachment metadata from the database
       const attachmentData = await this.powersync.getAll(
-        `SELECT id, scheduleId, jobTitle, type, startDate, timestamp, technicianId FROM ${ATTACHMENT_TABLE} WHERE filename = ?`,
+        `SELECT id, scheduleId, jobTitle, type, startDate, timestamp, technicianId, signerName FROM ${ATTACHMENT_TABLE} WHERE filename = ?`,
         [filename]
       );
 
@@ -123,26 +123,46 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
       // If we have attachment data and a secure URL, add to add_photo_operations table
       if (attachmentData.length > 0 && secureUrl && this.powersync) {
         const attachment = attachmentData[0];
+        const isSignature = attachment.type === 'signature';
+
+        // Prepare columns and values based on whether it's a signature or regular photo
+        const columns = [
+          'scheduleId',
+          'timestamp',
+          'technicianId',
+          'type',
+          'cloudinaryUrl',
+          'attachmentId',
+        ];
+
+        const values = [
+          attachment.scheduleId || '',
+          attachment.timestamp || new Date().toISOString(),
+          attachment.technicianId || '',
+          attachment.type || '',
+          secureUrl,
+          attachment.id || '',
+        ];
+
+        // Add signerName for signature type
+        if (isSignature && attachment.signerName) {
+          columns.push('signerName');
+          values.push(attachment.signerName);
+        }
 
         // Insert into add_photo_operations
         await this.powersync.execute(
-          `INSERT INTO add_photo_operations (
-            scheduleId, 
-            timestamp, 
-            technicianId, 
-            type, 
-            cloudinaryUrl
-          ) VALUES (?, ?, ?, ?, ?)`,
-          [
-            attachment.scheduleId || '',
-            attachment.timestamp || new Date().toISOString(),
-            attachment.technicianId || '',
-            attachment.type || '',
-            secureUrl,
-          ]
+          `INSERT INTO add_photo_operations (${columns.join(
+            ', '
+          )}) VALUES (${columns.map(() => '?').join(', ')})`,
+          values
         );
 
-        console.log('Added Cloudinary URL to add_photo_operations table');
+        console.log(
+          `Added Cloudinary URL to add_photo_operations table for ${
+            isSignature ? 'signature' : 'photo'
+          }`
+        );
       }
     } catch (error) {
       console.error('Error in uploadFile:', error);
@@ -209,37 +229,21 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
 
   async deleteFile(
     uri: string,
-    options?: { filename?: string }
+    options?: {
+      filename?: string;
+      scheduleId?: string;
+      cloudinaryUrl?: string;
+    }
   ): Promise<void> {
-    if (await this.fileExists(uri)) {
-      await FileSystem.deleteAsync(uri);
-    }
-
-    const { filename } = options ?? {};
-    if (!filename) {
-      return;
-    }
-
     try {
-      const response = await this.client.getDeleteUrl<CloudinaryDelete>(
-        'cloudinary-delete',
-        {
-          body: {
-            fileName: filename,
-          },
-        }
-      );
-
-      if (response.error || !response.data) {
-        throw new Error(
-          `Failed to reach delete edge function, code=${response.error}`
-        );
+      // Delete the file locally if it exists
+      if (await this.fileExists(uri)) {
+        await FileSystem.deleteAsync(uri);
       }
 
-      const { message } = response.data;
-      console.log(message);
     } catch (error) {
-      console.error(`Error deleting ${filename}:`, error);
+      console.error(`Error in deleteFile:`, error);
+      throw error;
     }
   }
 

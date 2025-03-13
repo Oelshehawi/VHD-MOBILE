@@ -52,11 +52,8 @@ const delete_photo_operations = new Table(
   {
     // id column (text) is automatically included
     scheduleId: column.text, // Reference to schedule
-    remote_uri: column.text, // URL of the photo to delete
-    photoId: column.text, // ID of the photo to delete
-    timestamp: column.text, // When the delete operation occurred
-    technicianId: column.text, // Who deleted the photo
-    type: column.text, // Type of the photo ('before'/'after')
+    remote_uri: column.text, // The cloudinary URL to delete
+    photoId: column.text, // ID of the photo to delete (optional)
   },
   {
     insertOnly: true,
@@ -73,6 +70,8 @@ const add_photo_operations = new Table(
     technicianId: column.text, // Who added the photo
     type: column.text, // Type of the photo ('before'/'after')
     cloudinaryUrl: column.text, // URL returned from Cloudinary after upload
+    signerName: column.text, // Name of the signer
+    attachmentId: column.text, // ID of the attachment record
   },
   {
     insertOnly: true,
@@ -122,6 +121,10 @@ export const AppSchema = new Schema({
       }),
       new Column({
         name: 'technicianId',
+        type: ColumnType.TEXT,
+      }),
+      new Column({
+        name: 'signerName',
         type: ColumnType.TEXT,
       }),
     ],

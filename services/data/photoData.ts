@@ -1,5 +1,5 @@
 import { usePowerSync } from '@powersync/react-native';
-import { PhotoType, PhotosData } from '@/types';
+import { PhotosData } from '@/types';
 
 export async function updatePhotos(
   powerSync: ReturnType<typeof usePowerSync>,

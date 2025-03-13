@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -10,13 +10,20 @@ import {
 } from 'react-native';
 import SignatureCanvas from 'react-native-signature-canvas';
 import { usePowerSync } from '@powersync/react-native';
-import {
-  PhotoType,
-  showToast,
-  createOptimisticPhoto,
-  createPendingOp,
-  parsePhotosData,
-} from '@/utils/photos';
+import { PhotoType, showToast, SignatureType } from '@/utils/photos';
+import { useSystem } from '@/services/database/System';
+import * as FileSystem from 'expo-file-system';
+import { AttachmentRecord } from '@powersync/attachments';
+
+// Define extended attachment type locally
+interface ExtendedAttachmentRecord extends AttachmentRecord {
+  scheduleId?: string;
+  jobTitle?: string;
+  type?: 'before' | 'after' | 'signature';
+  startDate?: string;
+  technicianId?: string;
+  signerName?: string;
+}
 
 // Define ScheduleType interface to fix TS error
 interface ScheduleType {
@@ -32,6 +39,7 @@ interface SignatureCaptureProps {
   schedule: ScheduleType | null;
   visible: boolean;
   onClose: () => void;
+  startDate?: string;
 }
 
 export function SignatureCapture({
@@ -40,12 +48,14 @@ export function SignatureCapture({
   schedule,
   visible,
   onClose,
+  startDate,
 }: SignatureCaptureProps) {
   const signatureRef = useRef<any>(null);
   const [signerName, setSignerName] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const powerSync = usePowerSync();
+  const system = useSystem();
 
   // Check if signature exists
   const hasSignature = !!schedule?.signature;
@@ -61,50 +71,43 @@ export function SignatureCapture({
       return;
     }
 
+    if (!system?.attachmentQueue) {
+      Alert.alert('Error', 'System is not properly initialized');
+      return;
+    }
+
     try {
       setIsSaving(true);
 
-      // Create signature object using utility function
-      const signatureData = createOptimisticPhoto(
-        signature,
-        technicianId,
-        'signature',
-        signerName.trim()
-      );
+      // Create a temporary file path for the signature image
+      const tempFilePath = `${
+        FileSystem.cacheDirectory
+      }temp_signature_${Date.now()}.png`;
 
-      // Save to local database with pendingOps
-      await powerSync.writeTransaction(async (tx) => {
-        // Get current photos data
-        const dbResult = await tx.getAll<{ photos: string }>(
-          `SELECT photos FROM schedules WHERE id = ?`,
-          [schedule.id]
-        );
+      // The signature is in a base64 format - extract the data part
+      const signatureData = signature.split(',')[1];
 
-        // Parse photos data using utility function
-        const currentPhotos = parsePhotosData(dbResult?.[0]?.photos);
-
-        // Create pending operation for the signature
-        const pendingOp = createPendingOp('add', signatureData, schedule.id);
-
-        // Update photos object with pendingOp
-        const updatedPhotos = {
-          ...currentPhotos,
-          pendingOps: [...currentPhotos.pendingOps, pendingOp],
-        };
-
-        // Update database without using metadata
-        await tx.execute(
-          `UPDATE schedules SET 
-            signature = ?,
-            photos = ?
-          WHERE id = ?`,
-          [
-            JSON.stringify(signatureData),
-            JSON.stringify(updatedPhotos),
-            schedule.id,
-          ]
-        );
+      // Write the base64 data to a temporary file
+      await FileSystem.writeAsStringAsync(tempFilePath, signatureData, {
+        encoding: FileSystem.EncodingType.Base64,
       });
+
+      // Get the queue from system
+      const queue = system.attachmentQueue;
+
+      // Save the signature with the signerName
+      const attachmentRecord = (await queue.savePhotoFromUri(
+        tempFilePath,
+        schedule.id,
+        schedule.jobTitle,
+        'signature', // Set type as signature
+        startDate,
+        technicianId,
+        signerName // Pass the signer name
+      )) as ExtendedAttachmentRecord;
+
+      // Clean up the temporary file
+      await FileSystem.deleteAsync(tempFilePath, { idempotent: true });
 
       showToast('Signature saved and will sync when online');
       onSignatureCapture();
