@@ -1,8 +1,5 @@
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
-import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { Platform, Alert, ToastAndroid } from 'react-native';
-import { randomUUID } from 'expo-crypto';
 
 /**
  * Photo type interface used throughout the application

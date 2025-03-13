@@ -27,7 +27,7 @@ export default function TabLayout() {
     }
   }, [isLoaded]);
 
-  system?.attachmentQueue?.logAttachments();
+  // system?.attachmentQueue?.logAttachments();
 
   return (
     <ClerkLoaded>

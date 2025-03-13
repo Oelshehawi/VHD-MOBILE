@@ -41,6 +41,11 @@ interface AttachmentOperation {
   attachmentId?: string;
 }
 
+// Define type for photo data from database
+interface PhotosData {
+  photos: string;
+}
+
 export function PhotoCapture({
   technicianId,
   photos = [],
@@ -58,6 +63,7 @@ export function PhotoCapture({
     attachmentId?: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [isReady, setIsReady] = useState(false);
   const powerSync = usePowerSync();
   const system = useSystem();
 
@@ -68,6 +74,15 @@ export function PhotoCapture({
     { uri: string; title?: string }[]
   >([]);
 
+  // Mark component as ready after a short delay
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, []);
+
   // Prepare gallery images whenever photos change
   useEffect(() => {
     const images = photos.map((photo) => ({
@@ -76,6 +91,23 @@ export function PhotoCapture({
     }));
     setGalleryImages(images);
   }, [photos, type]);
+
+  // Add a timeout effect to automatically hide the loading modal
+  // This prevents the modal from getting stuck if there's an issue
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+
+    if (isUploading) {
+      // Set a maximum timeout for the loading state (5 seconds)
+      timeout = setTimeout(() => {
+        setIsUploading(false);
+      }, 5000);
+    }
+
+    return () => {
+      if (timeout) clearTimeout(timeout);
+    };
+  }, [isUploading]);
 
   /**
    * Handle photo selection from the PhotoCaptureModal
@@ -100,27 +132,93 @@ export function PhotoCapture({
       // Array to store the new photo objects
       const newPhotos: EnhancedPhotoType[] = [];
 
-      // Process all photos directly from URI without base64 conversion
+      // Begin transaction to update the schedules table
+      await powerSync.writeTransaction(async (tx) => {
+        // First, get the current photos JSON from the schedules table
+        const currentPhotosData = await tx.getAll<PhotosData>(
+          `SELECT photos FROM schedules WHERE id = ?`,
+          [scheduleId]
+        );
+
+        // Parse the current photos
+        let currentPhotos: PhotoType[] = [];
+        if (currentPhotosData.length > 0 && currentPhotosData[0].photos) {
+          try {
+            currentPhotos = JSON.parse(
+              currentPhotosData[0].photos
+            ) as PhotoType[];
+          } catch (e) {
+            console.error('Error parsing existing photos:', e);
+            currentPhotos = [];
+          }
+        }
+
+        // Process all photos first and add them to the arrays
+        for (const asset of result.assets) {
+          try {
+            // Get file info to check if it exists
+            const fileInfo = await FileSystem.getInfoAsync(asset.uri);
+            if (!fileInfo.exists) {
+              console.error(`File does not exist: ${asset.uri}`);
+              continue;
+            }
+
+            // Create a new photo object for immediate UI update
+            const newPhotoId = `local_${Date.now()}_${Math.random()
+              .toString(36)
+              .substring(2, 9)}`;
+            const newPhoto: PhotoType = {
+              _id: newPhotoId,
+              id: newPhotoId, // Required field in PhotoType
+              url: asset.uri,
+              type: type,
+              timestamp: new Date().toISOString(),
+              status: 'pending',
+              technicianId: technicianId,
+            };
+
+            // Add to newPhotos array for UI feedback
+            newPhotos.push(newPhoto as EnhancedPhotoType);
+
+            // Add to current photos array for database update
+            currentPhotos.push(newPhoto);
+          } catch (assetError) {
+            console.error('Error processing photo asset:', assetError);
+          }
+        }
+
+        // Update the schedules table with all new photos at once
+        await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
+          JSON.stringify(currentPhotos),
+          scheduleId,
+        ]);
+      });
+
+      // Close the modal immediately after updating the schedules table
+      // This allows the UI to update with the pending photos
+      setShowModal(false);
+
+      // After a short delay, reset the uploading state
+      // to hide the loading indicator, while still showing the pending state on photos
+      setTimeout(() => {
+        setIsUploading(false);
+      }, 1000);
+
+      // After updating the schedules table, queue the attachments
+      // This happens outside the transaction to prevent locking issues
       for (const asset of result.assets) {
         try {
-          // Get file info to check if it exists
-          const fileInfo = await FileSystem.getInfoAsync(asset.uri);
-          if (!fileInfo.exists) {
-            console.error(`File does not exist: ${asset.uri}`);
-            continue;
-          }
-
-          // Use the direct URI method instead of reading and converting to base64
-          const attachmentRecord = (await queue.savePhotoFromUri(
+          await queue.savePhotoFromUri(
             asset.uri,
             scheduleId,
             jobTitle,
             type,
             startDate,
             technicianId
-          )) as ExtendedAttachmentRecord;
-        } catch (assetError) {
-          console.error('Error processing photo asset:', assetError);
+          );
+        } catch (uploadError) {
+          console.error('Error queuing photo for upload:', uploadError);
+          // Continue processing other photos even if one fails
         }
       }
 
@@ -138,7 +236,6 @@ export function PhotoCapture({
           ? error.message
           : 'Failed to save photo. Please try again.'
       );
-    } finally {
       setIsUploading(false);
       setShowModal(false);
     }
@@ -163,10 +260,39 @@ export function PhotoCapture({
 
       // Keep track of the photo details for optimistic update
       const photoUrl = photoToDelete.url;
+      const photoId = photoToDelete.id;
 
       // Begin a transaction to ensure atomicity
       await powerSync.writeTransaction(async (tx) => {
-        // First, insert into delete_photo_operations table to record the deletion
+        // First, get the current photos JSON from the schedules table
+        const currentPhotosData = await tx.getAll<PhotosData>(
+          `SELECT photos FROM schedules WHERE id = ?`,
+          [scheduleId]
+        );
+
+        // Parse the current photos and filter out the deleted photo
+        let currentPhotos: PhotoType[] = [];
+        if (currentPhotosData.length > 0 && currentPhotosData[0].photos) {
+          try {
+            currentPhotos = JSON.parse(
+              currentPhotosData[0].photos
+            ) as PhotoType[];
+            // Remove the photo being deleted
+            currentPhotos = currentPhotos.filter(
+              (photo: PhotoType) => photo._id !== photoId
+            );
+          } catch (e) {
+            console.error('Error parsing existing photos:', e);
+          }
+        }
+
+        // Update the schedules table with the filtered photos
+        await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
+          JSON.stringify(currentPhotos),
+          scheduleId,
+        ]);
+
+        // Insert into delete_photo_operations table to record the deletion
         // This will be synced to the server which will handle both Cloudinary and DB deletion
         await tx.execute(
           `INSERT INTO delete_photo_operations (id, scheduleId, remote_uri) VALUES (?, ?, ?)`,
@@ -249,24 +375,7 @@ export function PhotoCapture({
     setGalleryVisible(true);
   };
 
-  // Get the color theme based on photo type
-  const getColorTheme = () => {
-    return type === 'before'
-      ? {
-          light: '#dbeafe',
-          medium: '#3b82f6',
-          dark: '#1d4ed8',
-          text: 'Before',
-        }
-      : {
-          light: '#dcfce7',
-          medium: '#10b981',
-          dark: '#047857',
-          text: 'After',
-        };
-  };
-
-  const isLoading = externalLoading || isUploading;
+  const isLoading = (isReady && externalLoading) || isUploading;
 
   return (
     <View className='flex-1 mb-6'>
@@ -338,8 +447,8 @@ export function PhotoCapture({
         doubleTapToZoomEnabled={true}
       />
 
-      {/* Loading indicator */}
-      <LoadingModal visible={isLoading} type={type} />
+      {/* Loading indicator - only show when component is ready */}
+      {isReady && <LoadingModal visible={isLoading} type={type} />}
     </View>
   );
 }

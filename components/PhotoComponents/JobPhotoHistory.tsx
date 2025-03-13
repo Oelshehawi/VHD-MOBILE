@@ -67,7 +67,7 @@ export function JobPhotoHistory({
          WHERE jobTitle = ? AND id != ? AND photos IS NOT NULL
          ORDER BY startDateTime DESC LIMIT 20`
       : `SELECT id FROM schedules WHERE 0`,
-    [jobTitle, scheduleId]
+    [jobTitle?.trim(), scheduleId]
   );
 
   // Process previous jobs data

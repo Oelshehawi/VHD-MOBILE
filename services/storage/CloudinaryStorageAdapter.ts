@@ -240,7 +240,6 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
       if (await this.fileExists(uri)) {
         await FileSystem.deleteAsync(uri);
       }
-
     } catch (error) {
       console.error(`Error in deleteFile:`, error);
       throw error;
