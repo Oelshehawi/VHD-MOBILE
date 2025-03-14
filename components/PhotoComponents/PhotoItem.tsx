@@ -6,7 +6,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { PhotoType } from '@/utils/photos';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 /**
  * Individual photo item component
  */
@@ -27,14 +27,19 @@ export function PhotoItem({
 }: PhotoItemProps) {
   const photoId = photo._id;
   const [imageError, setImageError] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
   // Enhanced detection of local/pending photos
   const isLocalUrl =
-    photo.url?.startsWith('local://') || photo.url?.startsWith('file://');
+    photo.url?.startsWith('local://') ||
+    photo.url?.startsWith('file://') ||
+    photo.url?.startsWith('content://');
+
   const isPending =
     photo.status === 'pending' ||
     isLocalUrl ||
     !photo.url?.includes('cloudinary');
+
   const isFailed = photo.status === 'failed' || imageError;
 
   return (
@@ -56,23 +61,31 @@ export function PhotoItem({
             className='w-full h-full'
             resizeMode='cover'
             onError={() => setImageError(true)}
+            onLoad={() => setImageLoaded(true)}
           />
         )}
 
-        {/* Status indicator */}
+        {/* Status indicator - enhanced for more visibility */}
         {isPending && (
-          <View className='absolute inset-0 flex items-center justify-center bg-black/20'>
-            <ActivityIndicator size='large' color='#ffffff' />
-            <Text className='text-white text-xs font-medium mt-2 px-2 text-center'>
-              Uploading...
-            </Text>
+          <View className='absolute inset-0 flex items-center justify-center bg-black/40'>
+            <View className='bg-black/70 p-3 rounded-lg items-center'>
+              <ActivityIndicator size='large' color='#ffffff' />
+              <Text className='text-white text-sm font-bold mt-2 px-2 text-center'>
+                Uploading...
+              </Text>
+            </View>
           </View>
         )}
 
         {/* Failed upload indicator */}
         {isFailed && (
-          <View className='absolute top-2 left-2 w-5 h-5 rounded-full justify-center items-center bg-red-500'>
-            <Text className='text-white text-xs font-bold'>!</Text>
+          <View className='absolute inset-0 items-center justify-center bg-black/40'>
+            <View className='bg-red-500/80 p-3 rounded-lg items-center'>
+              <Text className='text-white text-2xl font-bold'>!</Text>
+              <Text className='text-white text-xs font-medium mt-1'>
+                Upload Failed
+              </Text>
+            </View>
           </View>
         )}
 
@@ -91,9 +104,11 @@ export function PhotoItem({
           onPress={() =>
             onDelete(photoId as string, photo.url || '', photo.attachmentId)
           }
-          className='absolute top-2 right-2 bg-red-500 w-[22px] h-[22px] rounded-full items-center justify-center opacity-90'
+          className={`absolute top-2 right-2 ${
+            isPending ? 'bg-gray-400' : 'bg-red-500'
+          } w-[22px] h-[22px] rounded-full items-center justify-center opacity-90`}
           hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          disabled={isDeleting}
+          disabled={isDeleting || isPending}
         >
           <Text className='text-white text-xs font-bold leading-[18px]'>✕</Text>
         </TouchableOpacity>

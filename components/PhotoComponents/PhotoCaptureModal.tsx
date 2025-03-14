@@ -125,7 +125,7 @@ export function PhotoCaptureModal({
           </Text>
 
           <View className='mb-6'>
-            <TouchableOpacity
+            {/* <TouchableOpacity
               onPress={() => handleImageSelection('camera')}
               className='bg-gray-50 rounded-xl p-4 mb-3 flex-row items-center border border-gray-200'
               activeOpacity={0.8}
@@ -141,7 +141,7 @@ export function PhotoCaptureModal({
                   Use your camera to take new photos
                 </Text>
               </View>
-            </TouchableOpacity>
+            </TouchableOpacity> */}
 
             <TouchableOpacity
               onPress={() => handleImageSelection('gallery')}

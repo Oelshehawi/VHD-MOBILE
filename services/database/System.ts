@@ -36,7 +36,7 @@ export class System {
       storage: this.storage,
       // Use this to handle download errors where you can use the attachment
       // and/or the exception to decide if you want to retry the download
-      onDownloadError: async (attachment: AttachmentRecord, exception: any) => {
+      onUploadError: async (attachment: AttachmentRecord, exception: any) => {
         if (exception.toString() === 'StorageApiError: Object not found') {
           return { retry: false };
         }

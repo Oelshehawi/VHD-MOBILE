@@ -85,7 +85,6 @@ export function DailyAgenda({
       setSelectedScheduleForInvoice(schedule);
       setInvoiceModalVisible(true);
     } else {
-
     }
   };
 
@@ -186,6 +185,21 @@ export function DailyAgenda({
                                     ? 'Assigned'
                                     : 'Unassigned'}
                                 </Text>
+
+                                {/* Add technician notes indicator below the job info */}
+                                {showNotificationBadge && (
+                                  <View className='mb-2 flex-row items-center bg-red-50 px-2 py-1 rounded-md'>
+                                    <Ionicons
+                                      name='document-text'
+                                      size={14}
+                                      color='#EF4444'
+                                    />
+                                    <Text className='text-xs text-red-600 font-medium ml-1'>
+                                      Technician Notes
+                                    </Text>
+                                  </View>
+                                )}
+
                                 <View className='flex-row items-center'>
                                   <Ionicons
                                     name='location-outline'
@@ -215,10 +229,7 @@ export function DailyAgenda({
                                     color='#ffffff'
                                   />
 
-                                  {/* Notification Badge for Technician Notes */}
-                                  {showNotificationBadge && (
-                                    <View className='absolute -top-1 -right-1 bg-red-500 rounded-full w-3 h-3'></View>
-                                  )}
+                                  {/* Remove notification badge from here */}
                                 </TouchableOpacity>
 
                                 {/* Map Button */}

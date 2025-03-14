@@ -27,9 +27,10 @@
         "distribution": "internal"
       },
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "PRODUCTION",
         "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app",
-        "EXPO_PUBLIC_POWERSYNC_URL": "https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com"
+        "EXPO_PUBLIC_POWERSYNC_URL": "https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "dhu4yrn5k",
+        "EXPO_PUBLIC_CLOUDINARY_API_KEY": "396547584819121"
       },
       "channel": "preview"
     },
@@ -42,9 +43,9 @@
         "distribution": "store"
       },
       "env": {
-        "EXPO_PUBLIC_APP_ENV": "PRODUCTION",
         "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app",
         "EXPO_PUBLIC_POWERSYNC_URL": "https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com"
+
       },
       "channel": "production"
     },

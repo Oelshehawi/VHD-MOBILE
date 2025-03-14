@@ -17,13 +17,6 @@ interface EnhancedPhotoType extends PhotoType {
   attachmentId?: string;
 }
 
-// Define extended attachment type locally
-interface ExtendedAttachmentRecord extends AttachmentRecord {
-  scheduleId?: string;
-  jobTitle?: string;
-  type?: 'before' | 'after';
-  startDate?: string;
-}
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -34,6 +27,7 @@ interface PhotoCaptureProps {
   scheduleId?: string;
   isLoading?: boolean;
   startDate?: string;
+  onPhotosAdded?: (newPhotos: PhotoType[]) => void;
 }
 
 // Define type for query results
@@ -54,6 +48,7 @@ export function PhotoCapture({
   jobTitle,
   startDate,
   isLoading: externalLoading = false,
+  onPhotosAdded,
 }: PhotoCaptureProps) {
   const [showModal, setShowModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -92,22 +87,6 @@ export function PhotoCapture({
     setGalleryImages(images);
   }, [photos, type]);
 
-  // Add a timeout effect to automatically hide the loading modal
-  // This prevents the modal from getting stuck if there's an issue
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-
-    if (isUploading) {
-      // Set a maximum timeout for the loading state (5 seconds)
-      timeout = setTimeout(() => {
-        setIsUploading(false);
-      }, 5000);
-    }
-
-    return () => {
-      if (timeout) clearTimeout(timeout);
-    };
-  }, [isUploading]);
 
   /**
    * Handle photo selection from the PhotoCaptureModal
@@ -163,19 +142,25 @@ export function PhotoCapture({
               continue;
             }
 
-            // Create a new photo object for immediate UI update
-            const newPhotoId = `local_${Date.now()}_${Math.random()
-              .toString(36)
-              .substring(2, 9)}`;
+            // Create a unique ID with timestamp to ensure uniqueness
+            const timestamp = Date.now();
+            const randomStr = Math.random().toString(36).substring(2, 9);
+            const newPhotoId = `local_${timestamp}_${randomStr}`;
+
+            // Create a new photo object with explicit pending status
             const newPhoto: PhotoType = {
               _id: newPhotoId,
-              id: newPhotoId, // Required field in PhotoType
+              id: newPhotoId,
               url: asset.uri,
               type: type,
               timestamp: new Date().toISOString(),
               status: 'pending',
               technicianId: technicianId,
             };
+
+            console.log(
+              `Created new photo with ID ${newPhotoId} and status pending`
+            );
 
             // Add to newPhotos array for UI feedback
             newPhotos.push(newPhoto as EnhancedPhotoType);
@@ -195,8 +180,13 @@ export function PhotoCapture({
       });
 
       // Close the modal immediately after updating the schedules table
-      // This allows the UI to update with the pending photos
       setShowModal(false);
+
+      // Notify parent component of new photos BEFORE starting upload
+      if (onPhotosAdded && newPhotos.length > 0) {
+        console.log(`Notifying parent of ${newPhotos.length} new photos`);
+        onPhotosAdded(newPhotos);
+      }
 
       // After a short delay, reset the uploading state
       // to hide the loading indicator, while still showing the pending state on photos
@@ -204,7 +194,7 @@ export function PhotoCapture({
         setIsUploading(false);
       }, 1000);
 
-      // After updating the schedules table, queue the attachments
+      // After notifying parent, queue the attachments
       // This happens outside the transaction to prevent locking issues
       for (const asset of result.assets) {
         try {
