@@ -34,6 +34,7 @@ export class System {
     this.attachmentQueue = new PhotoAttachmentQueue({
       powersync: this.powersync,
       storage: this.storage,
+      performInitialSync: false,
       // Use this to handle download errors where you can use the attachment
       // and/or the exception to decide if you want to retry the download
       onUploadError: async (attachment: AttachmentRecord, exception: any) => {

@@ -24,8 +24,8 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       console.debug(
         'No Cloudinary API Key configured, skip setting up PhotoAttachmentQueue watches'
       );
-      // Disable sync interval to prevent errors from trying to sync to a non-existent bucket
-      this.options.syncInterval = 0;
+      // Set a reasonable interval instead of disabling
+      this.options.syncInterval = 10000; // 10 seconds
       return;
     }
 
@@ -33,15 +33,18 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
   }
 
   onAttachmentIdsChange(onUpdate: (ids: string[]) => void): void {
-    onUpdate([]);
-    // this.powersync.watch(
-    //   `SELECT id FROM ${SCHEDULES_TABLE} WHERE photos IS NOT NULL`,
-    //   [],
-    //   {
-    //     onResult: (result) =>
-    //       onUpdate(result.rows?._array.map((r) => r.id) ?? []),
-    //   }
-    // );
+    // Watch the attachments table directly for queued uploads
+    this.powersync.watch(
+      `SELECT id FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
+      [AttachmentState.QUEUED_UPLOAD],
+      {
+        onResult: (result) => {
+          const ids = result.rows?._array.map((r) => r.id) ?? [];
+          console.log(`📋 Found ${ids.length} attachments to process`);
+          onUpdate(ids);
+        },
+      }
+    );
   }
 
   /**
@@ -132,6 +135,112 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     }
 
     return savedRecord as ExtendedAttachmentRecord;
+  }
+
+  /**
+   * Save multiple photos to the attachment queue in a single transaction
+   * @param photoData Array of photo data including source URI and metadata
+   * @returns Array of saved attachment records
+   */
+  async saveMultiplePhotosFromUri(
+    photoData: Array<{
+      sourceUri: string;
+      scheduleId: string;
+      jobTitle?: string;
+      type?: 'before' | 'after' | 'signature';
+      startDate?: string;
+      technicianId?: string;
+      signerName?: string;
+    }>
+  ): Promise<ExtendedAttachmentRecord[]> {
+    try {
+      // Use a transaction to ensure all photos are added to the queue
+      return await this.powersync.writeTransaction(async (tx) => {
+        const savedAttachments: ExtendedAttachmentRecord[] = [];
+
+        for (let i = 0; i < photoData.length; i++) {
+          const photo = photoData[i];
+
+          // Create a new attachment record
+          const photoAttachment = await this.newAttachmentRecord({
+            scheduleId: photo.scheduleId,
+            jobTitle: photo.jobTitle,
+            type: photo.type,
+            startDate: photo.startDate,
+            technicianId: photo.technicianId,
+            signerName: photo.signerName,
+          });
+
+          // Set the local URI path
+          photoAttachment.local_uri = this.getLocalFilePathSuffix(
+            photoAttachment.filename
+          );
+          const destinationUri = this.getLocalUri(photoAttachment.local_uri);
+
+          // Copy the file directly instead of using base64
+          await FileSystem.copyAsync({
+            from: photo.sourceUri,
+            to: destinationUri,
+          });
+
+          // Get file info
+          const fileInfo = await FileSystem.getInfoAsync(destinationUri);
+          if (fileInfo.exists) {
+            photoAttachment.size = fileInfo.size;
+          } else {
+            console.warn('File was copied but not found in getInfoAsync check');
+          }
+
+          // Save to queue within the transaction
+          const savedRecord = await this.saveToQueueInTransaction(
+            tx,
+            photoAttachment
+          );
+
+          savedAttachments.push(savedRecord as ExtendedAttachmentRecord);
+        }
+
+        return savedAttachments;
+      });
+    } catch (error) {
+      console.error('Error in saveMultiplePhotosFromUri:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper method to save an attachment to the queue within a transaction
+   * @param tx Transaction object
+   * @param record Attachment record to save
+   * @returns The saved attachment record
+   */
+  private async saveToQueueInTransaction(
+    tx: any,
+    record: ExtendedAttachmentRecord
+  ): Promise<ExtendedAttachmentRecord> {
+    // Insert core attachment data with custom fields in a single operation
+    await tx.execute(
+      `INSERT INTO ${ATTACHMENT_TABLE} (
+        id, filename, local_uri, media_type, state, size, 
+        scheduleId, jobTitle, type, startDate, technicianId, signerName
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        record.id,
+        record.filename,
+        record.local_uri,
+        record.media_type,
+        record.state,
+        record.size || null,
+        record.scheduleId || null,
+        record.jobTitle || null,
+        record.type || null,
+        record.startDate || null,
+        record.technicianId || null,
+        record.signerName || null,
+      ]
+    );
+
+    return record;
   }
 
   async newAttachmentRecord(

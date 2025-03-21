@@ -249,6 +249,15 @@ export class ApiClient {
         return {
           eq: async (field: string, value: string) => {
             try {
+              // Special handling for schedules table with technician notes updates
+              if (table === 'schedules' && data.technicianNotes !== undefined) {
+                return await this.updateTechnicianNotes(
+                  value,
+                  data.technicianNotes
+                );
+              }
+
+              // Default handling for other updates
               const response = await fetch(
                 `${this.baseUrl}/api/${table}?${field}=${value}`,
                 {
@@ -515,6 +524,72 @@ export class ApiClient {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
+    }
+  }
+
+  /**
+   * Update technician notes for a schedule
+   * @param scheduleId ID of the schedule to update
+   * @param technicianNotes New technician notes content
+   * @returns Result of the update operation
+   */
+  async updateTechnicianNotes(scheduleId: string, technicianNotes: string) {
+    try {
+      if (!scheduleId) {
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      const requestBody = {
+        scheduleId,
+        technicianNotes,
+      };
+
+      // Make API call to update technician notes
+      const response = await fetch(
+        `${this.baseUrl}/api/updateTechnicianNotes`,
+        {
+          method: 'POST',
+          headers: {
+            ...this.headers,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody),
+        }
+      );
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
+        throw new Error(
+          errorData.details ||
+            errorData.error ||
+            errorData.message ||
+            `Update failed with status ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+        };
+      }
+
+      throw error;
     }
   }
 }

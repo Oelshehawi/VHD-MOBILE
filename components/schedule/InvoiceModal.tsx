@@ -1,11 +1,127 @@
-import { useState, useEffect } from 'react';
-import { View, Text, Modal, TouchableOpacity, ScrollView } from 'react-native';
+import { useState } from 'react';
+import {
+  View,
+  Text,
+  Modal,
+  TouchableOpacity,
+  ScrollView,
+  TextInput,
+  Alert,
+} from 'react-native';
 import { InvoiceType } from '@/types';
 import { formatDateReadable } from '@/utils/date';
 import { SignatureCapture } from './SignatureCapture';
-import { useQuery } from '@powersync/react-native';
+import { useQuery, usePowerSync } from '@powersync/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
+
+// TechnicianNotes component to encapsulate the notes editing functionality
+function TechnicianNotes({
+  schedule,
+  scheduleId,
+  isManager,
+}: {
+  schedule: any;
+  scheduleId: string;
+  isManager: boolean;
+}) {
+  const [editingNotes, setEditingNotes] = useState(false);
+  const [technicianNotes, setTechnicianNotes] = useState(
+    schedule?.technicianNotes || ''
+  );
+  const [isSaving, setIsSaving] = useState(false);
+  const powerSync = usePowerSync();
+
+  // Function to save updated technicianNotes
+  const saveTechnicianNotes = async () => {
+    if (!scheduleId) return;
+
+    try {
+      setIsSaving(true);
+
+      // Update local PowerSync database
+      await powerSync.execute(
+        `UPDATE schedules SET technicianNotes = ? WHERE id = ?`,
+        [technicianNotes, scheduleId]
+      );
+
+      // Show success message
+      Alert.alert('Success', 'Notes saved successfully');
+      setEditingNotes(false);
+    } catch (error) {
+      console.error('Error saving technician notes:', error);
+      Alert.alert('Error', 'Failed to save notes. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <View className='flex flex-col gap-4'>
+      <View className='flex-row justify-between items-center'>
+        <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+          Technician Notes
+        </Text>
+        {!isManager && !editingNotes && (
+          <TouchableOpacity
+            onPress={() => setEditingNotes(true)}
+            className='px-3 py-1 bg-darkGreen rounded-lg'
+          >
+            <Text className='text-white font-medium'>Edit</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+
+      {editingNotes ? (
+        <View className='flex flex-col gap-3'>
+          <TextInput
+            className='bg-white dark:bg-gray-700 p-4 rounded-lg text-gray-700 dark:text-gray-300 min-h-[100px]'
+            multiline
+            value={technicianNotes}
+            onChangeText={setTechnicianNotes}
+            placeholder='Enter notes about the work completed...'
+            placeholderTextColor='#9CA3AF'
+          />
+          <View className='flex-row justify-end gap-3'>
+            <TouchableOpacity
+              onPress={() => {
+                setTechnicianNotes(schedule?.technicianNotes || '');
+                setEditingNotes(false);
+              }}
+              className='px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-lg'
+              disabled={isSaving}
+            >
+              <Text className='text-gray-700 dark:text-gray-300 font-medium'>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={saveTechnicianNotes}
+              className='px-4 py-2 bg-darkGreen rounded-lg'
+              disabled={isSaving}
+            >
+              <Text className='text-white font-medium'>
+                {isSaving ? 'Saving...' : 'Save'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      ) : (
+        <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+          {schedule?.technicianNotes ? (
+            <Text className='text-gray-700 dark:text-gray-300'>
+              {schedule.technicianNotes}
+            </Text>
+          ) : (
+            <Text className='text-gray-500 dark:text-gray-400 italic'>
+              No technician notes yet
+            </Text>
+          )}
+        </View>
+      )}
+    </View>
+  );
+}
 
 interface InvoiceModalProps {
   visible: boolean;
@@ -28,6 +144,7 @@ export function InvoiceModal({
   isManager,
 }: InvoiceModalProps) {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const powerSync = usePowerSync();
 
   // First fetch the schedule using the scheduleId
   const { data: scheduleData = [] } = useQuery<any>(
@@ -153,19 +270,12 @@ export function InvoiceModal({
           Work Documentation
         </Text>
 
-        {/* Technician Notes */}
-        {schedule?.technicianNotes && (
-          <View className='flex flex-col gap-4'>
-            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-              Technician Notes
-            </Text>
-            <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-              <Text className='text-gray-700 dark:text-gray-300'>
-                {schedule.technicianNotes}
-              </Text>
-            </View>
-          </View>
-        )}
+        {/* Technician Notes - Now using separate component */}
+        <TechnicianNotes
+          schedule={schedule}
+          scheduleId={scheduleId}
+          isManager={isManager}
+        />
 
         {/* Work Documentation Status */}
         <View className='flex flex-col gap-4'>

@@ -17,7 +17,6 @@ interface EnhancedPhotoType extends PhotoType {
   attachmentId?: string;
 }
 
-
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
   technicianId: string;
@@ -87,7 +86,6 @@ export function PhotoCapture({
     setGalleryImages(images);
   }, [photos, type]);
 
-
   /**
    * Handle photo selection from the PhotoCaptureModal
    */
@@ -108,108 +106,42 @@ export function PhotoCapture({
       // Get the queue from system
       const queue = system.attachmentQueue;
 
-      // Array to store the new photo objects
-      const newPhotos: EnhancedPhotoType[] = [];
-
-      // Begin transaction to update the schedules table
-      await powerSync.writeTransaction(async (tx) => {
-        // First, get the current photos JSON from the schedules table
-        const currentPhotosData = await tx.getAll<PhotosData>(
-          `SELECT photos FROM schedules WHERE id = ?`,
-          [scheduleId]
-        );
-
-        // Parse the current photos
-        let currentPhotos: PhotoType[] = [];
-        if (currentPhotosData.length > 0 && currentPhotosData[0].photos) {
-          try {
-            currentPhotos = JSON.parse(
-              currentPhotosData[0].photos
-            ) as PhotoType[];
-          } catch (e) {
-            console.error('Error parsing existing photos:', e);
-            currentPhotos = [];
-          }
-        }
-
-        // Process all photos first and add them to the arrays
-        for (const asset of result.assets) {
-          try {
-            // Get file info to check if it exists
-            const fileInfo = await FileSystem.getInfoAsync(asset.uri);
-            if (!fileInfo.exists) {
-              console.error(`File does not exist: ${asset.uri}`);
-              continue;
-            }
-
-            // Create a unique ID with timestamp to ensure uniqueness
-            const timestamp = Date.now();
-            const randomStr = Math.random().toString(36).substring(2, 9);
-            const newPhotoId = `local_${timestamp}_${randomStr}`;
-
-            // Create a new photo object with explicit pending status
-            const newPhoto: PhotoType = {
-              _id: newPhotoId,
-              id: newPhotoId,
-              url: asset.uri,
-              type: type,
-              timestamp: new Date().toISOString(),
-              status: 'pending',
-              technicianId: technicianId,
-            };
-
-            console.log(
-              `Created new photo with ID ${newPhotoId} and status pending`
-            );
-
-            // Add to newPhotos array for UI feedback
-            newPhotos.push(newPhoto as EnhancedPhotoType);
-
-            // Add to current photos array for database update
-            currentPhotos.push(newPhoto);
-          } catch (assetError) {
-            console.error('Error processing photo asset:', assetError);
-          }
-        }
-
-        // Update the schedules table with all new photos at once
-        await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
-          JSON.stringify(currentPhotos),
-          scheduleId,
-        ]);
-      });
-
-      // Close the modal immediately after updating the schedules table
+      // Close the modal immediately to show the blocking UI
       setShowModal(false);
 
-      // Notify parent component of new photos BEFORE starting upload
+      // Prepare batch data for all selected photos
+      const photoBatch = result.assets.map((asset) => ({
+        sourceUri: asset.uri,
+        scheduleId,
+        jobTitle,
+        type,
+        startDate,
+        technicianId,
+      }));
+
+      // Process all photos in a single batch transaction
+      // This ensures all photos are added to the queue before proceeding
+      const savedAttachments = await queue.saveMultiplePhotosFromUri(
+        photoBatch
+      );
+
+      // Create photo objects for UI from the saved attachments
+      const newPhotos: PhotoType[] = savedAttachments.map((attachment) => ({
+        _id: attachment.id,
+        id: attachment.id,
+        url: attachment.local_uri
+          ? queue.getLocalUri(attachment.local_uri)
+          : '',
+        type: type,
+        timestamp: new Date().toISOString(),
+        status: 'pending',
+        technicianId: technicianId,
+      }));
+
+      // ONLY notify parent of new photos AFTER they've been successfully added to the queue
       if (onPhotosAdded && newPhotos.length > 0) {
         console.log(`Notifying parent of ${newPhotos.length} new photos`);
         onPhotosAdded(newPhotos);
-      }
-
-      // After a short delay, reset the uploading state
-      // to hide the loading indicator, while still showing the pending state on photos
-      setTimeout(() => {
-        setIsUploading(false);
-      }, 1000);
-
-      // After notifying parent, queue the attachments
-      // This happens outside the transaction to prevent locking issues
-      for (const asset of result.assets) {
-        try {
-          await queue.savePhotoFromUri(
-            asset.uri,
-            scheduleId,
-            jobTitle,
-            type,
-            startDate,
-            technicianId
-          );
-        } catch (uploadError) {
-          console.error('Error queuing photo for upload:', uploadError);
-          // Continue processing other photos even if one fails
-        }
       }
 
       // Show success message for UI feedback
@@ -224,10 +156,11 @@ export function PhotoCapture({
         'Error',
         error instanceof Error
           ? error.message
-          : 'Failed to save photo. Please try again.'
+          : 'Failed to save photos. Please try again.'
       );
+    } finally {
+      // Always unblock UI even if there was an error
       setIsUploading(false);
-      setShowModal(false);
     }
   };
 

@@ -104,12 +104,18 @@ export class BackendConnector implements PowerSyncBackendConnector {
       // or edge functions to process the entire transaction in a single call.
       for (const op of transaction.crud) {
         lastOp = op;
-        if (op.table === 'schedules') {
-          console.log(
-            'Skipping upload of schedule - waiting for photos to upload first'
-          );
-          continue; // Skip to next operation
+
+        // Skip PATCH operations that are updating 'photos' field in 'schedules' table
+        if (
+          op.op === UpdateType.PATCH &&
+          op.table === 'schedules' &&
+          op.opData &&
+          'photos' in op.opData
+        ) {
+          console.log('Skipping photo update sync for schedules table:', op.id);
+          continue;
         }
+
         const table = this.apiClient.from(op.table);
         let result: any = null;
         switch (op.op) {
