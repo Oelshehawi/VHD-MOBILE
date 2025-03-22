@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
-  Alert,
 } from 'react-native';
 import { InvoiceType } from '@/types';
 import { formatDateReadable } from '@/utils/date';
@@ -14,6 +13,63 @@ import { SignatureCapture } from './SignatureCapture';
 import { useQuery, usePowerSync } from '@powersync/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
+
+// Reusable confirmation modal component
+function ConfirmationModal({
+  visible,
+  onClose,
+  onConfirm,
+  title,
+  message,
+  confirmText = 'Confirm',
+  isLoading = false,
+}: {
+  visible: boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+  title: string;
+  message: string;
+  confirmText?: string;
+  isLoading?: boolean;
+}) {
+  return (
+    <Modal
+      animationType='fade'
+      transparent={true}
+      visible={visible}
+      onRequestClose={onClose}
+    >
+      <View className='flex-1 justify-center items-center bg-black/50'>
+        <View className='bg-white dark:bg-gray-800 rounded-xl w-[90%] max-w-md p-5'>
+          <Text className='text-xl font-bold text-gray-900 dark:text-white mb-2'>
+            {title}
+          </Text>
+          <Text className='text-gray-700 dark:text-gray-300 mb-5'>
+            {message}
+          </Text>
+          <View className='flex-row justify-end gap-3'>
+            <TouchableOpacity
+              onPress={onClose}
+              className='px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg'
+              disabled={isLoading}
+            >
+
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={onConfirm}
+              className='px-4 py-2 bg-darkGreen rounded-lg'
+              disabled={isLoading}
+            >
+              <Text className='text-white font-medium'>
+                {isLoading ? 'Saving...' : confirmText}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
 
 // TechnicianNotes component to encapsulate the notes editing functionality
 function TechnicianNotes({
@@ -30,6 +86,7 @@ function TechnicianNotes({
     schedule?.technicianNotes || ''
   );
   const [isSaving, setIsSaving] = useState(false);
+  const [showConfirmation, setShowConfirmation] = useState(false);
   const powerSync = usePowerSync();
 
   // Function to save updated technicianNotes
@@ -45,12 +102,11 @@ function TechnicianNotes({
         [technicianNotes, scheduleId]
       );
 
-      // Show success message
-      Alert.alert('Success', 'Notes saved successfully');
-      setEditingNotes(false);
+      // Show success confirmation
+      setShowConfirmation(true);
     } catch (error) {
       console.error('Error saving technician notes:', error);
-      Alert.alert('Error', 'Failed to save notes. Please try again.');
+      setEditingNotes(false);
     } finally {
       setIsSaving(false);
     }
@@ -119,6 +175,22 @@ function TechnicianNotes({
           )}
         </View>
       )}
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        visible={showConfirmation}
+        onClose={() => {
+          setShowConfirmation(false);
+          setEditingNotes(false);
+        }}
+        onConfirm={() => {
+          setShowConfirmation(false);
+          setEditingNotes(false);
+        }}
+        title='Notes Saved'
+        message='Your technician notes have been saved successfully.'
+        confirmText='OK'
+      />
     </View>
   );
 }
@@ -144,7 +216,6 @@ export function InvoiceModal({
   isManager,
 }: InvoiceModalProps) {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
-  const powerSync = usePowerSync();
 
   // First fetch the schedule using the scheduleId
   const { data: scheduleData = [] } = useQuery<any>(
@@ -181,57 +252,34 @@ export function InvoiceModal({
           ? JSON.parse(schedule.photos)
           : schedule.photos;
 
-      // Check if we're using the new schema (single array with type) or legacy schema (before/after arrays)
-      if (Array.isArray(parsedPhotos.photos)) {
-        // New schema - filter by type
-        const beforePhotos = parsedPhotos.photos
-          .filter((photo: any) => photo.type === 'before')
-          .map((photo: any) => ({
-            ...photo,
-            id: photo._id || photo.id,
-            _id: photo._id || photo.id, // Keep _id for backward compatibility
-            type: 'before' as const,
-            status: photo.status || 'uploaded',
-          }));
+      // We're using the new schema - an array with photo objects that have a type property
+      const photoArray = Array.isArray(parsedPhotos) ? parsedPhotos : [];
 
-        const afterPhotos = parsedPhotos.photos
-          .filter((photo: any) => photo.type === 'after')
-          .map((photo: any) => ({
-            ...photo,
-            id: photo._id || photo.id,
-            _id: photo._id || photo.id, // Keep _id for backward compatibility
-            type: 'after' as const,
-            status: photo.status || 'uploaded',
-          }));
+      // Filter by type
+      const beforePhotos = photoArray
+        .filter((photo) => photo.type === 'before')
+        .map((photo) => ({
+          ...photo,
+          id: photo._id || photo.id,
+          _id: photo._id || photo.id, // Keep _id for backward compatibility
+          type: 'before' as const,
+          status: photo.status || 'uploaded',
+        }));
 
-        return {
-          before: beforePhotos,
-          after: afterPhotos,
-        };
-      } else {
-        // Legacy schema with before/after arrays
-        // Convert _id to id if needed and add type field
-        return {
-          before: Array.isArray(parsedPhotos.before)
-            ? parsedPhotos.before.map((photo: any) => ({
-                ...photo,
-                id: photo._id || photo.id,
-                _id: photo._id || photo.id, // Keep _id for backward compatibility
-                type: 'before' as const,
-                status: photo.status || 'uploaded',
-              }))
-            : [],
-          after: Array.isArray(parsedPhotos.after)
-            ? parsedPhotos.after.map((photo: any) => ({
-                ...photo,
-                id: photo._id || photo.id,
-                _id: photo._id || photo.id, // Keep _id for backward compatibility
-                type: 'after' as const,
-                status: photo.status || 'uploaded',
-              }))
-            : [],
-        };
-      }
+      const afterPhotos = photoArray
+        .filter((photo) => photo.type === 'after')
+        .map((photo) => ({
+          ...photo,
+          id: photo._id || photo.id,
+          _id: photo._id || photo.id, // Keep _id for backward compatibility
+          type: 'after' as const,
+          status: photo.status || 'uploaded',
+        }));
+
+      return {
+        before: beforePhotos,
+        after: afterPhotos,
+      };
     } catch (error) {
       console.error('Error parsing photos:', error, schedule?.photos);
       return { before: [], after: [] };
@@ -261,7 +309,7 @@ export function InvoiceModal({
 
   const hasBeforePhotos = photos.before?.length > 0;
   const hasAfterPhotos = photos.after?.length > 0;
-  const hasSignature = signature;
+  const hasSignature = !!signature;
 
   const renderWorkCompletionSection = () => {
     return (
@@ -369,7 +417,7 @@ export function InvoiceModal({
             </View>
           ) : (
             <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
-              <Text className='text-green-200 dark:text-green-200 text-center font-medium'>
+              <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
                 ✓ Signature Captured
               </Text>
             </View>

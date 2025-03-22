@@ -10,10 +10,11 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
-import { ClerkProvider, useUser} from '@clerk/clerk-expo';
+import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '../cache';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { secureStore } from '@clerk/clerk-expo/secure-store';
+import { initImageCache } from '@/utils/imageCache';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -35,7 +36,6 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
 
   const canManage = user?.publicMetadata.isManager;
 
-
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
@@ -44,6 +44,11 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (isLoaded) {
       SplashScreen.hideAsync();
+
+      // Initialize image cache management
+      initImageCache().catch((err) => {
+        console.warn('Failed to initialize image cache:', err);
+      });
     }
   }, [isLoaded]);
 

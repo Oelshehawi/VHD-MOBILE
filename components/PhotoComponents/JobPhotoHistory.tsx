@@ -6,17 +6,19 @@ import {
   StyleSheet,
   Pressable,
   ActivityIndicator,
-  ImageBackground,
+  TouchableOpacity,
 } from 'react-native';
 import { format } from 'date-fns';
 import { useQuery } from '@powersync/react-native';
-import ImageView from 'react-native-image-viewing';
 import { PhotoType } from '@/utils/photos';
 import { Ionicons } from '@expo/vector-icons';
+import { FastImageWrapper } from '@/components/common/FastImageWrapper';
+import { FastImageViewer } from '@/components/common/FastImageViewer';
+import { FastImageViewerHeader } from '@/components/common/FastImageViewerHeader';
+import { preloadImages } from '@/utils/imageCache';
 
 // Interface for enhanced photo type with backward compatibility
 interface EnhancedPhotoType extends PhotoType {
-  _id?: string;
   signerName?: string;
 }
 
@@ -141,6 +143,21 @@ export function JobPhotoHistory({
             };
           }[]
         );
+
+        // Preload thumbnails for better performance
+        const allPhotoUrls = processedJobs.flatMap((job) => {
+          if (!job) return [];
+          const beforeUrls = job.photos.before.map((p) => p.url);
+          const afterUrls = job.photos.after.map((p) => p.url);
+          const signatureUrls = job.photos.signature.map((p) => p.url);
+          return [...beforeUrls, ...afterUrls, ...signatureUrls].filter(
+            Boolean
+          );
+        });
+
+        if (allPhotoUrls.length > 0) {
+          preloadImages(allPhotoUrls);
+        }
       } catch (error) {
         console.error('Error processing previous jobs:', error);
       } finally {
@@ -215,11 +232,13 @@ export function JobPhotoHistory({
       onPress={() => openGallery(jobIndex, photoType, photoIndex)}
       style={styles.photoItem}
     >
-      <ImageBackground
-        source={{ uri: item.url }}
-        style={styles.photoImage}
-        imageStyle={styles.photoImageStyle}
-      >
+      <View style={styles.photoContainer}>
+        <FastImageWrapper
+          uri={item.url}
+          style={styles.photoImage}
+          showLoader={true}
+        />
+
         <View
           style={[
             styles.photoTypeLabel,
@@ -241,8 +260,23 @@ export function JobPhotoHistory({
               : 'Signature'}
           </Text>
         </View>
-      </ImageBackground>
+      </View>
     </Pressable>
+  );
+
+  // Custom header component for the gallery with close button
+  const renderGalleryHeader = () => (
+    <FastImageViewerHeader
+      title={jobTitle}
+      subtitle={`${galleryJobDate} - ${
+        galleryImages[galleryIndex]?.type === 'before'
+          ? 'Before Photo'
+          : galleryImages[galleryIndex]?.type === 'after'
+          ? 'After Photo'
+          : 'Signature'
+      }`}
+      onClose={() => setGalleryVisible(false)}
+    />
   );
 
   // Loading state
@@ -372,27 +406,15 @@ export function JobPhotoHistory({
         )}
       />
 
-      {/* Image Gallery Viewer */}
-      <ImageView
+      {/* Image Gallery Viewer with the new header component */}
+      <FastImageViewer
         images={galleryImages}
         imageIndex={galleryIndex}
         visible={galleryVisible}
         onRequestClose={() => setGalleryVisible(false)}
         swipeToCloseEnabled={true}
         doubleTapToZoomEnabled={true}
-        HeaderComponent={() => (
-          <View style={styles.galleryHeader}>
-            <Text style={styles.galleryTitle}>{jobTitle}</Text>
-            <Text style={styles.gallerySubtitle}>
-              {galleryJobDate} -{' '}
-              {galleryImages[galleryIndex]?.type === 'before'
-                ? 'Before Photo'
-                : galleryImages[galleryIndex]?.type === 'after'
-                ? 'After Photo'
-                : 'Signature'}
-            </Text>
-          </View>
-        )}
+        HeaderComponent={renderGalleryHeader}
       />
     </View>
   );
@@ -489,15 +511,21 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     overflow: 'hidden',
   },
+  photoContainer: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
   photoImage: {
     width: '100%',
     height: '100%',
-    justifyContent: 'flex-end',
-  },
-  photoImageStyle: {
     borderRadius: 8,
   },
   photoTypeLabel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
     paddingVertical: 4,
     alignItems: 'center',
   },
@@ -505,19 +533,5 @@ const styles = StyleSheet.create({
     color: 'white',
     fontSize: 12,
     fontWeight: '500',
-  },
-  galleryHeader: {
-    backgroundColor: 'rgba(0,0,0,0.7)',
-    padding: 16,
-  },
-  galleryTitle: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: '600',
-  },
-  gallerySubtitle: {
-    color: '#e5e7eb',
-    fontSize: 14,
-    marginTop: 4,
   },
 });

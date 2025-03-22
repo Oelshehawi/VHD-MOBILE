@@ -1,12 +1,8 @@
-import {
-  Image,
-  TouchableOpacity,
-  View,
-  Text,
-  ActivityIndicator,
-} from 'react-native';
+import { TouchableOpacity, View, Text, ActivityIndicator } from 'react-native';
 import { PhotoType } from '@/utils/photos';
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
+import { FastImageWrapper } from '@/components/common/FastImageWrapper';
+
 /**
  * Individual photo item component
  */
@@ -56,10 +52,10 @@ export function PhotoItem({
             <Text className='text-gray-500 font-medium'>Image</Text>
           </View>
         ) : (
-          <Image
-            source={{ uri: photo.url }}
-            className='w-full h-full'
-            resizeMode='cover'
+          <FastImageWrapper
+            uri={photo.url}
+            style={{ width: '100%', height: '100%' }}
+            showLoader={true}
             onError={() => setImageError(true)}
             onLoad={() => setImageLoaded(true)}
           />

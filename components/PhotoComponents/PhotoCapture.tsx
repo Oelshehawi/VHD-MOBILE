@@ -3,18 +3,14 @@ import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
-import ImageView from 'react-native-image-viewing';
-import {
-  AttachmentRecord,
-  AttachmentState,
-  ATTACHMENT_TABLE,
-} from '@powersync/attachments';
+import { AttachmentRecord } from '@powersync/attachments';
 import { PhotoType, showToast } from '@/utils/photos';
 import { usePowerSync } from '@powersync/react-native';
 import { useSystem } from '@/services/database/System';
 import { DeletePhotoModal } from './DeletePhotoModal';
 import { LoadingModal } from './LoadingModal';
-import * as FileSystem from 'expo-file-system';
+import { FastImageViewer } from '@/components/common/FastImageViewer';
+import { FastImageViewerHeader } from '@/components/common/FastImageViewerHeader';
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -27,23 +23,9 @@ interface PhotoCaptureProps {
   startDate?: string;
 }
 
-// Define type for query results
-interface AttachmentOperation {
-  attachmentId?: string;
-}
-
 // Define type for photo data from database
 interface PhotosData {
   photos: string;
-}
-
-// Define type for queued attachment data
-interface QueuedAttachment {
-  id: string;
-  filename: string;
-  state: number;
-  scheduleId?: string;
-  [key: string]: any; // Allow for other properties
 }
 
 export function PhotoCapture({
@@ -82,6 +64,17 @@ export function PhotoCapture({
     }));
     setGalleryImages(images);
   }, [photos, type]);
+
+  // Custom header component for the gallery
+  const renderGalleryHeader = () => (
+    <FastImageViewerHeader
+      title={jobTitle}
+      subtitle={`${type === 'before' ? 'Before' : 'After'} Photo ${
+        galleryIndex + 1
+      } of ${photos.length}`}
+      onClose={() => setGalleryVisible(false)}
+    />
+  );
 
   /**
    * Handle photo selection from the PhotoCaptureModal
@@ -347,13 +340,14 @@ export function PhotoCapture({
       />
 
       {/* Image viewer gallery */}
-      <ImageView
+      <FastImageViewer
         images={galleryImages}
         imageIndex={galleryIndex}
         visible={galleryVisible}
         onRequestClose={() => setGalleryVisible(false)}
         swipeToCloseEnabled={true}
         doubleTapToZoomEnabled={true}
+        HeaderComponent={renderGalleryHeader}
       />
 
       {/* Loading indicator - only show when component is ready */}
