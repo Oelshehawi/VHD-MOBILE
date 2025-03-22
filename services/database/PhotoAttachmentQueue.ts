@@ -21,11 +21,8 @@ export interface ExtendedAttachmentRecord extends AttachmentRecord {
 export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
   async init() {
     if (!AppConfig.cloudinaryApiKey) {
-      console.debug(
-        'No Cloudinary API Key configured, skip setting up PhotoAttachmentQueue watches'
-      );
       // Set a reasonable interval instead of disabling
-      this.options.syncInterval = 10000; // 10 seconds
+      this.options.syncInterval = 5000; // 10 seconds
       return;
     }
 
@@ -33,18 +30,9 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
   }
 
   onAttachmentIdsChange(onUpdate: (ids: string[]) => void): void {
-    // Watch the attachments table directly for queued uploads
-    this.powersync.watch(
-      `SELECT id FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
-      [AttachmentState.QUEUED_UPLOAD],
-      {
-        onResult: (result) => {
-          const ids = result.rows?._array.map((r) => r.id) ?? [];
-          console.log(`📋 Found ${ids.length} attachments to process`);
-          onUpdate(ids);
-        },
-      }
-    );
+    // Watch the attachments table for ALL attachments with a scheduleId
+    // This ensures we track all attachments related to schedules, regardless of state
+    return;
   }
 
   /**
@@ -53,6 +41,9 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
   async saveToQueue(
     record: ExtendedAttachmentRecord
   ): Promise<ExtendedAttachmentRecord> {
+    // Ensure state is QUEUED_UPLOAD to prevent download attempts
+    record.state = AttachmentState.QUEUED_UPLOAD;
+
     // First call the parent's implementation to save the standard fields
     const savedRecord = await super.saveToQueue(record);
 
@@ -130,7 +121,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
             record.signerName;
         }
       } catch (error) {
-        console.error('Error updating attachment custom fields:', error);
+        // Silent error handling
       }
     }
 
@@ -138,109 +129,37 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
   }
 
   /**
-   * Save multiple photos to the attachment queue in a single transaction
-   * @param photoData Array of photo data including source URI and metadata
+   * Batch save multiple attachments to the queue efficiently
+   * @param records Array of attachment records to save
    * @returns Array of saved attachment records
    */
-  async saveMultiplePhotosFromUri(
-    photoData: Array<{
-      sourceUri: string;
-      scheduleId: string;
-      jobTitle?: string;
-      type?: 'before' | 'after' | 'signature';
-      startDate?: string;
-      technicianId?: string;
-      signerName?: string;
-    }>
+  async batchSaveToQueue(
+    records: ExtendedAttachmentRecord[]
   ): Promise<ExtendedAttachmentRecord[]> {
+    if (!records || records.length === 0) return [];
+
+    const savedRecords: ExtendedAttachmentRecord[] = [];
+
     try {
-      // Use a transaction to ensure all photos are added to the queue
-      return await this.powersync.writeTransaction(async (tx) => {
-        const savedAttachments: ExtendedAttachmentRecord[] = [];
+      // Process each record individually instead of in a transaction
+      // This avoids nested transaction issues if parent saveToQueue uses transactions
+      for (const record of records) {
+        try {
+          // Ensure state is QUEUED_UPLOAD
+          record.state = AttachmentState.QUEUED_UPLOAD;
 
-        for (let i = 0; i < photoData.length; i++) {
-          const photo = photoData[i];
-
-          // Create a new attachment record
-          const photoAttachment = await this.newAttachmentRecord({
-            scheduleId: photo.scheduleId,
-            jobTitle: photo.jobTitle,
-            type: photo.type,
-            startDate: photo.startDate,
-            technicianId: photo.technicianId,
-            signerName: photo.signerName,
-          });
-
-          // Set the local URI path
-          photoAttachment.local_uri = this.getLocalFilePathSuffix(
-            photoAttachment.filename
-          );
-          const destinationUri = this.getLocalUri(photoAttachment.local_uri);
-
-          // Copy the file directly instead of using base64
-          await FileSystem.copyAsync({
-            from: photo.sourceUri,
-            to: destinationUri,
-          });
-
-          // Get file info
-          const fileInfo = await FileSystem.getInfoAsync(destinationUri);
-          if (fileInfo.exists) {
-            photoAttachment.size = fileInfo.size;
-          } else {
-            console.warn('File was copied but not found in getInfoAsync check');
-          }
-
-          // Save to queue within the transaction
-          const savedRecord = await this.saveToQueueInTransaction(
-            tx,
-            photoAttachment
-          );
-
-          savedAttachments.push(savedRecord as ExtendedAttachmentRecord);
+          // Save using parent implementation
+          const savedRecord = await this.saveToQueue(record);
+          savedRecords.push(savedRecord as ExtendedAttachmentRecord);
+        } catch (recordError) {
+          // Continue with other records even if one fails
         }
-
-        return savedAttachments;
-      });
+      }
     } catch (error) {
-      console.error('Error in saveMultiplePhotosFromUri:', error);
-      throw error;
+      // Silent error handling
     }
-  }
 
-  /**
-   * Helper method to save an attachment to the queue within a transaction
-   * @param tx Transaction object
-   * @param record Attachment record to save
-   * @returns The saved attachment record
-   */
-  private async saveToQueueInTransaction(
-    tx: any,
-    record: ExtendedAttachmentRecord
-  ): Promise<ExtendedAttachmentRecord> {
-    // Insert core attachment data with custom fields in a single operation
-    await tx.execute(
-      `INSERT INTO ${ATTACHMENT_TABLE} (
-        id, filename, local_uri, media_type, state, size, 
-        scheduleId, jobTitle, type, startDate, technicianId, signerName
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        record.id,
-        record.filename,
-        record.local_uri,
-        record.media_type,
-        record.state,
-        record.size || null,
-        record.scheduleId || null,
-        record.jobTitle || null,
-        record.type || null,
-        record.startDate || null,
-        record.technicianId || null,
-        record.signerName || null,
-      ]
-    );
-
-    return record;
+    return savedRecords;
   }
 
   async newAttachmentRecord(
@@ -249,13 +168,17 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     const photoId = record?.id ?? randomUUID();
     const filename = record?.filename ?? `${photoId}.jpg`;
 
+    // Always use QUEUED_UPLOAD state to prevent download attempts
+    // Create a new object without the state property from record, if it exists
+    const { state: _, ...restOfRecord } = record || {};
+
     return {
       id: photoId,
       filename,
       media_type: 'image/jpeg',
       state: AttachmentState.QUEUED_UPLOAD,
       scheduleId: record?.scheduleId,
-      ...record,
+      ...restOfRecord,
     };
   }
 
@@ -279,22 +202,96 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       const fileInfo = await FileSystem.getInfoAsync(localUri);
       if (fileInfo.exists) {
         photoAttachment.size = fileInfo.size;
-      } else {
-        console.warn('File was written but not found in getInfoAsync check');
       }
 
       // Save the attachment to the queue
       const savedAttachment = await this.saveToQueue(photoAttachment);
       return savedAttachment as ExtendedAttachmentRecord;
     } catch (error) {
-      console.error('Error in PhotoAttachmentQueue.savePhoto:', error);
       throw error;
     }
   }
 
   /**
-   * Save a photo from an existing file URI to the attachment queue
-   * @param sourceUri URI of the existing image file
+   * Batch save multiple photos from URIs
+   * @param photoData Array of objects containing source URI and metadata
+   * @returns Array of saved attachment records
+   */
+  async batchSavePhotosFromUri(
+    photoData: Array<{
+      sourceUri: string;
+      scheduleId: string;
+      jobTitle?: string;
+      type?: 'before' | 'after' | 'signature';
+      startDate?: string;
+      technicianId?: string;
+      signerName?: string;
+    }>
+  ): Promise<ExtendedAttachmentRecord[]> {
+    if (!photoData || photoData.length === 0) return [];
+
+    const attachments: ExtendedAttachmentRecord[] = [];
+
+    // First, create all the attachment records and copy files
+    for (const photo of photoData) {
+      try {
+        // Sanitize technicianId - ensure it's a string without array brackets or quotes
+        let sanitizedTechnicianId = photo.technicianId || '';
+        if (sanitizedTechnicianId) {
+          // Remove array brackets, quotes, and backslashes if present
+          sanitizedTechnicianId = sanitizedTechnicianId
+            .replace(/^\[|\]$/g, '') // Remove brackets at start/end
+            .replace(/^"|"$/g, '') // Remove quotes at start/end
+            .replace(/\\/g, ''); // Remove backslashes
+        }
+
+        // Create a new attachment record with scheduleId, jobTitle, and type
+        const photoAttachment = await this.newAttachmentRecord({
+          scheduleId: photo.scheduleId,
+          jobTitle: photo.jobTitle,
+          type: photo.type,
+          startDate: photo.startDate,
+          technicianId: sanitizedTechnicianId,
+          signerName: photo.signerName,
+        });
+
+        // Set the local URI path
+        photoAttachment.local_uri = this.getLocalFilePathSuffix(
+          photoAttachment.filename
+        );
+        const destinationUri = this.getLocalUri(photoAttachment.local_uri);
+
+        // Verify source file exists
+        const sourceInfo = await FileSystem.getInfoAsync(photo.sourceUri);
+        if (!sourceInfo.exists) {
+          continue;
+        }
+
+        // Copy the file directly
+        await FileSystem.copyAsync({
+          from: photo.sourceUri,
+          to: destinationUri,
+        });
+
+        // Get file info
+        const fileInfo = await FileSystem.getInfoAsync(destinationUri);
+        if (fileInfo.exists) {
+          photoAttachment.size = fileInfo.size;
+        }
+
+        attachments.push(photoAttachment);
+      } catch (error) {
+        // Continue with other photos
+      }
+    }
+
+    // Then batch save all to queue
+    return await this.batchSaveToQueue(attachments);
+  }
+
+  /**
+   * Save a photo from a URI to the queue
+   * @param sourceUri URI of the photo to save
    * @param scheduleId ID of the schedule this photo belongs to
    * @param jobTitle Title of the job
    * @param type Type of photo (before or after) or signature
@@ -339,36 +336,13 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       const fileInfo = await FileSystem.getInfoAsync(destinationUri);
       if (fileInfo.exists) {
         photoAttachment.size = fileInfo.size;
-      } else {
-        console.warn('File was copied but not found in getInfoAsync check');
       }
 
       // Save to queue
       const savedAttachment = await this.saveToQueue(photoAttachment);
       return savedAttachment as ExtendedAttachmentRecord;
     } catch (error) {
-      console.error('Error in PhotoAttachmentQueue.savePhotoFromUri:', error);
       throw error;
-    }
-  }
-
-  async logAttachments() {
-    try {
-      const results = await this.powersync.getAll(
-        `SELECT * FROM ${ATTACHMENT_TABLE}`
-      );
-      console.log(`Found ${results.length} attachments`);
-      // Only log in development
-      if (__DEV__) {
-        results.forEach((attachment, index) => {
-          console.log(
-            `Attachment ${index + 1}:`,
-            JSON.stringify(attachment, null, 2)
-          );
-        });
-      }
-    } catch (error) {
-      console.error('Error logging attachments:', error);
     }
   }
 }

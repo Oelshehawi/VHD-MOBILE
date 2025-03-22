@@ -5,15 +5,15 @@ import { Platform, Alert, ToastAndroid } from 'react-native';
  * Photo type interface used throughout the application
  */
 export interface PhotoType {
+  _id: string;
   id: string;
   url: string;
-  timestamp: string;
-  technicianId: string;
   type: 'before' | 'after' | 'signature';
+  timestamp: string;
   status?: 'pending' | 'uploaded' | 'failed';
-  _id?: string | { $oid: string };
-  processed?: boolean;
-  attachmentId?: string;
+  technicianId: string;
+  filename?: string; // Optional filename field
+  attachmentId?: string; // ID of the attachment in the ATTACHMENT_TABLE
 }
 
 export interface SignatureType {

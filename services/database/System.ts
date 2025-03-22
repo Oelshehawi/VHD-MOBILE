@@ -5,7 +5,6 @@ import { BackendConnector } from './BackendConnector';
 import { AppSchema } from './schema';
 import { getPowerSyncUrl } from '../ApiClient';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
-import { type AttachmentRecord } from '@powersync/attachments';
 import { PhotoAttachmentQueue } from './PhotoAttachmentQueue';
 import Logger from 'js-logger';
 import { KVStorage } from '../storage/KVStorage';
@@ -34,16 +33,9 @@ export class System {
     this.attachmentQueue = new PhotoAttachmentQueue({
       powersync: this.powersync,
       storage: this.storage,
-      performInitialSync: false,
+      performInitialSync: true,
       // Use this to handle download errors where you can use the attachment
       // and/or the exception to decide if you want to retry the download
-      onUploadError: async (attachment: AttachmentRecord, exception: any) => {
-        if (exception.toString() === 'StorageApiError: Object not found') {
-          return { retry: false };
-        }
-
-        return { retry: true };
-      },
     });
   }
 

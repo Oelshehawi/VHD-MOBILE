@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -9,7 +9,8 @@ import {
 import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
 import { parsePhotosData, PhotoType } from '@/utils/photos';
-import { useQuery } from '@powersync/react-native';
+import { usePowerSync, useQuery } from '@powersync/react-native';
+import { ATTACHMENT_TABLE, AttachmentState } from '@powersync/attachments';
 
 interface PhotoDocumentationModalProps {
   visible: boolean;
@@ -33,32 +34,18 @@ export function PhotoDocumentationModal({
   startDate,
 }: PhotoDocumentationModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('before');
-
-  // Track pending uploads with completely separate state arrays
-  const [pendingBeforePhotos, setPendingBeforePhotos] = useState<PhotoType[]>(
-    []
-  );
-  const [pendingAfterPhotos, setPendingAfterPhotos] = useState<PhotoType[]>([]);
-
-  // Use refs to track the current state without causing re-renders
-  const pendingBeforePhotosRef = useRef<PhotoType[]>([]);
-  const pendingAfterPhotosRef = useRef<PhotoType[]>([]);
-  const dbBeforePhotosRef = useRef<PhotoType[]>([]);
-  const dbAfterPhotosRef = useRef<PhotoType[]>([]);
-
-  // Update refs when state changes
-  useEffect(() => {
-    pendingBeforePhotosRef.current = pendingBeforePhotos;
-  }, [pendingBeforePhotos]);
-
-  useEffect(() => {
-    pendingAfterPhotosRef.current = pendingAfterPhotos;
-  }, [pendingAfterPhotos]);
+  const powersync = usePowerSync();
 
   // Query photos directly from the schedules table
   const { data, isLoading: isQueryLoading } = useQuery(
     `SELECT photos FROM schedules WHERE id = ?`,
     [scheduleId]
+  );
+
+  // Query pending uploads from the attachment table
+  const { data: pendingAttachments, isLoading: isPendingLoading } = useQuery(
+    `SELECT id FROM ${ATTACHMENT_TABLE} WHERE scheduleId = ? AND state = ?`,
+    [scheduleId, AttachmentState.QUEUED_UPLOAD]
   );
 
   // Parse photos data with useMemo to avoid unnecessary processing
@@ -68,156 +55,40 @@ export function PhotoDocumentationModal({
     try {
       return parsePhotosData(data[0]);
     } catch (error) {
-      console.error('Error parsing photos data:', error);
       return { photos: [] };
     }
   }, [data]);
 
-  // Filter database photos by type
-  const dbBeforePhotos = useMemo(() => {
-    const photos = parsedPhotosData.photos.filter(
-      (photo) => photo.type === 'before'
-    );
-    dbBeforePhotosRef.current = photos;
-    return photos;
-  }, [parsedPhotosData]);
+  // Process photos and mark those with pending attachment uploads
+  const processedPhotos = useMemo(() => {
+    if (!parsedPhotosData.photos) return [];
 
-  const dbAfterPhotos = useMemo(() => {
-    const photos = parsedPhotosData.photos.filter(
-      (photo) => photo.type === 'after'
-    );
-    dbAfterPhotosRef.current = photos;
-    return photos;
-  }, [parsedPhotosData]);
+    const pendingIds = pendingAttachments?.map((item) => item.id) || [];
 
-  // Effect to clean up pending photos when they've been successfully uploaded to cloudinary
-  // Uses a callback approach to avoid dependency on state
-  useEffect(() => {
-    const cleanup = () => {
-      const before = dbBeforePhotosRef.current;
-      const after = dbAfterPhotosRef.current;
-      const pendingBefore = pendingBeforePhotosRef.current;
-      const pendingAfter = pendingAfterPhotosRef.current;
-
-      if (before.length > 0 && pendingBefore.length > 0) {
-        // Check which local IDs now have cloudinary URLs in the database
-        const uploadedPhotoIds = new Set();
-
-        // Get all photos that have cloudinary URLs
-        before.forEach((photo) => {
-          if (photo.url?.includes('cloudinary')) {
-            uploadedPhotoIds.add(photo.id);
-          }
-        });
-
-        // Remove pending photos that now have cloudinary URLs
-        const filteredBefore = pendingBefore.filter((pendingPhoto) => {
-          return !uploadedPhotoIds.has(pendingPhoto.id);
-        });
-
-        if (filteredBefore.length !== pendingBefore.length) {
-          setPendingBeforePhotos(filteredBefore);
-        }
+    // Update photos with pending status based on attachment state
+    return parsedPhotosData.photos.map((photo) => {
+      // If the photo's attachmentId is in the pending list, mark it as pending
+      if (photo.attachmentId && pendingIds.includes(photo.attachmentId)) {
+        return { ...photo, status: 'pending' as const };
       }
 
-      if (after.length > 0 && pendingAfter.length > 0) {
-        const uploadedPhotoIds = new Set();
-
-        after.forEach((photo) => {
-          if (photo.url?.includes('cloudinary')) {
-            uploadedPhotoIds.add(photo.id);
-          }
-        });
-
-        const filteredAfter = pendingAfter.filter((pendingPhoto) => {
-          return !uploadedPhotoIds.has(pendingPhoto.id);
-        });
-
-        if (filteredAfter.length !== pendingAfter.length) {
-          setPendingAfterPhotos(filteredAfter);
-        }
+      // If not in the pending list and has an attachmentId, mark as uploaded
+      if (photo.attachmentId && !pendingIds.includes(photo.attachmentId)) {
+        return { ...photo, status: 'uploaded' as const };
       }
-    };
 
-    // Run cleanup when data changes
-    cleanup();
-
-    // Also set up interval for periodic cleanup
-    if (visible) {
-      const intervalId = setInterval(cleanup, 5000); // Check every 5 seconds
-      return () => clearInterval(intervalId);
-    }
-  }, [data, visible]); // Only depend on data changes and visibility
-
-  // Combine database photos with pending photos
-  const beforePhotos = useMemo(() => {
-    // First, get the list of photo IDs from the database
-    const dbPhotoIds = new Set(dbBeforePhotos.map((photo) => photo.id));
-
-    // Get list of cloudinary URLs to avoid duplicates
-    const cloudinaryUrls = new Set();
-    dbBeforePhotos.forEach((photo) => {
-      if (photo.url?.includes('cloudinary')) {
-        cloudinaryUrls.add(photo.url);
-      }
+      return photo;
     });
+  }, [parsedPhotosData.photos, pendingAttachments]);
 
-    // Filter out any pending photos that now exist in the database or have cloudinary URLs
-    const filteredPending = pendingBeforePhotos.filter(
-      (photo) =>
-        !dbPhotoIds.has(photo.id) &&
-        !photo.url?.includes('cloudinary') && // ensure it's a local URL
-        !cloudinaryUrls.has(photo.url) // avoid duplicates
-    );
-
-    // Concatenate the filtered pending photos with the database photos
-    return [...dbBeforePhotos, ...filteredPending];
-  }, [dbBeforePhotos, pendingBeforePhotos]);
+  // Filter processed photos by type
+  const beforePhotos = useMemo(() => {
+    return processedPhotos.filter((photo) => photo.type === 'before');
+  }, [processedPhotos]);
 
   const afterPhotos = useMemo(() => {
-    const dbPhotoIds = new Set(dbAfterPhotos.map((photo) => photo.id));
-
-    // Get list of cloudinary URLs to avoid duplicates
-    const cloudinaryUrls = new Set();
-    dbAfterPhotos.forEach((photo) => {
-      if (photo.url?.includes('cloudinary')) {
-        cloudinaryUrls.add(photo.url);
-      }
-    });
-
-    const filteredPending = pendingAfterPhotos.filter(
-      (photo) =>
-        !dbPhotoIds.has(photo.id) &&
-        !photo.url?.includes('cloudinary') &&
-        !cloudinaryUrls.has(photo.url)
-    );
-
-    return [...dbAfterPhotos, ...filteredPending];
-  }, [dbAfterPhotos, pendingAfterPhotos]);
-
-  // Handle newly added photos by storing them in our separate state arrays
-  const handleNewPhotosAdded = (newPhotos: PhotoType[]) => {
-    if (!newPhotos.length) return;
-
-    const photoType = newPhotos[0].type;
-
-    if (photoType === 'before') {
-      setPendingBeforePhotos((prev) => [...prev, ...newPhotos]);
-    } else if (photoType === 'after') {
-      setPendingAfterPhotos((prev) => [...prev, ...newPhotos]);
-    }
-  };
-
-  // Clear pending photos when modal is closed
-  useEffect(() => {
-    if (!visible) {
-      setPendingBeforePhotos([]);
-      setPendingAfterPhotos([]);
-    }
-  }, [visible]);
-
-  // Remove old stale cleanup interval - no longer needed as we've simplified
-  // our approach to use a single cleanup function
+    return processedPhotos.filter((photo) => photo.type === 'after');
+  }, [processedPhotos]);
 
   if (!visible) return null;
 
@@ -279,9 +150,8 @@ export function PhotoDocumentationModal({
                 type='before'
                 jobTitle={jobTitle}
                 scheduleId={scheduleId}
-                isLoading={isQueryLoading}
+                isLoading={isQueryLoading || isPendingLoading}
                 startDate={startDate}
-                onPhotosAdded={handleNewPhotosAdded}
               />
             )}
 
@@ -292,9 +162,8 @@ export function PhotoDocumentationModal({
                 type='after'
                 jobTitle={jobTitle}
                 scheduleId={scheduleId}
-                isLoading={isQueryLoading}
+                isLoading={isQueryLoading || isPendingLoading}
                 startDate={startDate}
-                onPhotosAdded={handleNewPhotosAdded}
               />
             )}
 

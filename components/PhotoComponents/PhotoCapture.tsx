@@ -4,18 +4,17 @@ import * as ImagePicker from 'expo-image-picker';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import ImageView from 'react-native-image-viewing';
-import { AttachmentRecord } from '@powersync/attachments';
+import {
+  AttachmentRecord,
+  AttachmentState,
+  ATTACHMENT_TABLE,
+} from '@powersync/attachments';
 import { PhotoType, showToast } from '@/utils/photos';
 import { usePowerSync } from '@powersync/react-native';
 import { useSystem } from '@/services/database/System';
 import { DeletePhotoModal } from './DeletePhotoModal';
 import { LoadingModal } from './LoadingModal';
 import * as FileSystem from 'expo-file-system';
-
-// Enhanced PhotoType to include attachment-related fields
-interface EnhancedPhotoType extends PhotoType {
-  attachmentId?: string;
-}
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -26,7 +25,6 @@ interface PhotoCaptureProps {
   scheduleId?: string;
   isLoading?: boolean;
   startDate?: string;
-  onPhotosAdded?: (newPhotos: PhotoType[]) => void;
 }
 
 // Define type for query results
@@ -39,6 +37,15 @@ interface PhotosData {
   photos: string;
 }
 
+// Define type for queued attachment data
+interface QueuedAttachment {
+  id: string;
+  filename: string;
+  state: number;
+  scheduleId?: string;
+  [key: string]: any; // Allow for other properties
+}
+
 export function PhotoCapture({
   technicianId,
   photos = [],
@@ -47,7 +54,6 @@ export function PhotoCapture({
   jobTitle,
   startDate,
   isLoading: externalLoading = false,
-  onPhotosAdded,
 }: PhotoCaptureProps) {
   const [showModal, setShowModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -67,15 +73,6 @@ export function PhotoCapture({
   const [galleryImages, setGalleryImages] = useState<
     { uri: string; title?: string }[]
   >([]);
-
-  // Mark component as ready after a short delay
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsReady(true);
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, []);
 
   // Prepare gallery images whenever photos change
   useEffect(() => {
@@ -109,49 +106,66 @@ export function PhotoCapture({
       // Close the modal immediately to show the blocking UI
       setShowModal(false);
 
-      // Prepare batch data for all selected photos
-      const photoBatch = result.assets.map((asset) => ({
+      // Prepare batch data for all photos
+      const photoData = result.assets.map((asset) => ({
         sourceUri: asset.uri,
-        scheduleId,
-        jobTitle,
-        type,
-        startDate,
-        technicianId,
-      }));
-
-      // Process all photos in a single batch transaction
-      // This ensures all photos are added to the queue before proceeding
-      const savedAttachments = await queue.saveMultiplePhotosFromUri(
-        photoBatch
-      );
-
-      // Create photo objects for UI from the saved attachments
-      const newPhotos: PhotoType[] = savedAttachments.map((attachment) => ({
-        _id: attachment.id,
-        id: attachment.id,
-        url: attachment.local_uri
-          ? queue.getLocalUri(attachment.local_uri)
-          : '',
+        scheduleId: scheduleId!,
+        jobTitle: jobTitle,
         type: type,
-        timestamp: new Date().toISOString(),
-        status: 'pending',
+        startDate: startDate,
         technicianId: technicianId,
       }));
 
-      // ONLY notify parent of new photos AFTER they've been successfully added to the queue
-      if (onPhotosAdded && newPhotos.length > 0) {
-        console.log(`Notifying parent of ${newPhotos.length} new photos`);
-        onPhotosAdded(newPhotos);
+      // Batch save all photos at once
+      const savedAttachments = await queue.batchSavePhotosFromUri(photoData);
+
+      if (savedAttachments.length > 0) {
+        // Update the schedule with all attachment information at once
+        await powerSync.writeTransaction(async (tx) => {
+          // Get existing photos
+          const currentPhotosData = await tx.getAll<PhotosData>(
+            `SELECT photos FROM schedules WHERE id = ?`,
+            [scheduleId]
+          );
+
+          // Parse existing photos or create empty array
+          let allPhotos: PhotoType[] = [];
+          if (currentPhotosData.length > 0 && currentPhotosData[0].photos) {
+            try {
+              allPhotos = JSON.parse(currentPhotosData[0].photos);
+            } catch (e) {
+              // Silent error handling
+            }
+          }
+
+          // Create new photo objects for all attachments
+          const newPhotos: PhotoType[] = savedAttachments.map((attachment) => ({
+            _id: attachment.id,
+            id: attachment.id,
+            url: attachment.filename, // Store the filename to match with attachment table
+            type: type,
+            timestamp: new Date().toISOString(),
+            attachmentId: attachment.id,
+            technicianId: technicianId,
+          }));
+
+          // Add new photos to existing ones
+          const updatedPhotos = [...allPhotos, ...newPhotos];
+
+          // Update schedules table once with all photos
+          await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
+            JSON.stringify(updatedPhotos),
+            scheduleId,
+          ]);
+        });
       }
 
-      // Show success message for UI feedback
       showToast(
-        `Added ${newPhotos.length} photo${
-          newPhotos.length > 1 ? 's' : ''
+        `Added ${savedAttachments.length} ${type} photo${
+          savedAttachments.length > 1 ? 's' : ''
         } - uploading in background`
       );
     } catch (error) {
-      console.error('Error handling selected photos:', error);
       Alert.alert(
         'Error',
         error instanceof Error
@@ -159,7 +173,6 @@ export function PhotoCapture({
           : 'Failed to save photos. Please try again.'
       );
     } finally {
-      // Always unblock UI even if there was an error
       setIsUploading(false);
     }
   };
@@ -205,7 +218,7 @@ export function PhotoCapture({
               (photo: PhotoType) => photo._id !== photoId
             );
           } catch (e) {
-            console.error('Error parsing existing photos:', e);
+            // Silent error handling
           }
         }
 
@@ -216,7 +229,6 @@ export function PhotoCapture({
         ]);
 
         // Insert into delete_photo_operations table to record the deletion
-        // This will be synced to the server which will handle both Cloudinary and DB deletion
         await tx.execute(
           `INSERT INTO delete_photo_operations (id, scheduleId, remote_uri) VALUES (?, ?, ?)`,
           [
@@ -226,43 +238,18 @@ export function PhotoCapture({
           ]
         );
 
-        // Next, try to find the attachment record by looking up the attachment ID
-        // from the add_photo_operations table using the cloudinary URL
-        const attachmentOperations = await tx.getAll<AttachmentOperation>(
-          `SELECT attachmentId FROM add_photo_operations WHERE cloudinaryUrl = ? AND scheduleId = ?`,
-          [photoUrl, scheduleId]
+        // Find and delete the attachment if it exists
+        const attachments = await tx.getAll<AttachmentRecord>(
+          `SELECT * FROM attachments WHERE id = ?`,
+          [photoId]
         );
 
-        if (
-          attachmentOperations.length > 0 &&
-          attachmentOperations[0]?.attachmentId
-        ) {
-          const attachmentId = attachmentOperations[0].attachmentId;
-
-          // Find the attachment record
-          const attachments = await tx.getAll<AttachmentRecord>(
-            `SELECT * FROM attachments WHERE id = ?`,
-            [attachmentId]
-          );
-
-          if (attachments.length > 0 && system.attachmentQueue) {
-            // We have the attachment record, so we can delete it from the local queue
-            try {
-              // We've already confirmed attachmentQueue exists and typed the attachment properly
-              await system.attachmentQueue.delete(attachments[0]);
-              console.log(`Deleted attachment record for ${photoUrl}`);
-            } catch (attachmentError) {
-              console.error(
-                'Error deleting attachment record:',
-                attachmentError
-              );
-              // Continue with the deletion process even if attachment deletion fails
-            }
-          } else {
-            console.log(`No attachment record found for ID ${attachmentId}`);
+        if (attachments.length > 0 && system.attachmentQueue) {
+          try {
+            await system.attachmentQueue.delete(attachments[0]);
+          } catch (attachmentError) {
+            // Silent error handling, continue with deletion process
           }
-        } else {
-          console.log(`No attachment ID found for URL ${photoUrl}`);
         }
       });
 
@@ -272,7 +259,6 @@ export function PhotoCapture({
       // Immediately clear the dialog
       setPhotoToDelete(null);
     } catch (error) {
-      console.error('Error deleting photo:', error);
       Alert.alert('Error', 'Failed to delete photo. Please try again.');
     } finally {
       // Reset deleting state
