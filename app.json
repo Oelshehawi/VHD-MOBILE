@@ -36,15 +36,7 @@
       }
     },
     "android": {
-      "package": "com.braille71.VHDApp",
-      "permissions": [
-        "android.permission.USE_BIOMETRIC",
-        "android.permission.USE_FINGERPRINT"
-      ],
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#111827"
-      }
+      "package": "com.braille71.VHDApp"
     },
     "web": {
       "bundler": "metro",

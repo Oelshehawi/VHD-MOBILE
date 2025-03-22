@@ -73,18 +73,6 @@ export function PhotoItem({
           </View>
         )}
 
-        {/* Failed upload indicator */}
-        {isFailed && (
-          <View className='absolute inset-0 items-center justify-center bg-black/40'>
-            <View className='bg-red-500/80 p-3 rounded-lg items-center'>
-              <Text className='text-white text-2xl font-bold'>!</Text>
-              <Text className='text-white text-xs font-medium mt-1'>
-                Upload Failed
-              </Text>
-            </View>
-          </View>
-        )}
-
         {/* Photo timestamp indicator */}
         <View className='absolute bottom-0 left-0 right-0 bg-black/40 py-1'>
           <Text className='text-white text-[10px] text-center font-medium'>
