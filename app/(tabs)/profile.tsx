@@ -109,8 +109,8 @@ export default function ProfileScreen() {
 
   if (!displayUser) {
     return (
-      <View className='flex-1 bg-gray-950 justify-center items-center p-4'>
-        <Text className='text-gray-400'>
+      <View className='flex-1 bg-white dark:bg-gray-950 justify-center items-center p-4'>
+        <Text className='text-gray-800 dark:text-gray-400'>
           {isOffline ? 'Offline - No cached data available' : 'Loading...'}
         </Text>
       </View>
@@ -118,51 +118,55 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView className='flex-1 bg-gray-950 p-4'>
+    <ScrollView className='flex-1 bg-white dark:bg-gray-950 p-4'>
       <Stack.Screen options={{ headerShown: false }} />
 
       {isOffline && (
         <View className='bg-yellow-600/20 p-3 rounded-lg mb-4'>
-          <Text className='text-yellow-200 text-center'>
+          <Text className='text-yellow-800 dark:text-yellow-200 text-center'>
             Offline Mode - Limited functionality available
           </Text>
         </View>
       )}
 
-      <Card className='mb-4 bg-gray-900 border-gray-800'>
+      <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
         <View className='p-4 items-center'>
           {displayUser.imageUrl && (
             <Image
               source={{ uri: displayUser.imageUrl }}
-              className='w-24 h-24 rounded-full mb-4 border-2 border-gray-800'
+              className='w-24 h-24 rounded-full mb-4 border-2 border-gray-200 dark:border-gray-800'
             />
           )}
-          <Text className='text-xl font-bold text-gray-200 mb-2'>
+          <Text className='text-xl font-bold text-gray-800 dark:text-gray-200 mb-2'>
             {displayUser.fullName || displayUser.username}
           </Text>
-          <Text className='text-gray-400 mb-1'>
+          <Text className='text-gray-600 dark:text-gray-400 mb-1'>
             {displayUser.email || displayUser.primaryEmailAddress?.emailAddress}
           </Text>
         </View>
       </Card>
 
-      <Card className='mb-4 bg-gray-900 border-gray-800'>
+      <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
         <View className='p-4'>
-          <Text className='text-lg font-semibold text-gray-200 mb-4'>
+          <Text className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4'>
             Account Details
           </Text>
           <View className='space-y-2'>
             <View>
-              <Text className='text-sm text-gray-400'>Member Since</Text>
-              <Text className='text-gray-200'>
+              <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                Member Since
+              </Text>
+              <Text className='text-gray-800 dark:text-gray-200'>
                 {displayUser.createdAt
                   ? formatDateReadable(displayUser.createdAt)
                   : 'N/A'}
               </Text>
             </View>
             <View>
-              <Text className='text-sm text-gray-400'>Last Updated</Text>
-              <Text className='text-gray-200'>
+              <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                Last Updated
+              </Text>
+              <Text className='text-gray-800 dark:text-gray-200'>
                 {displayUser.updatedAt
                   ? formatDateReadable(displayUser.updatedAt)
                   : 'N/A'}
@@ -173,14 +177,14 @@ export default function ProfileScreen() {
       </Card>
 
       {/* New card for connection information */}
-      <Card className='mb-4 bg-gray-900 border-gray-800'>
+      <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
         <TouchableOpacity
           onPress={toggleEnvironment}
           activeOpacity={__DEV__ ? 0.7 : 1}
         >
           <View className='p-4'>
             <View className='flex-row justify-between'>
-              <Text className='text-lg font-semibold text-gray-200 mb-4'>
+              <Text className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4'>
                 Connection Details
               </Text>
               {__DEV__ && (
@@ -191,9 +195,11 @@ export default function ProfileScreen() {
             </View>
             <View className='space-y-3'>
               <View>
-                <Text className='text-sm text-gray-400'>API URL</Text>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  API URL
+                </Text>
                 <Text
-                  className='text-gray-200 text-xs'
+                  className='text-gray-800 dark:text-gray-200 text-xs'
                   numberOfLines={1}
                   ellipsizeMode='middle'
                 >
@@ -201,9 +207,11 @@ export default function ProfileScreen() {
                 </Text>
               </View>
               <View>
-                <Text className='text-sm text-gray-400'>PowerSync URL</Text>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  PowerSync URL
+                </Text>
                 <Text
-                  className='text-gray-200 text-xs'
+                  className='text-gray-800 dark:text-gray-200 text-xs'
                   numberOfLines={1}
                   ellipsizeMode='middle'
                 >
@@ -211,20 +219,24 @@ export default function ProfileScreen() {
                 </Text>
               </View>
               <View>
-                <Text className='text-sm text-gray-400'>Environment</Text>
-                <Text className='text-gray-200'>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  Environment
+                </Text>
+                <Text className='text-gray-800 dark:text-gray-200'>
                   {apiUrl?.includes('192.168') ? 'DEVELOPMENT' : 'PRODUCTION'}
                 </Text>
               </View>
               <View>
-                <Text className='text-sm text-gray-400'>Network Status</Text>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  Network Status
+                </Text>
                 <View className='flex-row items-center'>
                   <View
                     className={`h-2 w-2 rounded-full mr-2 ${
                       isOffline ? 'bg-red-500' : 'bg-green-500'
                     }`}
                   />
-                  <Text className='text-gray-200'>
+                  <Text className='text-gray-800 dark:text-gray-200'>
                     {isOffline ? 'Offline' : 'Online'}
                   </Text>
                 </View>
@@ -237,10 +249,10 @@ export default function ProfileScreen() {
       <TouchableOpacity
         onPress={handleSignOut}
         className={`py-4 rounded-lg mt-auto ${
-          isOffline ? 'bg-gray-600' : 'bg-darkGreen'
+          isOffline ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'
         }`}
       >
-        <Text className='text-center text-gray-100 font-semibold'>
+        <Text className='text-center text-white font-semibold'>
           {isOffline ? 'Offline - Sign Out Unavailable' : 'Sign Out'}
         </Text>
       </TouchableOpacity>

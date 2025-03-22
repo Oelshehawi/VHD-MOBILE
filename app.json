@@ -10,8 +10,9 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "androidStatusBar": {
-      "backgroundColor": "#111827",
-      "translucent": false
+      "backgroundColor": "#00000000",
+      "translucent": true,
+      "barStyle": "dark-content"
     },
     "splash": {
       "image": "./assets/images/icon.png",
@@ -39,7 +40,11 @@
       "permissions": [
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
-      ]
+      ],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "backgroundColor": "#111827"
+      }
     },
     "web": {
       "bundler": "metro",

@@ -17,6 +17,8 @@ import {
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
+import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
+import { useTheme } from '@/providers/ThemeProvider';
 
 interface DashboardViewProps {
   userId: string;
@@ -25,6 +27,8 @@ interface DashboardViewProps {
 
 export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const [showSchedules, setShowSchedules] = useState(false);
+  const [showThemeModal, setShowThemeModal] = useState(false);
+  const { colorScheme } = useTheme();
   const { data: todaySchedules = [] } = useTodaySchedules();
   const { data: currentPayroll = [] } = useCurrentPayrollPeriod();
   const { data: payrollSchedules = [] } = usePayrollSchedules(
@@ -38,8 +42,6 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
     (acc, schedule) => acc + (schedule.hours || 0),
     0
   );
-
-
 
   const renderScheduleItem = (schedule: any) => {
     if (!schedule?.startDateTime) return null;
@@ -150,12 +152,28 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   );
 
   return (
-    <SafeAreaView className='flex-1 bg-gray-50 dark:bg-gray-900'>
-      <StatusBar barStyle='dark-content' backgroundColor='#F9FAFB' />
+    <SafeAreaView className='flex-1 bg-gray-100 dark:bg-gray-900'>
+      <StatusBar
+        barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colorScheme === 'dark' ? '#111827' : '#FFFFFF'}
+      />
+      <View className='flex-row justify-between items-center p-4 bg-white dark:bg-gray-800 shadow-sm'>
+        <Text className='text-2xl font-bold text-gray-800 dark:text-white'>
+          Dashboard
+        </Text>
+        <TouchableOpacity
+          onPress={() => setShowThemeModal(true)}
+          className='p-2 rounded-full bg-gray-100 dark:bg-gray-700'
+        >
+          <Ionicons
+            name='color-palette'
+            size={24}
+            color={colorScheme === 'dark' ? '#E5E7EB' : '#4B5563'}
+          />
+        </TouchableOpacity>
+      </View>
 
-      <ScrollView
-        className='flex-1'
-      >
+      <ScrollView className='flex-1'>
         <View className='p-4 flex flex-col gap-4'>
           {/* Welcome Section */}
           <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
@@ -271,6 +289,12 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
           </View>
         </View>
       </ScrollView>
+
+      {/* Theme Selector Modal */}
+      <ThemeSelectorModal
+        visible={showThemeModal}
+        onClose={() => setShowThemeModal(false)}
+      />
     </SafeAreaView>
   );
 }

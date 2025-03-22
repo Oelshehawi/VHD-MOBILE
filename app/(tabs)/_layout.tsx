@@ -4,7 +4,7 @@ import '../global.css';
 import { ClerkLoaded, useUser } from '@clerk/clerk-expo';
 import { useEffect } from 'react';
 import { useSystem } from '@/services/database/System';
-
+import { useTheme } from '@/providers/ThemeProvider';
 
 function TabBarIcon(props: {
   name: React.ComponentProps<typeof FontAwesome>['name'];
@@ -16,6 +16,8 @@ function TabBarIcon(props: {
 export default function TabLayout() {
   const { isSignedIn, isLoaded } = useUser();
   const system = useSystem();
+  const { colorScheme } = useTheme();
+  const isDark = colorScheme === 'dark';
 
   if (!isSignedIn) {
     return <Redirect href='/sign-in' />;
@@ -34,15 +36,15 @@ export default function TabLayout() {
       <Tabs
         screenOptions={{
           headerStyle: {
-            backgroundColor: '#111827', // gray-900
+            backgroundColor: isDark ? '#111827' : '#ffffff', // dark: gray-900, light: white
           },
-          headerTintColor: '#e5e7eb', // gray-200
+          headerTintColor: isDark ? '#e5e7eb' : '#111827', // dark: gray-200, light: gray-900
           tabBarStyle: {
-            backgroundColor: '#111827', // gray-900
-            borderTopColor: '#1f2937', // gray-800
+            backgroundColor: isDark ? '#111827' : '#ffffff', // dark: gray-900, light: white
+            borderTopColor: isDark ? '#1f2937' : '#e5e7eb', // dark: gray-800, light: gray-200
           },
-          tabBarActiveTintColor: '#0ea5e9', // blue-500
-          tabBarInactiveTintColor: '#9ca3af', // gray-400
+          tabBarActiveTintColor: '#0ea5e9', // blue-500 for both themes
+          tabBarInactiveTintColor: isDark ? '#9ca3af' : '#6b7280', // dark: gray-400, light: gray-500
         }}
       >
         <Tabs.Screen

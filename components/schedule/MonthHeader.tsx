@@ -12,18 +12,22 @@ export function MonthHeader({ currentDate, onMonthChange }: MonthHeaderProps) {
     <View className='flex-row justify-between items-center px-2 py-3'>
       <TouchableOpacity
         onPress={() => onMonthChange(subMonths(currentDate, 1))}
-        className='h-10 w-10 bg-gray-800 rounded-full items-center justify-center'
+        className='h-10 w-10 bg-gray-200 dark:bg-gray-800 rounded-full items-center justify-center'
       >
-        <Text className='text-gray-200 text-xl leading-none'>←</Text>
+        <Text className='text-gray-800 dark:text-gray-200 text-xl leading-none'>
+          ←
+        </Text>
       </TouchableOpacity>
-      <Text className='text-xl font-bold text-gray-200'>
+      <Text className='text-xl font-bold text-gray-800 dark:text-gray-200'>
         {format(currentDate, 'MMMM yyyy')}
       </Text>
       <TouchableOpacity
         onPress={() => onMonthChange(addMonths(currentDate, 1))}
-        className='h-10 w-10 bg-gray-800 rounded-full items-center justify-center'
+        className='h-10 w-10 bg-gray-200 dark:bg-gray-800 rounded-full items-center justify-center'
       >
-        <Text className='text-gray-200 text-xl leading-none'>→</Text>
+        <Text className='text-gray-800 dark:text-gray-200 text-xl leading-none'>
+          →
+        </Text>
       </TouchableOpacity>
     </View>
   );

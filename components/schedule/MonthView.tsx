@@ -87,9 +87,12 @@ export function MonthView({
     else if (isCurrentDay) {
       baseStyle += 'text-blue-500 font-bold ';
     }
-    // Current month dates are white, other month dates are dimmed
+    // Current month dates are dark in light mode, light in dark mode
+    // Other month dates are dimmed
     else {
-      baseStyle += isCurrentMonth ? 'text-gray-200 ' : 'text-gray-600 ';
+      baseStyle += isCurrentMonth
+        ? 'text-gray-800 dark:text-gray-200 '
+        : 'text-gray-400 dark:text-gray-600 ';
     }
 
     // Selected day is bold
@@ -101,14 +104,14 @@ export function MonthView({
   };
 
   return (
-    <View className='flex-1 bg-gray-950'>
+    <View className='flex-1 bg-white dark:bg-gray-950'>
       <MonthHeader
         currentDate={currentDateObj}
         onMonthChange={handleMonthChange}
       />
 
       {/* Weekday Headers */}
-      <View className='flex-row border-b border-gray-800'>
+      <View className='flex-row border-b border-gray-200 dark:border-gray-800'>
         {WEEKDAYS.map((day) => (
           <View
             key={day.key}
@@ -117,7 +120,9 @@ export function MonthView({
           >
             <Text
               className={`text-sm font-medium ${
-                day.key === 'sun' ? 'text-red-500' : 'text-gray-400'
+                day.key === 'sun'
+                  ? 'text-red-500'
+                  : 'text-gray-600 dark:text-gray-400'
               }`}
             >
               {day.label}
@@ -143,8 +148,8 @@ export function MonthView({
                   width: DAY_WIDTH,
                   height: DAY_HEIGHT,
                 }}
-                className={`border-[0.5px] border-gray-800 p-1 ${
-                  isSelected ? 'bg-gray-800' : ''
+                className={`border-[0.5px] border-gray-200 dark:border-gray-800 p-1 ${
+                  isSelected ? 'bg-gray-100 dark:bg-gray-800' : ''
                 } ${isCurrentDay ? 'border-blue-500 border-[1.5px]' : ''}`}
                 onPress={() => handleDayPress(date)}
               >

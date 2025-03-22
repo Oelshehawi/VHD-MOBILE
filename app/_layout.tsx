@@ -1,20 +1,15 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
-import {
-  DarkTheme,
-  DefaultTheme,
-  ThemeProvider,
-} from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import { useColorScheme } from '../components/useColorScheme';
 import './global.css';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '../cache';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { secureStore } from '@clerk/clerk-expo/secure-store';
 import { initImageCache } from '@/utils/imageCache';
+import { ThemeProvider } from '@/providers/ThemeProvider';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -56,8 +51,6 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <ClerkProvider
       publishableKey={CLERK_PUBLISHABLE_KEY!}
@@ -65,9 +58,7 @@ export default function RootLayout() {
       __experimental_resourceCache={secureStore}
     >
       <InitialLayout>
-        <ThemeProvider
-          value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}
-        >
+        <ThemeProvider>
           <PowerSyncProvider>
             <Slot />
           </PowerSyncProvider>
