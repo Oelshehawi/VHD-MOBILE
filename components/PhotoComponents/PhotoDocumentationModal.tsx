@@ -5,6 +5,7 @@ import {
   Modal,
   TouchableOpacity,
   SafeAreaView,
+  ScrollView,
 } from 'react-native';
 import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
@@ -141,8 +142,8 @@ export function PhotoDocumentationModal({
             ))}
           </View>
 
-          {/* Content */}
-          <View className='flex-1 px-4 py-4'>
+          {/* Content - Wrapped in ScrollView for scrollability with many photos */}
+          <ScrollView className='flex-1 px-4 py-4'>
             {activeTab === 'before' && (
               <PhotoCapture
                 technicianId={technicianId}
@@ -170,7 +171,7 @@ export function PhotoDocumentationModal({
             {activeTab === 'history' && (
               <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />
             )}
-          </View>
+          </ScrollView>
         </View>
       </SafeAreaView>
     </Modal>

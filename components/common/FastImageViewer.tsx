@@ -1,7 +1,13 @@
 import React, { useState } from 'react';
 import ImageView from 'react-native-image-viewing';
 import FastImage from 'react-native-fast-image';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import {
+  ActivityIndicator,
+  StyleSheet,
+  View,
+  TouchableOpacity,
+  Text,
+} from 'react-native';
 
 // Define the image viewer props type manually based on the library's usage
 interface ImageViewerProps {
@@ -86,11 +92,28 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     );
   };
 
+  // Custom header component with larger touch target for the close button
+  const EnhancedHeaderComponent = () => {
+    return (
+      <View style={styles.headerContainer}>
+        <TouchableOpacity
+          onPress={props.onRequestClose}
+          style={styles.closeButton}
+          hitSlop={{ top: 15, right: 15, bottom: 15, left: 15 }}
+        >
+          <Text style={styles.closeText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  };
+
   // Cast to any to bypass type checking for ImageComponent prop
   const imageViewProps = {
     ...props,
     // @ts-ignore - ImageComponent exists on the native component but not in the types
     ImageComponent: FastImageComponent,
+    // Use our enhanced header component if no custom header is provided
+    HeaderComponent: props.HeaderComponent || EnhancedHeaderComponent,
   };
 
   return <ImageView {...imageViewProps} />;
@@ -107,5 +130,24 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.3)',
+  },
+  headerContainer: {
+    position: 'absolute',
+    top: 60,
+    right: 20,
+    zIndex: 100,
+  },
+  closeButton: {
+    width: 44, // Larger touch target for iOS (Apple recommends 44x44pt minimum)
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    borderRadius: 22,
+  },
+  closeText: {
+    color: 'white',
+    fontSize: 18,
+    fontWeight: 'bold',
   },
 });

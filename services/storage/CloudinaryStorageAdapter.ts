@@ -120,9 +120,6 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
       // Extract the secure_url from the Cloudinary response
       const secureUrl = cloudinaryData.secure_url;
 
-      console.log('secureUrl', secureUrl);
-      console.log('attachmentData', attachmentData);
-
       // If we have attachment data and a secure URL, add to add_photo_operations table
       if (attachmentData.length > 0 && secureUrl && this.powersync) {
         const attachment = attachmentData[0];
