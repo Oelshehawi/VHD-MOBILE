@@ -144,8 +144,6 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
           attachment.id || '',
         ];
 
-        console.log('attachment', attachment);
-        console.log('isSignature', isSignature);
         // Add signerName for signature type
         if (isSignature && attachment.signerName) {
           columns.push('signerName');

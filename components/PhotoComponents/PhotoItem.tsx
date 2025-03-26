@@ -1,7 +1,10 @@
 import { TouchableOpacity, View, Text, ActivityIndicator } from 'react-native';
 import { PhotoType } from '@/utils/photos';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { FastImageWrapper } from '@/components/common/FastImageWrapper';
+import { useSystem } from '@/services/database/System';
+import * as FileSystem from 'expo-file-system';
+import { Image } from 'react-native';
 
 /**
  * Individual photo item component
@@ -24,19 +27,66 @@ export function PhotoItem({
   const photoId = photo._id;
   const [imageError, setImageError] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [resolvedUrl, setResolvedUrl] = useState<string>('');
+  const system = useSystem();
 
-  // Enhanced detection of local/pending photos
-  const isLocalUrl =
-    photo.url?.startsWith('local://') ||
-    photo.url?.startsWith('file://') ||
-    photo.url?.startsWith('content://');
+  // Enhanced detection of pending photos
+  const isPending = photo.status === 'pending';
 
-  const isPending =
-    photo.status === 'pending' ||
-    isLocalUrl ||
-    !photo.url?.includes('cloudinary');
+  // Resolve the image URL - for pending photos we need the local file path
+  useEffect(() => {
+    const resolveUrl = async () => {
+      if (isPending && system?.attachmentQueue) {
+        try {
+          // If this is a pending photo, use local_uri which we can use directly
+          if (photo.local_uri) {
+            const localUri = system.attachmentQueue.getLocalUri(
+              photo.local_uri
+            );
+            setResolvedUrl(localUri);
 
-  const isFailed = photo.status === 'failed' || imageError;
+            // Verify the file exists
+            const fileInfo = await FileSystem.getInfoAsync(localUri);
+            if (!fileInfo.exists) {
+              setImageError(true);
+            }
+            return;
+          }
+
+          // Fallback if no local_uri - try direct attachments folder access
+          if (photo.url) {
+            const filename = photo.url.split('/').pop() || photo.url;
+            const directPath = `${FileSystem.documentDirectory}attachments/${filename}`;
+
+            // Check if file exists
+            const fileInfo = await FileSystem.getInfoAsync(directPath);
+            if (fileInfo.exists) {
+              setResolvedUrl(directPath);
+              return;
+            }
+
+            // Final fallback - use the URL as is
+            setResolvedUrl(photo.url);
+          } else {
+            setImageError(true);
+          }
+        } catch (error) {
+          setImageError(true);
+        }
+      } else {
+        // For uploaded photos, use the original URL
+        setResolvedUrl(photo.url);
+      }
+    };
+
+    resolveUrl();
+  }, [
+    photo.url,
+    photo.local_uri,
+    photo.attachmentId,
+    isPending,
+    system?.attachmentQueue,
+  ]);
 
   return (
     <View className='w-1/3 aspect-square p-1'>
@@ -47,13 +97,21 @@ export function PhotoItem({
         disabled={isDeleting || isPending}
       >
         {/* If there's an error or no URL, show placeholder */}
-        {imageError || !photo.url ? (
+        {imageError || !resolvedUrl ? (
           <View className='w-full h-full bg-gray-200 items-center justify-center'>
             <Text className='text-gray-500 font-medium'>Image</Text>
           </View>
+        ) : // For local file URLs, use regular Image instead of FastImageWrapper
+        resolvedUrl.startsWith('file:') ? (
+          <Image
+            source={{ uri: resolvedUrl }}
+            style={{ width: '100%', height: '100%' }}
+            onError={() => setImageError(true)}
+            resizeMode='cover'
+          />
         ) : (
           <FastImageWrapper
-            uri={photo.url}
+            uri={resolvedUrl}
             style={{ width: '100%', height: '100%' }}
             showLoader={true}
             onError={() => setImageError(true)}
@@ -65,8 +123,8 @@ export function PhotoItem({
         {isPending && (
           <View className='absolute inset-0 flex items-center justify-center bg-black/40'>
             <View className='bg-black/70 p-3 rounded-lg items-center'>
-              <ActivityIndicator size='large' color='#ffffff' />
-              <Text className='text-white text-sm font-bold mt-2 px-2 text-center'>
+              <ActivityIndicator size='small' color='#ffffff' />
+              <Text className='text-white text-xs font-bold mt-2 px-2 text-center'>
                 Uploading...
               </Text>
             </View>

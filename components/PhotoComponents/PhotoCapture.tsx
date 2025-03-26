@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PhotoGrid } from './PhotoGrid';
@@ -11,6 +11,7 @@ import { DeletePhotoModal } from './DeletePhotoModal';
 import { LoadingModal } from './LoadingModal';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { FastImageViewerHeader } from '@/components/common/FastImageViewerHeader';
+import * as FileSystem from 'expo-file-system';
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -49,6 +50,11 @@ export function PhotoCapture({
   const powerSync = usePowerSync();
   const system = useSystem();
 
+  // Set isReady to true after initial render
+  useEffect(() => {
+    setIsReady(true);
+  }, []);
+
   // State for image gallery
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
@@ -56,14 +62,54 @@ export function PhotoCapture({
     { uri: string; title?: string }[]
   >([]);
 
+  // Helper to resolve photo URLs - for pending photos we need to get the local file path
+  const resolvePhotoUrl = useCallback(
+    (photo: PhotoType): string => {
+      // For non-pending photos, just return the URL
+      if (photo.status !== 'pending' || !system?.attachmentQueue) {
+        return photo.url || '';
+      }
+
+      try {
+        // If we have a local_uri, use it directly - this should be the most reliable approach
+        if (photo.local_uri) {
+          return system.attachmentQueue.getLocalUri(photo.local_uri);
+        }
+
+        // Otherwise try with the URL if it's available
+        if (!photo.url) return '';
+
+        // If URL is just a filename, construct a path to the attachments directory
+        const filename = photo.url.split('/').pop() || photo.url;
+        return `${FileSystem.documentDirectory}attachments/${filename}`;
+      } catch (error) {
+        return photo.url || '';
+      }
+    },
+    [system?.attachmentQueue]
+  );
+
   // Prepare gallery images whenever photos change
   useEffect(() => {
     const images = photos.map((photo) => ({
-      uri: photo.url,
+      uri: resolvePhotoUrl(photo),
       title: `${type === 'before' ? 'Before' : 'After'} Photo`,
     }));
     setGalleryImages(images);
-  }, [photos, type]);
+  }, [photos, type, resolvePhotoUrl]);
+
+  // Helper function to update gallery when a photo is pressed in PhotoGrid
+  const handlePhotoPress = (index: number) => {
+    // First update gallery images with latest resolved URLs
+    const images = photos.map((photo) => ({
+      uri: resolvePhotoUrl(photo),
+      title: `${type === 'before' ? 'Before' : 'After'} Photo`,
+    }));
+    setGalleryImages(images);
+
+    // Then open the gallery at the selected index
+    openGallery(index);
+  };
 
   // Custom header component for the gallery
   const renderGalleryHeader = () => (
@@ -136,10 +182,12 @@ export function PhotoCapture({
             _id: attachment.id,
             id: attachment.id,
             url: attachment.filename, // Store the filename to match with attachment table
+            local_uri: attachment.local_uri, // Include local_uri for easy local file access
             type: type,
             timestamp: new Date().toISOString(),
             attachmentId: attachment.id,
             technicianId: technicianId,
+            status: 'pending', // Mark as pending initially
           }));
 
           // Add new photos to existing ones
@@ -262,9 +310,13 @@ export function PhotoCapture({
   /**
    * Request photo deletion
    */
-  const handleDeleteRequest = (photoId: string, url: string) => {
+  const handleDeleteRequest = (
+    photoId: string,
+    url: string,
+    attachmentId?: string
+  ) => {
     // Show delete confirmation dialog
-    setPhotoToDelete({ id: photoId, url });
+    setPhotoToDelete({ id: photoId, url, attachmentId });
   };
 
   /**
@@ -320,7 +372,7 @@ export function PhotoCapture({
       <PhotoGrid
         photos={photos}
         onDeletePhoto={handleDeleteRequest}
-        onPhotoPress={openGallery}
+        onPhotoPress={handlePhotoPress}
         currentScheduleId={scheduleId}
       />
 

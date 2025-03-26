@@ -14,6 +14,7 @@ export interface PhotoType {
   technicianId: string;
   filename?: string; // Optional filename field
   attachmentId?: string; // ID of the attachment in the ATTACHMENT_TABLE
+  local_uri?: string; // Local file path suffix for pending photos
 }
 
 export interface SignatureType {

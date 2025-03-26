@@ -1,12 +1,7 @@
 import { useState, useMemo } from 'react';
-import {
-  View,
-  Text,
-} from 'react-native';
+import { View, Text } from 'react-native';
 import { PhotoType } from '@/utils/photos';
 import { PhotoItem } from './PhotoItem';
-
-
 
 interface PhotoGridProps {
   photos: PhotoType[];
@@ -14,7 +9,6 @@ interface PhotoGridProps {
   onPhotoPress?: (photoIndex: number) => void;
   currentScheduleId?: string;
 }
-
 
 export function PhotoGrid({
   photos,
@@ -30,6 +24,9 @@ export function PhotoGrid({
     url: string,
     attachmentId?: string
   ) => {
+    // Don't allow deleting if photo is already in deleting state
+    if (deletingPhotoIds.includes(photoId)) return;
+
     setDeletingPhotoIds((prev) => [...prev, photoId]);
 
     // Call the parent component's delete handler

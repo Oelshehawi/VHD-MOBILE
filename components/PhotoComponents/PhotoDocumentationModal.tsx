@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,8 +9,8 @@ import {
 } from 'react-native';
 import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
-import { parsePhotosData, PhotoType } from '@/utils/photos';
-import { usePowerSync, useQuery } from '@powersync/react-native';
+import { parsePhotosData } from '@/utils/photos';
+import { useQuery } from '@powersync/react-native';
 import { ATTACHMENT_TABLE, AttachmentState } from '@powersync/attachments';
 
 interface PhotoDocumentationModalProps {
@@ -35,7 +35,6 @@ export function PhotoDocumentationModal({
   startDate,
 }: PhotoDocumentationModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('before');
-  const powersync = usePowerSync();
 
   // Query photos directly from the schedules table
   const { data, isLoading: isQueryLoading } = useQuery(
@@ -43,10 +42,11 @@ export function PhotoDocumentationModal({
     [scheduleId]
   );
 
-  // Query pending uploads from the attachment table
-  const { data: pendingAttachments, isLoading: isPendingLoading } = useQuery(
-    `SELECT id FROM ${ATTACHMENT_TABLE} WHERE scheduleId = ? AND state = ?`,
-    [scheduleId, AttachmentState.QUEUED_UPLOAD]
+  // Query ALL attachments related to this schedule, regardless of state
+  const { data: allAttachments, isLoading: isAttachmentsLoading } = useQuery(
+    `SELECT id, state, filename, scheduleId, type, local_uri, timestamp FROM ${ATTACHMENT_TABLE} 
+     WHERE scheduleId = ? ORDER BY timestamp DESC`,
+    [scheduleId]
   );
 
   // Parse photos data with useMemo to avoid unnecessary processing
@@ -60,27 +60,77 @@ export function PhotoDocumentationModal({
     }
   }, [data]);
 
-  // Process photos and mark those with pending attachment uploads
+  // Process photos and merge with any pending uploads from the attachment table
   const processedPhotos = useMemo(() => {
     if (!parsedPhotosData.photos) return [];
 
-    const pendingIds = pendingAttachments?.map((item) => item.id) || [];
-
-    // Update photos with pending status based on attachment state
-    return parsedPhotosData.photos.map((photo) => {
-      // If the photo's attachmentId is in the pending list, mark it as pending
-      if (photo.attachmentId && pendingIds.includes(photo.attachmentId)) {
-        return { ...photo, status: 'pending' as const };
+    // Create a map of all photos from schedule data by ID for quick lookup
+    const photosMap = new Map();
+    parsedPhotosData.photos.forEach((photo) => {
+      photosMap.set(photo._id, photo);
+      // Also map by attachmentId if it exists - this helps prevent duplicates
+      if (photo.attachmentId) {
+        photosMap.set(photo.attachmentId, photo);
       }
-
-      // If not in the pending list and has an attachmentId, mark as uploaded
-      if (photo.attachmentId && !pendingIds.includes(photo.attachmentId)) {
-        return { ...photo, status: 'uploaded' as const };
-      }
-
-      return photo;
     });
-  }, [parsedPhotosData.photos, pendingAttachments]);
+
+    // Create a map of attachment states by ID
+    const attachmentStatesMap = new Map();
+    if (allAttachments) {
+      allAttachments.forEach((attachment) => {
+        attachmentStatesMap.set(attachment.id, attachment.state);
+      });
+    }
+
+    // First process all photos from schedule data
+    const mergedPhotos = parsedPhotosData.photos.map((photo) => {
+      // Check if this photo has an attachment ID and its state
+      if (photo.attachmentId && attachmentStatesMap.has(photo.attachmentId)) {
+        const state = attachmentStatesMap.get(photo.attachmentId);
+        return {
+          ...photo,
+          status:
+            state === AttachmentState.SYNCED
+              ? ('uploaded' as const)
+              : ('pending' as const),
+        };
+      }
+      // Default to uploaded if in schedules but not found in attachments
+      return { ...photo, status: 'uploaded' as const };
+    });
+
+    // Now add any new attachments that aren't in the photos array yet
+    if (allAttachments) {
+      allAttachments.forEach((attachment) => {
+        // Only consider attachments that:
+        // 1. Are related to this schedule
+        // 2. Have a valid type (before/after)
+        // 3. Are NOT already in the photos map (prevent duplicates)
+        // 4. Are still in QUEUED_UPLOAD state (not yet synced)
+        if (
+          attachment.scheduleId === scheduleId &&
+          (attachment.type === 'before' || attachment.type === 'after') &&
+          !photosMap.has(attachment.id) &&
+          attachment.state !== AttachmentState.SYNCED
+        ) {
+          // This is a new photo in upload process, add it to our array
+          mergedPhotos.push({
+            _id: attachment.id,
+            id: attachment.id,
+            url: attachment.filename, // The filename without path
+            local_uri: attachment.local_uri, // Include the local_uri from attachment record if available
+            type: attachment.type as 'before' | 'after',
+            timestamp: attachment.timestamp || new Date().toISOString(),
+            attachmentId: attachment.id,
+            status: 'pending' as const, // Always pending if we're adding from attachments table
+            technicianId: technicianId, // Use the current technician ID
+          });
+        }
+      });
+    }
+
+    return mergedPhotos;
+  }, [parsedPhotosData.photos, allAttachments, scheduleId, technicianId]);
 
   // Filter processed photos by type
   const beforePhotos = useMemo(() => {
@@ -151,7 +201,7 @@ export function PhotoDocumentationModal({
                 type='before'
                 jobTitle={jobTitle}
                 scheduleId={scheduleId}
-                isLoading={isQueryLoading || isPendingLoading}
+                isLoading={isQueryLoading || isAttachmentsLoading}
                 startDate={startDate}
               />
             )}
@@ -163,7 +213,7 @@ export function PhotoDocumentationModal({
                 type='after'
                 jobTitle={jobTitle}
                 scheduleId={scheduleId}
-                isLoading={isQueryLoading || isPendingLoading}
+                isLoading={isQueryLoading || isAttachmentsLoading}
                 startDate={startDate}
               />
             )}
