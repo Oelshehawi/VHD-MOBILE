@@ -46,7 +46,7 @@ export const FastImageViewerHeader: React.FC<FastImageViewerHeaderProps> = ({
 const styles = StyleSheet.create({
   header: {
     backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingVertical: 12,
+    paddingVertical: 26,
     paddingHorizontal: 16,
   },
   headerContent: {
@@ -73,8 +73,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   closeButton: {
-    width: 36,
-    height: 36,
+    width: 44,
+    height: 44,
     borderRadius: 18,
     backgroundColor: 'rgba(0,0,0,0.3)',
     alignItems: 'center',

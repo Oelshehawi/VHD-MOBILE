@@ -133,12 +133,12 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     position: 'absolute',
-    top: 60,
+    top: 40,
     right: 20,
     zIndex: 100,
   },
   closeButton: {
-    width: 44, // Larger touch target for iOS (Apple recommends 44x44pt minimum)
+    width: 44, 
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',
