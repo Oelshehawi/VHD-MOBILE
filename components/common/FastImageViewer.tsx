@@ -7,6 +7,7 @@ import {
   View,
   TouchableOpacity,
   Text,
+  Platform,
 } from 'react-native';
 
 // Define the image viewer props type manually based on the library's usage
@@ -133,12 +134,12 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     position: 'absolute',
-    top: 40,
+    top: Platform.OS === 'ios' ? 50 : 40,
     right: 20,
-    zIndex: 100,
+    zIndex: 999,
   },
   closeButton: {
-    width: 44, 
+    width: 44,
     height: 44,
     justifyContent: 'center',
     alignItems: 'center',

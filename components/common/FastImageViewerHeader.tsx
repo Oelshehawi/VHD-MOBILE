@@ -1,5 +1,12 @@
 import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  StyleSheet,
+  Platform,
+  SafeAreaView,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface FastImageViewerHeaderProps {
@@ -20,7 +27,7 @@ export const FastImageViewerHeader: React.FC<FastImageViewerHeaderProps> = ({
   rightAction,
 }) => {
   return (
-    <View style={styles.header}>
+    <SafeAreaView style={styles.header}>
       <View style={styles.headerContent}>
         <View style={styles.titleContainer}>
           {title && <Text style={styles.title}>{title}</Text>}
@@ -33,21 +40,23 @@ export const FastImageViewerHeader: React.FC<FastImageViewerHeaderProps> = ({
           <TouchableOpacity
             onPress={onClose}
             style={styles.closeButton}
-            hitSlop={{ top: 15, right: 15, bottom: 15, left: 15 }}
+            hitSlop={{ top: 20, right: 20, bottom: 20, left: 20 }}
           >
             <Ionicons name='close' size={24} color='white' />
           </TouchableOpacity>
         </View>
       </View>
-    </View>
+    </SafeAreaView>
   );
 };
 
 const styles = StyleSheet.create({
   header: {
     backgroundColor: 'rgba(0,0,0,0.7)',
-    paddingVertical: 26,
+    paddingBottom: 12,
     paddingHorizontal: 16,
+    // Using platform-specific padding to account for notches and status bars on different devices
+    paddingTop: Platform.OS === 'ios' ? 0 : 12, // SafeAreaView handles top padding on iOS
   },
   headerContent: {
     flexDirection: 'row',

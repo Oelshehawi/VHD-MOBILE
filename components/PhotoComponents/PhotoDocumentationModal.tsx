@@ -150,7 +150,7 @@ export function PhotoDocumentationModal({
       visible={visible}
       onRequestClose={onClose}
     >
-      <SafeAreaView className='flex-1 bg-gray-50'>
+      <SafeAreaView className='flex-1 bg-gray-50' pointerEvents='box-none'>
         <View className='flex-1'>
           {/* Header */}
           <View className='bg-darkGreen p-4 shadow-md flex-row justify-between items-center'>
