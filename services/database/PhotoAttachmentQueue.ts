@@ -182,36 +182,6 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     };
   }
 
-  async savePhoto(base64Data: string): Promise<ExtendedAttachmentRecord> {
-    try {
-      // Create a new attachment record
-      const photoAttachment = await this.newAttachmentRecord();
-
-      // Set the local URI path
-      photoAttachment.local_uri = this.getLocalFilePathSuffix(
-        photoAttachment.filename
-      );
-      const localUri = this.getLocalUri(photoAttachment.local_uri);
-
-      // Write the file to disk
-      await this.storage.writeFile(localUri, base64Data, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // Get file info to update the record size
-      const fileInfo = await FileSystem.getInfoAsync(localUri);
-      if (fileInfo.exists) {
-        photoAttachment.size = fileInfo.size;
-      }
-
-      // Save the attachment to the queue
-      const savedAttachment = await this.saveToQueue(photoAttachment);
-      return savedAttachment as ExtendedAttachmentRecord;
-    } catch (error) {
-      throw error;
-    }
-  }
-
   /**
    * Batch save multiple photos from URIs
    * @param photoData Array of objects containing source URI and metadata
@@ -343,6 +313,27 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       return savedAttachment as ExtendedAttachmentRecord;
     } catch (error) {
       throw error;
+    }
+  }
+
+  /**
+   * Get the count of pending uploads in the queue
+   * @returns The number of pending uploads
+   */
+  async getPendingCount(): Promise<number> {
+    try {
+      interface CountResult {
+        count: number;
+      }
+
+      const pendingRecords = await this.powersync.getAll<CountResult>(
+        `SELECT COUNT(*) as count FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
+        [AttachmentState.QUEUED_UPLOAD]
+      );
+      return pendingRecords[0]?.count || 0;
+    } catch (error) {
+      console.error('Error getting pending count:', error);
+      return 0;
     }
   }
 }

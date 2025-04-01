@@ -28,14 +28,16 @@
         "NSPhotoLibraryUsageDescription": "This app needs access to your photos to save work documentation.",
         "UIBackgroundModes": [
           "fetch",
-          "remote-notification",
-          "fetch",
           "remote-notification"
         ],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/adaptive-icon-foreground.png",
+        "backgroundColor": "#FFFFFF"
+      },
       "package": "com.braille71.VHDApp"
     },
     "web": {

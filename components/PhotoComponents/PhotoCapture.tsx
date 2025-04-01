@@ -12,6 +12,7 @@ import { LoadingModal } from './LoadingModal';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { FastImageViewerHeader } from '@/components/common/FastImageViewerHeader';
 import * as FileSystem from 'expo-file-system';
+import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -199,6 +200,9 @@ export function PhotoCapture({
             scheduleId,
           ]);
         });
+
+        // Start background upload process for photos
+        await checkAndStartBackgroundUpload();
       }
 
       showToast(

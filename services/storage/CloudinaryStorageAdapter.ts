@@ -17,10 +17,6 @@ interface CloudinaryDownload {
   downloadUrl: string;
 }
 
-interface CloudinaryDelete {
-  message: string;
-}
-
 export class CloudinaryStorageAdapter implements StorageAdapter {
   private powersync: any = null;
 
