@@ -10,11 +10,10 @@ import {
 import { InvoiceType } from '@/types';
 import { formatDateReadable } from '@/utils/date';
 import { SignatureCapture } from './SignatureCapture';
-import { useQuery, usePowerSync } from '@powersync/react-native';
+import { useQuery } from '@powersync/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
-import { ConfirmationModal } from '@/components/common/ConfirmationModal';
 
 interface InvoiceModalProps {
   visible: boolean;
