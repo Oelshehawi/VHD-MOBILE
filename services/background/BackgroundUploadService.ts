@@ -1,6 +1,8 @@
 import BackgroundService from 'react-native-background-actions';
 import { system } from '../database/System';
 import { AttachmentState } from '@powersync/attachments';
+import { Platform } from 'react-native';
+import { requestNotificationPermission } from '@/utils/permissions';
 
 // Simple logging utility
 const logUpload = (message: string, details?: any) => {
@@ -32,6 +34,10 @@ const backgroundOptions = {
   } as TaskParameters,
 };
 
+// Keep track of upload progress
+let totalUploadsAtStart = 0;
+let uploadedSoFar = 0;
+
 // Background task implementation
 const uploadTask = async (
   taskDataArguments?: TaskParameters
@@ -48,7 +54,7 @@ const uploadTask = async (
   }
 
   try {
-    // First check how many photos need uploading for the notification
+    // Check how many photos need uploading
     const pendingRecords = await system.powersync.getAll<{ count: number }>(
       `SELECT COUNT(*) as count FROM attachments WHERE state = ?`,
       [AttachmentState.QUEUED_UPLOAD]
@@ -58,47 +64,62 @@ const uploadTask = async (
     logUpload('Found pending photos', { pendingCount });
 
     if (pendingCount > 0) {
-      // Update notification with initial count
+      // On first run, initialize the total count
+      if (totalUploadsAtStart === 0) {
+        totalUploadsAtStart = pendingCount;
+        uploadedSoFar = 0;
+      }
+
+      // Calculate newly uploaded files
+      const newlyUploaded = totalUploadsAtStart - pendingCount - uploadedSoFar;
+      if (newlyUploaded > 0) {
+        uploadedSoFar += newlyUploaded;
+      }
+
+      // Update notification with current progress
       await BackgroundService.updateNotification({
-        taskDesc: `Uploading ${pendingCount} photo${
-          pendingCount === 1 ? '' : 's'
-        }`,
+        taskTitle: 'Uploading Photos',
+        taskDesc: `Uploaded ${uploadedSoFar} of ${totalUploadsAtStart} photos`,
         progressBar: {
-          max: pendingCount,
-          value: 0,
+          max: totalUploadsAtStart,
+          value: uploadedSoFar,
           indeterminate: false,
         },
       });
 
-      // Simply let PowerSync handle the uploads
+      // Trigger upload mechanism
       logUpload('Triggering PowerSync upload mechanism');
       await system.backendConnector.uploadData(system.powersync);
 
-      // Check if all uploads completed
+      // Get current pending count after upload attempt
       const afterRecords = await system.powersync.getAll<{ count: number }>(
         `SELECT COUNT(*) as count FROM attachments WHERE state = ?`,
         [AttachmentState.QUEUED_UPLOAD]
       );
       const afterCount = afterRecords[0]?.count || 0;
 
-      logUpload('Upload completed', {
-        beforeCount: pendingCount,
-        afterCount,
-        uploaded: pendingCount - afterCount,
+      // Calculate how many were uploaded in this cycle
+      const uploadedThisRound = pendingCount - afterCount;
+      if (uploadedThisRound > 0) {
+        uploadedSoFar += uploadedThisRound;
+      }
+
+      logUpload('Upload progress', {
+        totalAtStart: totalUploadsAtStart,
+        remaining: afterCount,
+        uploadedSoFar,
       });
 
-      // Update notification with completion
+      // Update notification with latest progress
       await BackgroundService.updateNotification({
-        taskTitle: afterCount === 0 ? 'Upload Complete' : 'Upload Progress',
+        taskTitle: afterCount === 0 ? 'Upload Complete' : 'Uploading Photos',
         taskDesc:
           afterCount === 0
-            ? `Successfully uploaded ${pendingCount} photo${
-                pendingCount === 1 ? '' : 's'
-              }`
-            : `Uploaded ${pendingCount - afterCount} of ${pendingCount} photos`,
+            ? `Successfully uploaded ${totalUploadsAtStart} photos`
+            : `Uploaded ${uploadedSoFar} of ${totalUploadsAtStart} photos`,
         progressBar: {
-          max: pendingCount,
-          value: pendingCount - afterCount,
+          max: totalUploadsAtStart,
+          value: uploadedSoFar,
           indeterminate: false,
         },
       });
@@ -110,6 +131,10 @@ const uploadTask = async (
         return uploadTask(taskDataArguments); // Recursively call to continue uploads
       }
 
+      // Reset counters
+      totalUploadsAtStart = 0;
+      uploadedSoFar = 0;
+
       // Stop the service after a brief delay to show completion
       logUpload('All uploads completed, stopping service after delay');
       setTimeout(async () => {
@@ -118,6 +143,11 @@ const uploadTask = async (
     } else {
       // No photos to upload, stop the service
       logUpload('No pending uploads, stopping service');
+
+      // Reset counters
+      totalUploadsAtStart = 0;
+      uploadedSoFar = 0;
+
       await BackgroundService.stop();
     }
   } catch (error) {
@@ -128,6 +158,10 @@ const uploadTask = async (
       taskTitle: 'Upload Error',
       taskDesc: error instanceof Error ? error.message : 'Upload failed',
     });
+
+    // Reset counters
+    totalUploadsAtStart = 0;
+    uploadedSoFar = 0;
 
     // Stop the service on error
     await BackgroundService.stop();
@@ -141,6 +175,21 @@ export const startBackgroundUpload = async (): Promise<void> => {
     return;
   }
 
+  // Reset counters when starting a new upload session
+  totalUploadsAtStart = 0;
+  uploadedSoFar = 0;
+
+  // Check notification permission on Android 13+
+  if (Platform.OS === 'android' && Platform.Version >= 33) {
+    const hasPermission = await requestNotificationPermission();
+    if (!hasPermission) {
+      logUpload(
+        'Cannot start background upload: notification permission denied'
+      );
+      return;
+    }
+  }
+
   logUpload('Starting background upload service');
   await BackgroundService.start(uploadTask, backgroundOptions);
 };
@@ -150,6 +199,10 @@ export const stopBackgroundUpload = async (): Promise<void> => {
   if (!BackgroundService.isRunning()) {
     return;
   }
+
+  // Reset counters when stopping
+  totalUploadsAtStart = 0;
+  uploadedSoFar = 0;
 
   logUpload('Stopping background upload service');
   await BackgroundService.stop();

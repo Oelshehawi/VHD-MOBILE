@@ -10,6 +10,7 @@ import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { secureStore } from '@clerk/clerk-expo/secure-store';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
+import { requestAppPermissions } from '@/utils/permissions';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -43,6 +44,11 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
       // Initialize image cache management
       initImageCache().catch((err) => {
         console.warn('Failed to initialize image cache:', err);
+      });
+
+      // Request app permissions
+      requestAppPermissions().catch((err) => {
+        console.warn('Failed to request app permissions:', err);
       });
     }
   }, [isLoaded]);

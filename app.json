@@ -26,10 +26,7 @@
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to capture photos of work completed.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photos to save work documentation.",
-        "UIBackgroundModes": [
-          "fetch",
-          "remote-notification"
-        ],
+        "UIBackgroundModes": ["fetch", "remote-notification", "processing"],
         "ITSAppUsesNonExemptEncryption": false
       }
     },
@@ -38,7 +35,13 @@
         "foregroundImage": "./assets/images/adaptive-icon-foreground.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.braille71.VHDApp"
+      "package": "com.braille71.VHDApp",
+      "permissions": [
+        "android.permission.WAKE_LOCK",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_DATA_SYNC",
+        "android.permission.POST_NOTIFICATIONS"
+      ]
     },
     "web": {
       "bundler": "metro",
