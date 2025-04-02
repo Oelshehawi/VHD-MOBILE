@@ -8,8 +8,7 @@
         "gradleCommand": ":app:assembleDebug"
       },
       "ios": {
-        "buildConfiguration": "Debug",
-        "simulator": true
+        "buildConfiguration": "Debug"
       },
       "env": {
         "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app"

@@ -1,19 +1,24 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import ImageView from 'react-native-image-viewing';
 import FastImage from 'react-native-fast-image';
-import {
-  ActivityIndicator,
-  StyleSheet,
-  View,
-  TouchableOpacity,
-  Text,
-  Platform,
-  SafeAreaView,
-} from 'react-native';
+import { ActivityIndicator, View } from 'react-native';
+import { FastImageViewerHeader } from './FastImageViewerHeader';
 
-// Define the image viewer props type manually based on the library's usage
-interface ImageViewerProps {
-  images: { uri: string; title?: string }[];
+// Simplified props interface
+export interface FastImageViewerProps {
+  images: { uri: string; title?: string; type?: string }[];
+  imageIndex: number;
+  visible: boolean;
+  onRequestClose: () => void;
+  swipeToCloseEnabled?: boolean;
+  doubleTapToZoomEnabled?: boolean;
+  title?: string;
+  getSubtitle?: (index: number, currentImage: any) => string;
+}
+
+// Extended ImageView props to make TypeScript happy
+interface ExtendedImageViewProps {
+  images: { uri: string; title?: string; type?: string }[];
   imageIndex: number;
   visible: boolean;
   onRequestClose: () => void;
@@ -21,72 +26,68 @@ interface ImageViewerProps {
   doubleTapToZoomEnabled?: boolean;
   HeaderComponent?: React.ComponentType<any>;
   FooterComponent?: React.ComponentType<any>;
-}
-
-// Custom type for our modified image viewer
-export interface FastImageViewerProps
-  extends Omit<ImageViewerProps, 'ImageComponent'> {
-  onImageLoad?: (index: number) => void;
-  onImageLoadError?: (index: number) => void;
+  onImageIndexChange?: (index: number) => void;
+  ImageComponent?: React.ComponentType<any>;
+  [key: string]: any; // Allow other props
 }
 
 /**
- * A custom image viewer component that uses FastImage for better performance
- * and caching capabilities in full-screen image galleries
+ * A simplified image viewer component that uses FastImage for better performance
  */
 export const FastImageViewer: React.FC<FastImageViewerProps> = ({
-  onImageLoad,
-  onImageLoadError,
-  ...props
+  images,
+  imageIndex = 0,
+  visible,
+  onRequestClose,
+  swipeToCloseEnabled = true,
+  doubleTapToZoomEnabled = true,
+  title,
+  getSubtitle,
+  ...otherProps
 }) => {
-  const [loadingIndices, setLoadingIndices] = useState<Record<number, boolean>>(
-    {}
-  );
+  // Track the current index separately from props
+  const [currentIndex, setCurrentIndex] = useState(imageIndex);
 
-  // Handler for image load success
-  const handleImageLoad = (index: number) => {
-    setLoadingIndices((prev) => ({ ...prev, [index]: false }));
-    if (onImageLoad) onImageLoad(index);
+  // Update internal index when props change or visibility changes
+  useEffect(() => {
+    if (visible) {
+      setCurrentIndex(imageIndex);
+    }
+  }, [imageIndex, visible]);
+
+  // Create subtitle for the header based on current index
+  const getHeaderSubtitle = () => {
+    if (!images || !images[currentIndex]) {
+      return 'Loading...';
+    }
+
+    if (getSubtitle) {
+      return getSubtitle(currentIndex, images[currentIndex]);
+    } else if (images[currentIndex]?.type) {
+      return `${images[currentIndex].type} Photo ${currentIndex + 1} of ${
+        images.length
+      }`;
+    } else {
+      return `Photo ${currentIndex + 1} of ${images.length}`;
+    }
   };
 
-  // Handler for image load errors
-  const handleImageError = (index: number) => {
-    setLoadingIndices((prev) => ({ ...prev, [index]: false }));
-    if (onImageLoadError) onImageLoadError(index);
-  };
-
-  // Custom FastImage component for the ImageView
-  const FastImageComponent = (props: any) => {
-    const { style, source = {}, index = 0 } = props;
-
-    // Track loading state for this image
+  // Custom image component with loading indicator
+  const CustomImageComponent = ({ source, style }: any) => {
     const [isLoading, setIsLoading] = useState(true);
 
-    // Update global loading state
-    React.useEffect(() => {
-      if (index !== undefined) {
-        setLoadingIndices((prev) => ({ ...prev, [index]: true }));
-      }
-    }, [index]);
-
     return (
-      <View style={[style, styles.imageContainer]}>
+      <View className='flex-1 justify-center items-center' style={style}>
         <FastImage
           source={source}
           style={style}
           resizeMode={FastImage.resizeMode.contain}
-          onLoad={() => {
-            setIsLoading(false);
-            handleImageLoad(index);
-          }}
-          onError={() => {
-            setIsLoading(false);
-            handleImageError(index);
-          }}
+          onLoad={() => setIsLoading(false)}
+          onError={() => setIsLoading(false)}
         />
 
         {isLoading && (
-          <View style={styles.loaderContainer}>
+          <View className='absolute inset-0 justify-center items-center bg-black/30'>
             <ActivityIndicator size='large' color='#ffffff' />
           </View>
         )}
@@ -94,68 +95,34 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     );
   };
 
-  // Custom header component with larger touch target for the close button
-  const EnhancedHeaderComponent = () => {
-    return (
-      <SafeAreaView style={styles.headerContainer}>
-        <TouchableOpacity
-          onPress={props.onRequestClose}
-          style={styles.closeButton}
-          hitSlop={{ top: 20, right: 20, bottom: 20, left: 20 }}
-        >
-          <Text style={styles.closeText}>✕</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
+  // Create fresh header props for each render
+  const headerProps = {
+    title,
+    subtitle: getHeaderSubtitle(),
+    onClose: onRequestClose,
   };
 
-  // Cast to any to bypass type checking for ImageComponent prop
-  const imageViewProps = {
-    ...props,
-    // @ts-ignore - ImageComponent exists on the native component but not in the types
-    ImageComponent: FastImageComponent,
-    // Use our enhanced header component if no custom header is provided
-    HeaderComponent: props.HeaderComponent || EnhancedHeaderComponent,
+  // Handle index changes
+  const handleIndexChange = (index: number) => {
+    setCurrentIndex(index);
   };
 
-  return <ImageView {...imageViewProps} />;
+  // Type assertion to make TypeScript happy
+  const ExtendedImageView =
+    ImageView as React.ComponentType<ExtendedImageViewProps>;
+
+  return (
+    <ExtendedImageView
+      images={images}
+      imageIndex={imageIndex}
+      visible={visible}
+      onRequestClose={onRequestClose}
+      swipeToCloseEnabled={swipeToCloseEnabled}
+      doubleTapToZoomEnabled={doubleTapToZoomEnabled}
+      HeaderComponent={() => <FastImageViewerHeader {...headerProps} />}
+      onImageIndexChange={handleIndexChange}
+      ImageComponent={CustomImageComponent}
+      {...otherProps}
+    />
+  );
 };
-
-const styles = StyleSheet.create({
-  imageContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loaderContainer: {
-    ...StyleSheet.absoluteFillObject,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.3)',
-  },
-  headerContainer: {
-    position: 'absolute',
-    top: 0,
-    right: 0,
-    left: 0,
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingTop: Platform.OS === 'ios' ? 0 : 40,
-    paddingRight: 20,
-    zIndex: 999,
-  },
-  closeButton: {
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    borderRadius: 22,
-    margin: 10,
-  },
-  closeText: {
-    color: 'white',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-});

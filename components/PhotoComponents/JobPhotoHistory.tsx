@@ -1,12 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
   FlatList,
-  StyleSheet,
   Pressable,
   ActivityIndicator,
-  TouchableOpacity,
 } from 'react-native';
 import { format } from 'date-fns';
 import { useQuery } from '@powersync/react-native';
@@ -230,29 +228,29 @@ export function JobPhotoHistory({
   }) => (
     <Pressable
       onPress={() => openGallery(jobIndex, photoType, photoIndex)}
-      style={styles.photoItem}
+      className='w-[100px] h-[100px] mr-2 rounded-lg overflow-hidden'
     >
-      <View style={styles.photoContainer}>
+      <View className='w-full h-full relative'>
         <FastImageWrapper
           uri={item.url}
-          style={styles.photoImage}
+          style={{
+            width: '100%',
+            height: '100%',
+            borderRadius: 8,
+          }}
           showLoader={true}
         />
 
         <View
-          style={[
-            styles.photoTypeLabel,
-            {
-              backgroundColor:
-                photoType === 'before'
-                  ? 'rgba(59, 130, 246, 0.8)'
-                  : photoType === 'after'
-                  ? 'rgba(16, 185, 129, 0.8)'
-                  : 'rgba(139, 92, 246, 0.8)', // Purple for signatures
-            },
-          ]}
+          className={`absolute bottom-0 left-0 right-0 py-1 items-center ${
+            photoType === 'before'
+              ? 'bg-blue-500/80'
+              : photoType === 'after'
+              ? 'bg-green-500/80'
+              : 'bg-purple-500/80'
+          }`}
         >
-          <Text style={styles.photoTypeLabelText}>
+          <Text className='text-white text-xs font-medium'>
             {photoType === 'before'
               ? 'Before'
               : photoType === 'after'
@@ -264,27 +262,28 @@ export function JobPhotoHistory({
     </Pressable>
   );
 
-  // Custom header component for the gallery with close button
-  const renderGalleryHeader = () => (
-    <FastImageViewerHeader
-      title={jobTitle}
-      subtitle={`${galleryJobDate} - ${
-        galleryImages[galleryIndex]?.type === 'before'
+  // Get subtitle for the gallery header
+  const getGallerySubtitle = useCallback(
+    (index: number, currentImage: GalleryImage) => {
+      return `${galleryJobDate} - ${
+        currentImage?.type === 'before'
           ? 'Before Photo'
-          : galleryImages[galleryIndex]?.type === 'after'
+          : currentImage?.type === 'after'
           ? 'After Photo'
           : 'Signature'
-      }`}
-      onClose={() => setGalleryVisible(false)}
-    />
+      }`;
+    },
+    [galleryJobDate]
   );
 
   // Loading state
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
+      <View className='flex-1 justify-center items-center'>
         <ActivityIndicator size='large' color='#0891b2' />
-        <Text style={styles.loadingText}>Loading previous jobs...</Text>
+        <Text className='mt-3 text-gray-500 text-base'>
+          Loading previous jobs...
+        </Text>
       </View>
     );
   }
@@ -292,10 +291,12 @@ export function JobPhotoHistory({
   // Empty state
   if (previousJobs.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
+      <View className='flex-1 justify-center items-center px-6'>
         <Ionicons name='time-outline' size={48} color='#9ca3af' />
-        <Text style={styles.emptyTitle}>No job history found</Text>
-        <Text style={styles.emptyText}>
+        <Text className='text-lg font-semibold mt-4 mb-2 text-gray-600'>
+          No job history found
+        </Text>
+        <Text className='text-center text-gray-500 max-w-[240px]'>
           No previous jobs with title "{jobTitle}" were found
         </Text>
       </View>
@@ -303,8 +304,8 @@ export function JobPhotoHistory({
   }
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.infoText}>
+    <View className='flex-1 p-2'>
+      <Text className='text-xs text-gray-500 mb-3 italic px-1'>
         Showing photos from previous instances of "{jobTitle}"
       </Text>
 
@@ -312,16 +313,18 @@ export function JobPhotoHistory({
         data={previousJobs}
         keyExtractor={(item) => item.id}
         renderItem={({ item, index: jobIndex }) => (
-          <View style={styles.jobCard}>
-            <View style={styles.jobHeader}>
-              <View style={styles.timelineDot} />
-              <Text style={styles.jobDate}>{item.date}</Text>
+          <View className='bg-white rounded-xl p-4 mb-4 shadow-sm border border-gray-100'>
+            <View className='flex-row items-center mb-3'>
+              <View className='w-2.5 h-2.5 rounded-full bg-blue-500 mr-2.5' />
+              <Text className='text-base font-semibold text-gray-800'>
+                {item.date}
+              </Text>
             </View>
 
             {/* Before Photos Section */}
             {item.photos.before.length > 0 && (
-              <View style={styles.photoSection}>
-                <Text style={styles.sectionLabel}>
+              <View className='mb-4'>
+                <Text className='text-sm font-medium mb-2 text-gray-600 flex-row items-center'>
                   <Ionicons name='camera-outline' size={16} color='#3b82f6' />{' '}
                   Before Photos
                 </Text>
@@ -340,15 +343,15 @@ export function JobPhotoHistory({
                     })
                   }
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.photoList}
+                  contentContainerStyle={{ paddingBottom: 4 }}
                 />
               </View>
             )}
 
             {/* After Photos Section */}
             {item.photos.after.length > 0 && (
-              <View style={styles.photoSection}>
-                <Text style={styles.sectionLabel}>
+              <View className='mb-4'>
+                <Text className='text-sm font-medium mb-2 text-gray-600 flex-row items-center'>
                   <Ionicons
                     name='checkmark-circle-outline'
                     size={16}
@@ -371,15 +374,15 @@ export function JobPhotoHistory({
                     })
                   }
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.photoList}
+                  contentContainerStyle={{ paddingBottom: 4 }}
                 />
               </View>
             )}
 
             {/* Signature Section */}
             {item.photos.signature.length > 0 && (
-              <View style={styles.photoSection}>
-                <Text style={styles.sectionLabel}>
+              <View className='mb-4'>
+                <Text className='text-sm font-medium mb-2 text-gray-600 flex-row items-center'>
                   <Ionicons name='pencil-outline' size={16} color='#8b5cf6' />{' '}
                   Signatures
                 </Text>
@@ -398,7 +401,7 @@ export function JobPhotoHistory({
                     })
                   }
                   showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={styles.photoList}
+                  contentContainerStyle={{ paddingBottom: 4 }}
                 />
               </View>
             )}
@@ -406,7 +409,7 @@ export function JobPhotoHistory({
         )}
       />
 
-      {/* Image Gallery Viewer with the new header component */}
+      {/* Image Gallery Viewer with the new simplified API */}
       <FastImageViewer
         images={galleryImages}
         imageIndex={galleryIndex}
@@ -414,124 +417,9 @@ export function JobPhotoHistory({
         onRequestClose={() => setGalleryVisible(false)}
         swipeToCloseEnabled={true}
         doubleTapToZoomEnabled={true}
-        HeaderComponent={renderGalleryHeader}
+        title={jobTitle}
+        getSubtitle={getGallerySubtitle}
       />
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 8,
-  },
-  infoText: {
-    fontSize: 13,
-    color: '#6b7280',
-    marginBottom: 12,
-    fontStyle: 'italic',
-    paddingHorizontal: 4,
-  },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingText: {
-    marginTop: 12,
-    color: '#6b7280',
-    fontSize: 16,
-  },
-  emptyContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginTop: 16,
-    marginBottom: 8,
-    color: '#4b5563',
-  },
-  emptyText: {
-    textAlign: 'center',
-    color: '#6b7280',
-    maxWidth: 240,
-  },
-  jobCard: {
-    backgroundColor: 'white',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2.5,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: '#f3f4f6',
-  },
-  jobHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  timelineDot: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: '#3b82f6',
-    marginRight: 10,
-  },
-  jobDate: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1f2937',
-  },
-  photoSection: {
-    marginBottom: 16,
-  },
-  sectionLabel: {
-    fontSize: 14,
-    fontWeight: '500',
-    marginBottom: 8,
-    color: '#4b5563',
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  photoList: {
-    paddingBottom: 4,
-  },
-  photoItem: {
-    width: 100,
-    height: 100,
-    marginRight: 8,
-    borderRadius: 8,
-    overflow: 'hidden',
-  },
-  photoContainer: {
-    width: '100%',
-    height: '100%',
-    position: 'relative',
-  },
-  photoImage: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 8,
-  },
-  photoTypeLabel: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingVertical: 4,
-    alignItems: 'center',
-  },
-  photoTypeLabelText: {
-    color: 'white',
-    fontSize: 12,
-    fontWeight: '500',
-  },
-});

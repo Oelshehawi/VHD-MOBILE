@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import FastImage from 'react-native-fast-image';
-import { View, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, ActivityIndicator } from 'react-native';
 
 interface FastImageWrapperProps {
   uri: string;
@@ -17,7 +17,7 @@ interface FastImageWrapperProps {
  * A wrapper component for FastImage that provides loading indicators
  * and error handling
  */
-export const FastImageWrapper: React.FC<FastImageWrapperProps> = ({
+export const FastImageWrapper = ({
   uri,
   style,
   resizeMode = FastImage.resizeMode.cover,
@@ -27,7 +27,7 @@ export const FastImageWrapper: React.FC<FastImageWrapperProps> = ({
   onError,
   onLoad,
   ...props
-}) => {
+}: FastImageWrapperProps) => {
   const [isLoading, setIsLoading] = useState(true);
   const [hasError, setHasError] = useState(false);
 
@@ -58,7 +58,7 @@ export const FastImageWrapper: React.FC<FastImageWrapperProps> = ({
     <View style={[style, { backgroundColor: placeholderColor }]}>
       <FastImage
         source={{ uri }}
-        style={StyleSheet.absoluteFill}
+        style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
         resizeMode={resizeMode}
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
@@ -74,21 +74,13 @@ export const FastImageWrapper: React.FC<FastImageWrapperProps> = ({
       />
 
       {isLoading && showLoader && (
-        <View style={[StyleSheet.absoluteFill, styles.loaderContainer]}>
+        <View className='absolute inset-0 justify-center items-center bg-black/5'>
           <ActivityIndicator color={loaderColor} />
         </View>
       )}
     </View>
   );
 };
-
-const styles = StyleSheet.create({
-  loaderContainer: {
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.05)',
-  },
-});
 
 /**
  * Utilities to help manage FastImage caching

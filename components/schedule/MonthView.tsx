@@ -10,7 +10,6 @@ import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
 import { AppointmentType } from '@/types';
 import { getMonthDays, getAppointmentsForDay } from '@/utils/calendar';
 import { MonthHeader } from './MonthHeader';
-import { DailyAgenda } from './DailyAgenda';
 
 interface MonthViewProps {
   currentDate: string;

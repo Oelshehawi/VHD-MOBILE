@@ -10,7 +10,6 @@ import { useSystem } from '@/services/database/System';
 import { DeletePhotoModal } from './DeletePhotoModal';
 import { LoadingModal } from './LoadingModal';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
-import { FastImageViewerHeader } from '@/components/common/FastImageViewerHeader';
 import * as FileSystem from 'expo-file-system';
 import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 
@@ -60,7 +59,7 @@ export function PhotoCapture({
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
   const [galleryImages, setGalleryImages] = useState<
-    { uri: string; title?: string }[]
+    { uri: string; title?: string; type?: string }[]
   >([]);
 
   // Helper to resolve photo URLs - for pending photos we need to get the local file path
@@ -95,6 +94,7 @@ export function PhotoCapture({
     const images = photos.map((photo) => ({
       uri: resolvePhotoUrl(photo),
       title: `${type === 'before' ? 'Before' : 'After'} Photo`,
+      type: type,
     }));
     setGalleryImages(images);
   }, [photos, type, resolvePhotoUrl]);
@@ -105,6 +105,7 @@ export function PhotoCapture({
     const images = photos.map((photo) => ({
       uri: resolvePhotoUrl(photo),
       title: `${type === 'before' ? 'Before' : 'After'} Photo`,
+      type: type,
     }));
     setGalleryImages(images);
 
@@ -112,15 +113,14 @@ export function PhotoCapture({
     openGallery(index);
   };
 
-  // Custom header component for the gallery
-  const renderGalleryHeader = () => (
-    <FastImageViewerHeader
-      title={jobTitle}
-      subtitle={`${type === 'before' ? 'Before' : 'After'} Photo ${
-        galleryIndex + 1
-      } of ${photos.length}`}
-      onClose={() => setGalleryVisible(false)}
-    />
+  // Get subtitle for the gallery header
+  const getGallerySubtitle = useCallback(
+    (index: number) => {
+      return `${type === 'before' ? 'Before' : 'After'} Photo ${index + 1} of ${
+        photos.length
+      }`;
+    },
+    [type, photos.length]
   );
 
   /**
@@ -323,9 +323,6 @@ export function PhotoCapture({
     setPhotoToDelete({ id: photoId, url, attachmentId });
   };
 
-  /**
-   * Open the image gallery
-   */
   const openGallery = (photoIndex: number = 0) => {
     if (photos.length === 0) return;
 
@@ -403,7 +400,8 @@ export function PhotoCapture({
         onRequestClose={() => setGalleryVisible(false)}
         swipeToCloseEnabled={true}
         doubleTapToZoomEnabled={true}
-        HeaderComponent={renderGalleryHeader}
+        title={jobTitle}
+        getSubtitle={getGallerySubtitle}
       />
 
       {/* Loading indicator - only show when component is ready */}
