@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Text,
   Platform,
+  SafeAreaView,
 } from 'react-native';
 
 // Define the image viewer props type manually based on the library's usage
@@ -96,15 +97,15 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
   // Custom header component with larger touch target for the close button
   const EnhancedHeaderComponent = () => {
     return (
-      <View style={styles.headerContainer}>
+      <SafeAreaView style={styles.headerContainer}>
         <TouchableOpacity
           onPress={props.onRequestClose}
           style={styles.closeButton}
-          hitSlop={{ top: 15, right: 15, bottom: 15, left: 15 }}
+          hitSlop={{ top: 20, right: 20, bottom: 20, left: 20 }}
         >
           <Text style={styles.closeText}>✕</Text>
         </TouchableOpacity>
-      </View>
+      </SafeAreaView>
     );
   };
 
@@ -134,8 +135,13 @@ const styles = StyleSheet.create({
   },
   headerContainer: {
     position: 'absolute',
-    top: Platform.OS === 'ios' ? 50 : 40,
-    right: 20,
+    top: 0,
+    right: 0,
+    left: 0,
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    paddingTop: Platform.OS === 'ios' ? 0 : 40,
+    paddingRight: 20,
     zIndex: 999,
   },
   closeButton: {
@@ -145,6 +151,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: 'rgba(0,0,0,0.5)',
     borderRadius: 22,
+    margin: 10,
   },
   closeText: {
     color: 'white',
