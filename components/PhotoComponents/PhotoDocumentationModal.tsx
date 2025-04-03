@@ -143,32 +143,6 @@ export function PhotoDocumentationModal({
 
   if (!visible) return null;
 
-  // Render appropriate content based on active tab
-  const renderContent = () => {
-    if (activeTab === 'before' || activeTab === 'after') {
-      return (
-        <ScrollView className='flex-1 px-4 py-4'>
-          <PhotoCapture
-            technicianId={technicianId}
-            photos={activeTab === 'before' ? beforePhotos : afterPhotos}
-            type={activeTab}
-            jobTitle={jobTitle}
-            scheduleId={scheduleId}
-            isLoading={isQueryLoading || isAttachmentsLoading}
-            startDate={startDate}
-          />
-        </ScrollView>
-      );
-    } else {
-      // For history tab, don't wrap in ScrollView since JobPhotoHistory already uses FlatList
-      return (
-        <View className='flex-1 px-4 py-4'>
-          <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />
-        </View>
-      );
-    }
-  };
-
   return (
     <Modal
       animationType='slide'
@@ -218,8 +192,24 @@ export function PhotoDocumentationModal({
             ))}
           </View>
 
-          {/* Content - Conditionally rendered based on active tab */}
-          {renderContent()}
+          {/* Content */}
+          {activeTab === 'before' || activeTab === 'after' ? (
+            <ScrollView className='flex-1 px-4 py-4'>
+              <PhotoCapture
+                technicianId={technicianId}
+                photos={activeTab === 'before' ? beforePhotos : afterPhotos}
+                type={activeTab}
+                jobTitle={jobTitle}
+                scheduleId={scheduleId}
+                isLoading={isQueryLoading || isAttachmentsLoading}
+                startDate={startDate}
+              />
+            </ScrollView>
+          ) : (
+            <View className='flex-1 px-4 py-4'>
+              <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />
+            </View>
+          )}
         </View>
       </SafeAreaView>
     </Modal>

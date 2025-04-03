@@ -22,11 +22,8 @@ export const FastImageViewerHeader = ({
   rightAction,
 }: FastImageViewerHeaderProps) => {
   return (
-    <SafeAreaView
-      className='bg-black/70 pb-3 px-4'
-      style={{ paddingTop: Platform.OS === 'ios' ? 0 : 12 }}
-    >
-      <View className='flex-row justify-between items-center'>
+    <SafeAreaView className='bg-black/70'>
+      <View className='flex-row justify-between items-center p-6'>
         <View className='flex-1 pr-4'>
           {title && (
             <Text className='text-white text-lg font-semibold'>{title}</Text>

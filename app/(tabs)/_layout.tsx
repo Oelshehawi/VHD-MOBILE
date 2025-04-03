@@ -15,7 +15,6 @@ function TabBarIcon(props: {
 
 export default function TabLayout() {
   const { isSignedIn, isLoaded } = useUser();
-  const system = useSystem();
   const { colorScheme } = useTheme();
   const isDark = colorScheme === 'dark';
 
@@ -29,7 +28,6 @@ export default function TabLayout() {
     }
   }, [isLoaded]);
 
-  // system?.attachmentQueue?.logAttachments();
 
   return (
     <ClerkLoaded>

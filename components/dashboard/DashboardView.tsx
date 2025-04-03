@@ -1,10 +1,9 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  RefreshControl,
   SafeAreaView,
   StatusBar,
 } from 'react-native';
