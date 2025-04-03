@@ -50,9 +50,20 @@ export function PhotoCapture({
   const powerSync = usePowerSync();
   const system = useSystem();
 
-  // Set isReady to true after initial render
+  // Set isReady to true after initial render with a slight delay
+  // to prevent race conditions with modal initialization
   useEffect(() => {
-    setIsReady(true);
+    const timer = setTimeout(() => {
+      setIsReady(true);
+    }, 100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Close all modals - helper function for cleanup
+  const closeAllModals = useCallback(() => {
+    setShowModal(false);
+    setPhotoToDelete(null);
+    setGalleryVisible(false);
   }, []);
 
   // State for image gallery
@@ -91,6 +102,8 @@ export function PhotoCapture({
 
   // Prepare gallery images whenever photos change
   useEffect(() => {
+    if (photos.length === 0) return;
+
     const images = photos.map((photo) => ({
       uri: resolvePhotoUrl(photo),
       title: `${type === 'before' ? 'Before' : 'After'} Photo`,
@@ -101,6 +114,10 @@ export function PhotoCapture({
 
   // Helper function to update gallery when a photo is pressed in PhotoGrid
   const handlePhotoPress = (index: number) => {
+    // First close any other open modals
+    setShowModal(false);
+    setPhotoToDelete(null);
+
     // First update gallery images with latest resolved URLs
     const images = photos.map((photo) => ({
       uri: resolvePhotoUrl(photo),
@@ -319,6 +336,10 @@ export function PhotoCapture({
     url: string,
     attachmentId?: string
   ) => {
+    // First close any other modals that might be open
+    setShowModal(false);
+    setGalleryVisible(false);
+
     // Show delete confirmation dialog
     setPhotoToDelete({ id: photoId, url, attachmentId });
   };
@@ -330,7 +351,54 @@ export function PhotoCapture({
     setGalleryVisible(true);
   };
 
-  const isLoading = (isReady && externalLoading) || isUploading;
+  // Calculate isLoading state, but only if component is ready
+  // This prevents showing loading state before component is ready
+  const isLoading = isReady && (externalLoading || isUploading);
+
+  // If component is not ready yet, render minimal content
+  // to prevent modals from initializing too early
+  if (!isReady) {
+    return (
+      <View className='flex-1 mb-6'>
+        {/* Header with Add Button (disabled) */}
+        <View className='flex-row justify-between items-center mb-3'>
+          <View className='flex-row items-center'>
+            <View
+              className={`px-2 py-1 rounded-xl ${
+                type === 'before' ? 'bg-blue-100' : 'bg-green-100'
+              }`}
+            >
+              <Text
+                className={`text-xs font-semibold ${
+                  type === 'before' ? 'text-blue-800' : 'text-green-800'
+                }`}
+              >
+                {type === 'before' ? 'Before' : 'After'}
+              </Text>
+            </View>
+            <Text className='ml-1 text-base font-semibold'>
+              {photos.length > 0 && `(${photos.length})`}
+            </Text>
+          </View>
+          <TouchableOpacity
+            disabled={true}
+            className='px-4 py-2 rounded-lg bg-gray-300'
+          >
+            <Text className='text-white font-semibold text-sm'>
+              Initializing...
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {/* Photo grid (disabled) */}
+        <PhotoGrid
+          photos={photos}
+          onDeletePhoto={() => {}}
+          onPhotoPress={() => {}}
+          currentScheduleId={scheduleId}
+        />
+      </View>
+    );
+  }
 
   return (
     <View className='flex-1 mb-6'>
@@ -357,7 +425,12 @@ export function PhotoCapture({
         </View>
 
         <TouchableOpacity
-          onPress={() => setShowModal(true)}
+          onPress={() => {
+            // Close any other open modals before showing this one
+            setPhotoToDelete(null);
+            setGalleryVisible(false);
+            setShowModal(true);
+          }}
           className={`px-4 py-2 rounded-lg ${
             type === 'before' ? 'bg-blue-500' : 'bg-green-500'
           }`}
@@ -377,35 +450,40 @@ export function PhotoCapture({
         currentScheduleId={scheduleId}
       />
 
-      {/* Photo capture modal */}
-      <PhotoCaptureModal
-        visible={showModal}
-        onClose={() => setShowModal(false)}
-        onPhotoSelected={handlePhotoSelected}
-      />
+      {/* Only render modals when they are actively visible */}
+      {/* This prevents invisible overlays from blocking touch events */}
+      {showModal && (
+        <PhotoCaptureModal
+          visible={showModal}
+          onClose={() => setShowModal(false)}
+          onPhotoSelected={handlePhotoSelected}
+        />
+      )}
 
-      {/* Delete confirmation */}
-      <DeletePhotoModal
-        visible={!!photoToDelete}
-        onClose={() => setPhotoToDelete(null)}
-        onConfirm={handleDeleteConfirm}
-        isDeleting={isDeleting}
-      />
+      {photoToDelete !== null && (
+        <DeletePhotoModal
+          visible={!!photoToDelete}
+          onClose={() => setPhotoToDelete(null)}
+          onConfirm={handleDeleteConfirm}
+          isDeleting={isDeleting}
+        />
+      )}
 
-      {/* Image viewer gallery */}
-      <FastImageViewer
-        images={galleryImages}
-        imageIndex={galleryIndex}
-        visible={galleryVisible}
-        onRequestClose={() => setGalleryVisible(false)}
-        swipeToCloseEnabled={true}
-        doubleTapToZoomEnabled={true}
-        title={jobTitle}
-        getSubtitle={getGallerySubtitle}
-      />
+      {galleryVisible && (
+        <FastImageViewer
+          images={galleryImages}
+          imageIndex={galleryIndex}
+          visible={galleryVisible}
+          onRequestClose={() => setGalleryVisible(false)}
+          swipeToCloseEnabled={true}
+          doubleTapToZoomEnabled={true}
+          title={jobTitle}
+          getSubtitle={getGallerySubtitle}
+        />
+      )}
 
-      {/* Loading indicator - only show when component is ready */}
-      {isReady && <LoadingModal visible={isLoading} type={type} />}
+      {/* Only show loading modal when actually loading */}
+      {isLoading && <LoadingModal visible={isLoading} type={type} />}
     </View>
   );
 }
