@@ -29,6 +29,9 @@ interface PhotosData {
   photos: string;
 }
 
+// Define max file size (10MB in bytes)
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 export function PhotoCapture({
   technicianId,
   photos = [],
@@ -141,6 +144,19 @@ export function PhotoCapture({
   );
 
   /**
+   * Check if file size is within allowed limits
+   */
+  const checkFileSize = async (uri: string): Promise<boolean> => {
+    try {
+      const fileInfo = await FileSystem.getInfoAsync(uri, { size: true });
+      return fileInfo.exists && fileInfo.size <= MAX_FILE_SIZE;
+    } catch (error) {
+      console.error('Error checking file size:', error);
+      return false;
+    }
+  };
+
+  /**
    * Handle photo selection from the PhotoCaptureModal
    */
   const handlePhotoSelected = async (result: ImagePicker.ImagePickerResult) => {
@@ -163,8 +179,42 @@ export function PhotoCapture({
       // Close the modal immediately to show the blocking UI
       setShowModal(false);
 
-      // Prepare batch data for all photos
-      const photoData = result.assets.map((asset) => ({
+      // Check each photo's file size and filter out photos that are too large
+      const validationResults = await Promise.all(
+        result.assets.map(async (asset) => {
+          const isValidSize = await checkFileSize(asset.uri);
+          return { asset, isValidSize };
+        })
+      );
+
+      const validAssets = validationResults
+        .filter((r) => r.isValidSize)
+        .map((r) => r.asset);
+      const invalidAssets = validationResults
+        .filter((r) => !r.isValidSize)
+        .map((r) => r.asset);
+
+      // Show error for oversized files
+      if (invalidAssets.length > 0) {
+        Alert.alert(
+          'Files Too Large',
+          `${invalidAssets.length} photo${
+            invalidAssets.length > 1 ? 's' : ''
+          } exceeds the 10MB size limit and will be skipped.`,
+          [{ text: 'OK' }]
+        );
+      }
+
+      // If no valid photos remain, stop here
+      if (validAssets.length === 0) {
+        showToast(
+          'No photos were added - all files exceeded the 10MB size limit'
+        );
+        return;
+      }
+
+      // Prepare batch data for valid photos only
+      const photoData = validAssets.map((asset) => ({
         sourceUri: asset.uri,
         scheduleId: scheduleId!,
         jobTitle: jobTitle,
@@ -173,7 +223,7 @@ export function PhotoCapture({
         technicianId: technicianId,
       }));
 
-      // Batch save all photos at once
+      // Batch save all valid photos at once
       const savedAttachments = await queue.batchSavePhotosFromUri(photoData);
 
       if (savedAttachments.length > 0) {

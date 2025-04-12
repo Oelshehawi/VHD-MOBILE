@@ -37,10 +37,11 @@ yarn-error.*
 *.tsbuildinfo
 
 # Android
-android
-android/
-/android
-/android/
+android/app/build/
+android/.gradle/
+android/local.properties
+android/*.iml
+android/.idea/
 
 /temp/
 

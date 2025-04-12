@@ -34,8 +34,8 @@ const ENV = {
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
   DEVELOPMENT: {
-    apiUrl: LOCAL_URL,
-    powerSyncUrl: 'http://192.168.1.128:8080',
+    apiUrl: PROD_URL,
+    powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
 };
 
