@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import FastImage from 'react-native-fast-image';
+import { Image, ImageContentFit } from 'expo-image';
 import { View, ActivityIndicator } from 'react-native';
 
 interface FastImageWrapperProps {
   uri: string;
   style: any;
-  resizeMode?: any;
+  contentFit?: ImageContentFit;
   showLoader?: boolean;
   loaderColor?: string;
   placeholderColor?: string;
@@ -14,13 +14,13 @@ interface FastImageWrapperProps {
 }
 
 /**
- * A wrapper component for FastImage that provides loading indicators
+ * A wrapper component for Expo Image that provides loading indicators
  * and error handling
  */
 export const FastImageWrapper = ({
   uri,
   style,
-  resizeMode = FastImage.resizeMode.cover,
+  contentFit = 'cover',
   showLoader = true,
   loaderColor = '#999',
   placeholderColor = '#e1e2e3',
@@ -39,10 +39,10 @@ export const FastImageWrapper = ({
     uri.startsWith('content:')
   ) {
     return (
-      <FastImage
+      <Image
         source={{ uri }}
         style={style}
-        resizeMode={resizeMode}
+        contentFit={contentFit}
         onError={() => {
           if (onError) onError();
         }}
@@ -56,10 +56,10 @@ export const FastImageWrapper = ({
 
   return (
     <View style={[style, { backgroundColor: placeholderColor }]}>
-      <FastImage
+      <Image
         source={{ uri }}
         style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}
-        resizeMode={resizeMode}
+        contentFit={contentFit}
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
         onError={() => {
@@ -83,17 +83,18 @@ export const FastImageWrapper = ({
 };
 
 /**
- * Utilities to help manage FastImage caching
+ * Utilities to help manage Expo Image caching
  */
 
-// Clear the FastImage cache
+// Clear the Expo Image cache
 export const clearImageCache = async (): Promise<void> => {
-  FastImage.clearMemoryCache();
-  FastImage.clearDiskCache();
+  await Image.clearMemoryCache();
+  await Image.clearDiskCache();
 };
 
 // Preload important images
 export const preloadImages = (uris: string[]): void => {
-  const sources = uris.map((uri) => ({ uri }));
-  FastImage.preload(sources);
+  uris.forEach((uri) => {
+    Image.prefetch(uri);
+  });
 };

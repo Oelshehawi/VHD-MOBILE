@@ -1,8 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import FastImage from 'react-native-fast-image';
+import { Image } from 'expo-image';
 
 // Constants
-const CACHE_CHECK_KEY = 'FAST_IMAGE_CACHE_LAST_CLEARED';
+const CACHE_CHECK_KEY = 'EXPO_IMAGE_CACHE_LAST_CLEARED';
 const CACHE_CHECK_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 /**
@@ -13,7 +13,7 @@ const CACHE_CHECK_INTERVAL = 7 * 24 * 60 * 60 * 1000; // 7 days
 export const initImageCache = async (): Promise<void> => {
   try {
     // Always clear memory cache on app start to free memory
-    FastImage.clearMemoryCache();
+    await Image.clearMemoryCache();
 
     // Check if we need to clear disk cache
     const lastClearDateStr = await AsyncStorage.getItem(CACHE_CHECK_KEY);
@@ -23,16 +23,16 @@ export const initImageCache = async (): Promise<void> => {
       !lastClearDateStr ||
       now - parseInt(lastClearDateStr, 10) > CACHE_CHECK_INTERVAL
     ) {
-      console.log('Clearing FastImage disk cache');
+      console.log('Clearing Expo Image disk cache');
 
       // Clear disk cache
-      await FastImage.clearDiskCache();
+      await Image.clearDiskCache();
 
       // Update the last cleared date
       await AsyncStorage.setItem(CACHE_CHECK_KEY, now.toString());
     }
   } catch (error) {
-    console.warn('Error managing FastImage cache:', error);
+    console.warn('Error managing Expo Image cache:', error);
   }
 };
 
@@ -43,8 +43,11 @@ export const initImageCache = async (): Promise<void> => {
 export const preloadImages = (uris: string[]): void => {
   if (!uris || uris.length === 0) return;
 
-  const sources = uris.map((uri) => ({ uri }));
-  FastImage.preload(sources);
+  // Expo Image doesn't have a direct preload method like FastImage
+  // But we can achieve similar functionality by creating Image instances
+  uris.forEach((uri) => {
+    Image.prefetch(uri);
+  });
 };
 
 /**
@@ -53,8 +56,8 @@ export const preloadImages = (uris: string[]): void => {
 export const clearAllImageCaches = async (): Promise<void> => {
   try {
     // Clear both memory and disk caches
-    FastImage.clearMemoryCache();
-    await FastImage.clearDiskCache();
+    await Image.clearMemoryCache();
+    await Image.clearDiskCache();
 
     // Update the last cleared date
     const now = Date.now();

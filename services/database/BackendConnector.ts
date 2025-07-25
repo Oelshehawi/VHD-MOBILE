@@ -4,7 +4,7 @@ import {
   CrudEntry,
   UpdateType,
 } from '@powersync/react-native';
-import { CloudinaryStorageOptions } from '../api';
+import { CloudinaryStorageOptions } from '../ApiClient';
 import { ApiClient } from '../ApiClient';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';

@@ -11,7 +11,7 @@ import { KVStorage } from '../storage/KVStorage';
 
 Logger.useDefaults();
 
-// Logger.setLevel(Logger.DEBUG);
+Logger.setLevel(Logger.DEBUG);
 export class System {
   KVstorage: KVStorage;
   storage: CloudinaryStorageAdapter;

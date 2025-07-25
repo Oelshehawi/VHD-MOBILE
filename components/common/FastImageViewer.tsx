@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import ImageView from 'react-native-image-viewing';
-import FastImage from 'react-native-fast-image';
+import { Image, ImageContentFit } from 'expo-image';
 import { ActivityIndicator, View } from 'react-native';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 
@@ -32,7 +32,7 @@ interface ExtendedImageViewProps {
 }
 
 /**
- * A simplified image viewer component that uses FastImage for better performance
+ * A simplified image viewer component that uses Expo Image for better performance
  */
 export const FastImageViewer: React.FC<FastImageViewerProps> = ({
   images,
@@ -78,10 +78,10 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
 
     return (
       <View className='flex-1 justify-center items-center' style={style}>
-        <FastImage
+        <Image
           source={source}
           style={style}
-          resizeMode={FastImage.resizeMode.contain}
+          contentFit='contain'
           onLoad={() => setIsLoading(false)}
           onError={() => setIsLoading(false)}
         />
