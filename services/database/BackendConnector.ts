@@ -58,6 +58,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
       const token = await clerk.session?.getToken({
         template: 'Powersync',
+        skipCache: true,
       });
 
       if (!token) {
