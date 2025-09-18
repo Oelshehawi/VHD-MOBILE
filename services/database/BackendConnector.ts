@@ -106,14 +106,15 @@ export class BackendConnector implements PowerSyncBackendConnector {
       for (const op of transaction.crud) {
         lastOp = op;
 
-        // Skip PATCH operations that are updating 'photos' field in 'schedules' table
+        // Skip ALL photo-related PATCH operations for schedules table
+        // This prevents endless sync loops when photos are updated locally
         if (
           op.op === UpdateType.PATCH &&
           op.table === 'schedules' &&
           op.opData &&
-          'photos' in op.opData
+          ('photos' in op.opData || 'signature' in op.opData)
         ) {
-          console.log('Skipping photo update sync for schedules table:', op.id);
+          console.log('Skipping photo/signature update sync for schedules table:', op.id);
           continue;
         }
 
@@ -134,10 +135,18 @@ export class BackendConnector implements PowerSyncBackendConnector {
         }
 
         if (result.error) {
-          console.error(result.error);
-          result.error.message = `Could not ${
-            op.op
-          } data to Supabase error: ${JSON.stringify(result)}`;
+          console.error(`${op.op} operation failed for ${op.table}:${op.id}`, result.error);
+
+          // Handle 404 errors specifically - record doesn't exist on server
+          if (result.error.code === 'PGRST116' || result.error.message?.includes('404')) {
+            console.warn(`Record ${op.id} not found on server, marking operation as complete to prevent retry loops`);
+            // Don't throw error for 404s - this allows the transaction to complete
+            // and prevents infinite retry loops for orphaned records
+            continue;
+          }
+
+          // For other errors, add context and throw
+          result.error.message = `Could not ${op.op} data to backend: ${result.error.message || JSON.stringify(result.error)}`;
           throw result.error;
         }
       }

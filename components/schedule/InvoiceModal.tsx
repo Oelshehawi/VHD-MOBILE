@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   ScrollView,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { InvoiceType } from '@/types';
 import { formatDateReadable } from '@/utils/date';
@@ -14,6 +15,8 @@ import { useQuery } from '@powersync/react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
+import { ApiClient } from '@/services/ApiClient';
+import { ConfirmationModal } from '../common/ConfirmationModal';
 
 interface InvoiceModalProps {
   visible: boolean;
@@ -36,6 +39,12 @@ export function InvoiceModal({
   isManager,
 }: InvoiceModalProps) {
   const [showSignatureModal, setShowSignatureModal] = useState(false);
+
+  // Send invoice state management
+  const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [sendInvoiceError, setSendInvoiceError] = useState<string | null>(null);
+  const [invoiceSent, setInvoiceSent] = useState(false);
+  const [showConfirmationModal, setShowConfirmationModal] = useState(false);
 
   // First fetch the schedule using the scheduleId
   const { data: scheduleData = [] } = useQuery<any>(
@@ -130,6 +139,53 @@ export function InvoiceModal({
   const hasBeforePhotos = photos.before?.length > 0;
   const hasAfterPhotos = photos.after?.length > 0;
   const hasSignature = !!signature;
+  const isWorkComplete = hasBeforePhotos && hasAfterPhotos && hasSignature;
+
+  // Send invoice function
+  const sendInvoice = async () => {
+    setIsSendingInvoice(true);
+    setSendInvoiceError(null);
+    setShowConfirmationModal(false);
+
+    try {
+      // Create ApiClient instance - you'll need to get the actual auth token
+      // For now using empty token, but you should replace this with actual Clerk token
+      const apiClient = new ApiClient('');
+
+      const result = await apiClient.sendInvoice(
+        scheduleId,
+        invoice.id,
+        {
+          invoiceId: invoice.invoiceId,
+          jobTitle: invoice.jobTitle,
+          location: invoice.location,
+          dateIssued: invoice.dateIssued,
+          dateDue: invoice.dateDue,
+          items: items,
+        },
+        technicianId,
+        true // Always send as complete since we're removing work documentation requirement
+      );
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to send invoice');
+      }
+
+      setInvoiceSent(true);
+      setSendInvoiceError(null);
+    } catch (error) {
+      console.error('Error sending invoice:', error);
+      setSendInvoiceError(
+        error instanceof Error ? error.message : 'Failed to send invoice. Please try again.'
+      );
+    } finally {
+      setIsSendingInvoice(false);
+    }
+  };
+
+  const handleSendInvoiceClick = () => {
+    setShowConfirmationModal(true);
+  };
 
   const renderWorkCompletionSection = () => {
     return (
@@ -253,6 +309,66 @@ export function InvoiceModal({
             </Text>
           </View>
         )}
+
+        {/* Send Invoice Section */}
+        <View className='flex flex-col gap-4'>
+          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+            Send Invoice
+          </Text>
+
+          {invoiceSent ? (
+            <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
+              <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+                ✓ Invoice Sent Successfully
+              </Text>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={handleSendInvoiceClick}
+              disabled={isSendingInvoice}
+              className={`p-4 rounded-lg flex-row justify-center items-center ${
+                isSendingInvoice
+                  ? 'bg-gray-400 dark:bg-gray-600'
+                  : 'bg-darkGreen'
+              }`}
+            >
+              {isSendingInvoice ? (
+                <View className='flex-row items-center gap-2'>
+                  <ActivityIndicator size="small" color="#ffffff" />
+                  <Text className='text-white font-medium text-lg'>
+                    Sending Invoice...
+                  </Text>
+                </View>
+              ) : (
+                <Text className='text-white font-medium text-lg'>
+                  📧 Send Invoice
+                </Text>
+              )}
+            </TouchableOpacity>
+          )}
+
+
+          {sendInvoiceError && (
+            <View className='bg-red-50 dark:bg-red-900/20 p-4 rounded-lg'>
+              <Text className='text-red-800 dark:text-red-200 text-center font-medium'>
+                ⚠️ {sendInvoiceError}
+              </Text>
+              {!isSendingInvoice && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setSendInvoiceError(null);
+                    sendInvoice();
+                  }}
+                  className='mt-2 p-2 bg-red-600 rounded-lg'
+                >
+                  <Text className='text-white text-center font-medium'>
+                    Try Again
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
+          )}
+        </View>
       </View>
     );
   };
@@ -407,6 +523,18 @@ export function InvoiceModal({
           </ScrollView>
         </View>
       </View>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        visible={showConfirmationModal}
+        onClose={() => setShowConfirmationModal(false)}
+        onConfirm={sendInvoice}
+        title="Send Invoice"
+        message={`Are you sure you want to send the invoice for "${invoice.jobTitle}" to the client?`}
+        confirmText="Send Invoice"
+        cancelText="Cancel"
+        isLoading={isSendingInvoice}
+      />
     </Modal>
   );
 }

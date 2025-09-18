@@ -5,12 +5,12 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import './global.css';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo';
-import { tokenCache } from '../cache';
+import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
-import { secureStore } from '@clerk/clerk-expo/secure-store';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
+import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -61,7 +61,7 @@ export default function RootLayout() {
     <ClerkProvider
       publishableKey={CLERK_PUBLISHABLE_KEY!}
       tokenCache={tokenCache}
-      __experimental_resourceCache={secureStore}
+      __experimental_resourceCache={resourceCache}
     >
       <InitialLayout>
         <ThemeProvider>

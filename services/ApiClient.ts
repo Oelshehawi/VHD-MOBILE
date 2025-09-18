@@ -30,11 +30,11 @@ const LOCAL_URL = 'http://192.168.1.128:3000'; // Replace with your machine's IP
 // Environment configuration
 const ENV = {
   PRODUCTION: {
-    apiUrl: PROD_URL,
+    apiUrl: LOCAL_URL,
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
   DEVELOPMENT: {
-    apiUrl: PROD_URL,
+    apiUrl: LOCAL_URL,
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
 };
@@ -524,6 +524,81 @@ export class ApiClient {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
       };
+    }
+  }
+
+  /**
+   * Send invoice via email
+   * @param scheduleId ID of the schedule
+   * @param invoiceRef Reference to the invoice
+   * @param invoiceData Invoice data object
+   * @param technicianId ID of the technician
+   * @param isComplete Whether work documentation is complete
+   * @returns Result of the send operation
+   */
+  async sendInvoice(
+    scheduleId: string,
+    invoiceRef: string,
+    invoiceData: any,
+    technicianId: string,
+    isComplete: boolean
+  ) {
+    try {
+      if (!scheduleId || !invoiceRef) {
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      const requestBody = {
+        scheduleId,
+        invoiceRef,
+        invoiceData,
+        technicianId,
+        isComplete,
+      };
+
+      // Make API call to send invoice
+      const response = await fetch(`${this.baseUrl}/api/send-invoice`, {
+        method: 'POST',
+        headers: {
+          ...this.headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
+        throw new Error(
+          errorData.message ||
+            errorData.error ||
+            errorData.details ||
+            `Send failed with status ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      return { success: true, ...result };
+    } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+        };
+      }
+
+      throw error;
     }
   }
 
