@@ -22,7 +22,13 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
   async init() {
     if (!AppConfig.cloudinaryApiKey) {
       // Set a reasonable interval instead of disabling
-      this.options.syncInterval = 5000; // 10 seconds
+      this.options.syncInterval = 5000; // 5 seconds
+      return;
+    }
+
+    // If syncInterval is set to 0, don't initialize automatic sync (manual mode)
+    if (this.options.syncInterval === 0) {
+      console.log('[PhotoAttachmentQueue] Manual sync mode enabled - automatic uploads disabled');
       return;
     }
 

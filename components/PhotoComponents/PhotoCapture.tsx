@@ -29,8 +29,8 @@ interface PhotosData {
   photos: string;
 }
 
-// Define max file size (10MB in bytes)
-const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+// Define max file size (20MB in bytes) - increased for better UX
+const MAX_FILE_SIZE = 20 * 1024 * 1024; // 20MB
 
 export function PhotoCapture({
   technicianId,
@@ -208,7 +208,7 @@ export function PhotoCapture({
       // If no valid photos remain, stop here
       if (validAssets.length === 0) {
         showToast(
-          'No photos were added - all files exceeded the 10MB size limit'
+          'No photos were added - all files exceeded the 20MB size limit'
         );
         return;
       }

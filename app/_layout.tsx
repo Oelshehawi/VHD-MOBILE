@@ -3,6 +3,7 @@ import { useFonts } from 'expo-font';
 import { Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
+import { AppState } from 'react-native';
 import './global.css';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
@@ -10,6 +11,7 @@ import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
+import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 
 export {
@@ -52,6 +54,22 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
       });
     }
   }, [isLoaded]);
+
+  // Add AppState listener to resume uploads when app becomes active
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextAppState) => {
+      if (nextAppState === 'active') {
+        // Resume any pending uploads when app becomes active
+        checkAndStartBackgroundUpload().catch((err) => {
+          console.warn('Failed to resume background uploads:', err);
+        });
+      }
+    });
+
+    return () => {
+      subscription?.remove();
+    };
+  }, []);
 
   return <>{children}</>;
 }

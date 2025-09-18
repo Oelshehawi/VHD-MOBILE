@@ -29,6 +29,170 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
     this.powersync = powersync;
   }
 
+  /**
+   * Direct upload method for concurrent processing
+   * Bypasses PowerSync sequential processing
+   */
+  async uploadFileDirectly(
+    attachmentRecord: any,
+    options?: {
+      mediaType?: string;
+      onProgress?: (progress: number) => void;
+    }
+  ): Promise<{ success: boolean; error?: string; cloudinaryUrl?: string }> {
+    try {
+      const filename = attachmentRecord.filename;
+      const localFileUri = `${this.getUserStorageDirectory()}attachments/${filename}`;
+
+      // Verify the file exists
+      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
+      if (!fileInfo.exists) {
+        return { success: false, error: `Local file does not exist: ${localFileUri}` };
+      }
+
+      // Get upload URL from API
+      const response = await this.client.getUploadUrl<CloudinaryUpload>(
+        'cloudinary-upload',
+        {
+          body: {
+            fileName: filename,
+            jobTitle: attachmentRecord.jobTitle || '',
+            type: attachmentRecord.type || '',
+            startDate: attachmentRecord.startDate || '',
+            mediaType: options?.mediaType,
+          },
+        }
+      );
+
+      if (response.error || !response.data) {
+        return {
+          success: false,
+          error: `Failed to get upload URL: ${response.error}`,
+        };
+      }
+
+      const { apiKey, timestamp, signature, cloudName, folderPath } = response.data;
+      const url = 'https://api.cloudinary.com/v1_1/' + cloudName + '/upload';
+
+      // Use streaming upload for better memory efficiency
+      const mimeType = options?.mediaType || this.getMimeTypeFromFilename(filename);
+
+      // Use FormData with file URI for streaming upload (better compatibility)
+      const formData = new FormData();
+
+      // Add the file directly from URI (React Native handles this as a stream)
+      formData.append('file', {
+        uri: localFileUri,
+        type: mimeType,
+        name: filename,
+      } as any);
+
+      // Add parameters to FormData
+      formData.append('api_key', apiKey);
+      formData.append('timestamp', timestamp);
+      formData.append('signature', signature);
+      formData.append('folder', folderPath || 'vhd-app/powersync-attachments');
+
+      // Make the streaming POST request
+      const uploadResponse = await fetch(url, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        return {
+          success: false,
+          error: `Upload failed with status ${uploadResponse.status}: ${errorText}`,
+        };
+      }
+
+      // Parse the Cloudinary response
+      const cloudinaryData = await uploadResponse.json();
+      const secureUrl = cloudinaryData.secure_url;
+
+      if (!secureUrl) {
+        return {
+          success: false,
+          error: 'No secure URL returned from Cloudinary',
+        };
+      }
+
+      // Update PowerSync with the result
+      if (this.powersync) {
+        await this.updateAttachmentRecord(attachmentRecord, secureUrl);
+      }
+
+      return {
+        success: true,
+        cloudinaryUrl: secureUrl,
+      };
+    } catch (error) {
+      console.error('Error in uploadFileDirectly:', error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : 'Unknown error',
+      };
+    }
+  }
+
+  /**
+   * Update attachment record with Cloudinary URL and add to operations table
+   */
+  private async updateAttachmentRecord(
+    attachmentRecord: any,
+    cloudinaryUrl: string
+  ): Promise<void> {
+    try {
+      const isSignature = attachmentRecord.type === 'signature';
+
+      // Prepare columns and values for add_photo_operations
+      const columns = [
+        'scheduleId',
+        'timestamp',
+        'technicianId',
+        'type',
+        'cloudinaryUrl',
+        'attachmentId',
+      ];
+
+      const values = [
+        attachmentRecord.scheduleId || '',
+        attachmentRecord.timestamp || new Date().toISOString(),
+        attachmentRecord.technicianId || '',
+        attachmentRecord.type || '',
+        cloudinaryUrl,
+        attachmentRecord.id || '',
+      ];
+
+      // Add signerName for signature type
+      if (isSignature && attachmentRecord.signerName) {
+        columns.push('signerName');
+        values.push(attachmentRecord.signerName);
+      }
+
+      // Insert into add_photo_operations
+      await this.powersync.execute(
+        `INSERT INTO add_photo_operations (${columns.join(
+          ', '
+        )}) VALUES (${columns.map(() => '?').join(', ')})`,
+        values
+      );
+
+      console.log(
+        `Added Cloudinary URL to add_photo_operations table for ${
+          isSignature ? 'signature' : 'photo'
+        }`
+      );
+    } catch (error) {
+      console.error('Error updating attachment record:', error);
+      throw error;
+    }
+  }
+
   async uploadFile(
     filename: string,
     data: ArrayBuffer,
@@ -76,21 +240,19 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
         throw new Error(`Local file does not exist: ${localFileUri}`);
       }
 
-      // Read the file as base64
-      const base64Data = await FileSystem.readAsStringAsync(localFileUri, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
-      // Create data URI from base64 data
+      // Use streaming upload instead of base64 conversion for better memory efficiency
       const mimeType =
         options?.mediaType || this.getMimeTypeFromFilename(filename);
-      const dataUri = `data:${mimeType};base64,${base64Data}`;
 
-      // Create FormData
+      // Create FormData with file URI directly (streaming)
       const formData = new FormData();
 
-      // Add the file as a data URI to FormData
-      formData.append('file', dataUri);
+      // Add the file directly from URI (this streams the file instead of loading into memory)
+      formData.append('file', {
+        uri: localFileUri,
+        type: mimeType,
+        name: filename,
+      } as any);
 
       // Add parameters to FormData
       formData.append('api_key', apiKey);
@@ -98,10 +260,13 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
       formData.append('signature', signature);
       formData.append('folder', folderPath || 'vhd-app/powersync-attachments');
 
-      // Make the POST request
+      // Make the streaming POST request
       const uploadResponse = await fetch(url, {
         method: 'POST',
         body: formData,
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
       });
 
       if (!uploadResponse.ok) {

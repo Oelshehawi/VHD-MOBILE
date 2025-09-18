@@ -30,7 +30,7 @@ const LOCAL_URL = 'http://192.168.1.128:3000'; // Replace with your machine's IP
 // Environment configuration
 const ENV = {
   PRODUCTION: {
-    apiUrl: LOCAL_URL,
+    apiUrl: PROD_URL,
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
   DEVELOPMENT: {

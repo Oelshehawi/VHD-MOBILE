@@ -33,7 +33,8 @@ export class System {
     this.attachmentQueue = new PhotoAttachmentQueue({
       powersync: this.powersync,
       storage: this.storage,
-      performInitialSync: true,
+      performInitialSync: false, // Disable automatic sync - we handle it manually
+      syncInterval: 0, // Disable periodic sync - we use our concurrent uploader
       // Use this to handle download errors where you can use the attachment
       // and/or the exception to decide if you want to retry the download
     });
