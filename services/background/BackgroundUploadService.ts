@@ -28,6 +28,7 @@ import { system } from '../database/System';
 import { AttachmentState, ATTACHMENT_TABLE } from '@powersync/attachments';
 import { Platform } from 'react-native';
 import { requestNotificationPermission } from '@/utils/permissions';
+import { logUpload, logUploadError } from '@/utils/DebugLogger';
 
 // Enable global garbage collection for debugging (if available)
 if (typeof global !== 'undefined' && !global.gc) {
@@ -46,9 +47,11 @@ const MAX_FILE_SIZE_MEMORY = 20 * 1024 * 1024; // 20MB - increased from 10MB
 const SMALL_FILE_THRESHOLD = 5 * 1024 * 1024; // 5MB - files smaller than this can be batched
 const BATCH_SIZE_SMALL_FILES = 3; // Process up to 3 small files concurrently
 
-// Simple logging utility
-const logUpload = (message: string, details?: any) => {
-  console.log(`[BackgroundUpload] ${message}`, details || '');
+// Simple logging utility - enhanced with persistent logging
+const logUploadService = (message: string, details?: any) => {
+  const logMessage = `[BackgroundUpload] ${message}`;
+  console.log(logMessage, details || '');
+  logUpload(message, details);
 };
 
 // Memory pressure monitoring
@@ -74,8 +77,9 @@ const markAttachmentCompleted = async (system: any, attachmentId: string): Promi
       `UPDATE ${ATTACHMENT_TABLE} SET state = ? WHERE id = ?`,
       [AttachmentState.SYNCED, attachmentId]
     );
+    logUploadService(`Marked attachment ${attachmentId} as completed`);
   } catch (error) {
-    logUpload(`Error marking attachment ${attachmentId} as completed:`, error);
+    logUploadError(`Error marking attachment ${attachmentId} as completed`, error);
   }
 };
 
@@ -86,8 +90,9 @@ const markAttachmentFailed = async (system: any, attachmentId: string): Promise<
       `UPDATE ${ATTACHMENT_TABLE} SET state = ? WHERE id = ?`,
       [AttachmentState.QUEUED_UPLOAD, attachmentId]
     );
+    logUploadService(`Marked attachment ${attachmentId} as failed (back to queued)`);
   } catch (error) {
-    logUpload(`Error marking attachment ${attachmentId} as failed:`, error);
+    logUploadError(`Error marking attachment ${attachmentId} as failed`, error);
   }
 };
 
@@ -128,12 +133,12 @@ const processBatch = async (system: any, batch: Array<any>, workerId: string): P
   let uploadedCount = 0;
 
   if (batch.length === 0) {
-    logUpload(`Worker ${workerId} - no attachments to process`);
+    logUploadService(`Worker ${workerId} - no attachments to process`);
     delete workerProgress[workerId];
     return 0;
   }
 
-  logUpload(`Worker ${workerId} processing ${batch.length} attachments`);
+  logUploadService(`Worker ${workerId} processing ${batch.length} attachments`);
 
   for (const attachment of batch) {
     try {
@@ -437,9 +442,11 @@ export const stopBackgroundUpload = async (): Promise<void> => {
 // Function to check if uploads are needed and start the service
 export const checkAndStartBackgroundUpload = async (): Promise<boolean> => {
   try {
+    logUploadService('Checking for pending uploads');
+
     // Skip if service is already running
     if (BackgroundService.isRunning()) {
-      logUpload('Service already running, skip check');
+      logUploadService('Service already running, skip check');
       return true;
     }
 
@@ -449,16 +456,18 @@ export const checkAndStartBackgroundUpload = async (): Promise<boolean> => {
     );
     const pendingCount = pendingRecords[0]?.count || 0;
 
-    logUpload('Pending uploads check', { pendingCount });
+    logUploadService('Pending uploads check completed', { pendingCount });
 
     if (pendingCount > 0) {
+      logUploadService('Found pending uploads, starting background service');
       await startBackgroundUpload();
       return true;
     }
 
+    logUploadService('No pending uploads found');
     return false;
   } catch (error) {
-    console.error('[BackgroundUpload] Error checking uploads:', error);
+    logUploadError('Error checking uploads', error);
     return false;
   }
 };

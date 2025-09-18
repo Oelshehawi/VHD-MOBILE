@@ -13,6 +13,7 @@ import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
 import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
+import { DebugButton } from '@/components/debug/DebugButton';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -71,7 +72,13 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      {/* Debug button - only show in development or for specific users */}
+      <DebugButton visible={__DEV__ || canManage as boolean} />
+    </>
+  );
 }
 
 export default function RootLayout() {

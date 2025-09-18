@@ -7,6 +7,7 @@ import {
   AttachmentRecord,
   AttachmentState,
 } from '@powersync/attachments';
+import { logDatabase, logDatabaseError, logPhoto, logPhotoError } from '@/utils/DebugLogger';
 
 // Extend AttachmentRecord to include the scheduleId property
 export interface ExtendedAttachmentRecord extends AttachmentRecord {
@@ -47,91 +48,121 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
   async saveToQueue(
     record: ExtendedAttachmentRecord
   ): Promise<ExtendedAttachmentRecord> {
+    logDatabase('Starting saveToQueue', {
+      recordId: record.id,
+      scheduleId: record.scheduleId,
+      filename: record.filename,
+      type: record.type
+    });
+
     // Ensure state is QUEUED_UPLOAD to prevent download attempts
     record.state = AttachmentState.QUEUED_UPLOAD;
 
-    // First call the parent's implementation to save the standard fields
-    const savedRecord = await super.saveToQueue(record);
+    try {
+      // First call the parent's implementation to save the standard fields
+      logDatabase('Calling parent saveToQueue');
+      const savedRecord = await super.saveToQueue(record);
+      logDatabase('Parent saveToQueue completed', { savedId: savedRecord.id });
 
-    // Then explicitly update the custom fields if they're provided
-    const updates = [];
-    const params = [];
+      // Then explicitly update the custom fields if they're provided
+      const updates = [];
+      const params = [];
 
-    if (record.scheduleId) {
-      updates.push('scheduleId = ?');
-      params.push(record.scheduleId);
-    }
-
-    if (record.jobTitle) {
-      updates.push('jobTitle = ?');
-      params.push(record.jobTitle);
-    }
-
-    if (record.type) {
-      updates.push('type = ?');
-      params.push(record.type);
-    }
-
-    if (record.startDate) {
-      updates.push('startDate = ?');
-      params.push(record.startDate);
-    }
-
-    if (record.technicianId) {
-      updates.push('technicianId = ?');
-      params.push(record.technicianId);
-    }
-
-    if (record.signerName) {
-      updates.push('signerName = ?');
-      params.push(record.signerName);
-    }
-
-    if (updates.length > 0) {
-      try {
-        // Add the ID to params for the WHERE clause
-        params.push(savedRecord.id);
-
-        // Execute SQL to update the custom columns
-        await this.powersync.execute(
-          `UPDATE ${ATTACHMENT_TABLE} SET ${updates.join(', ')} WHERE id = ?`,
-          params
-        );
-
-        // Update the returned record object with all custom fields
-        if (record.scheduleId) {
-          (savedRecord as ExtendedAttachmentRecord).scheduleId =
-            record.scheduleId;
-        }
-
-        if (record.jobTitle) {
-          (savedRecord as ExtendedAttachmentRecord).jobTitle = record.jobTitle;
-        }
-
-        if (record.type) {
-          (savedRecord as ExtendedAttachmentRecord).type = record.type;
-        }
-
-        if (record.startDate) {
-          (savedRecord as ExtendedAttachmentRecord).startDate =
-            record.startDate;
-        }
-
-        if (record.technicianId) {
-          (savedRecord as ExtendedAttachmentRecord).technicianId =
-            record.technicianId;
-        }
-
-        if (record.signerName) {
-          (savedRecord as ExtendedAttachmentRecord).signerName =
-            record.signerName;
-        }
-      } catch (error) {
-        // Silent error handling
+      if (record.scheduleId) {
+        updates.push('scheduleId = ?');
+        params.push(record.scheduleId);
       }
-    }
 
-    return savedRecord as ExtendedAttachmentRecord;
+      if (record.jobTitle) {
+        updates.push('jobTitle = ?');
+        params.push(record.jobTitle);
+      }
+
+      if (record.type) {
+        updates.push('type = ?');
+        params.push(record.type);
+      }
+
+      if (record.startDate) {
+        updates.push('startDate = ?');
+        params.push(record.startDate);
+      }
+
+      if (record.technicianId) {
+        updates.push('technicianId = ?');
+        params.push(record.technicianId);
+      }
+
+      if (record.signerName) {
+        updates.push('signerName = ?');
+        params.push(record.signerName);
+      }
+
+      if (updates.length > 0) {
+        logDatabase('Updating custom fields', {
+          updates: updates.length,
+          fields: updates
+        });
+
+        try {
+          // Add the ID to params for the WHERE clause
+          params.push(savedRecord.id);
+
+          // Execute SQL to update the custom columns
+          await this.powersync.execute(
+            `UPDATE ${ATTACHMENT_TABLE} SET ${updates.join(', ')} WHERE id = ?`,
+            params
+          );
+
+          logDatabase('Custom fields updated successfully');
+
+          // Update the returned record object with all custom fields
+          if (record.scheduleId) {
+            (savedRecord as ExtendedAttachmentRecord).scheduleId =
+              record.scheduleId;
+          }
+
+          if (record.jobTitle) {
+            (savedRecord as ExtendedAttachmentRecord).jobTitle = record.jobTitle;
+          }
+
+          if (record.type) {
+            (savedRecord as ExtendedAttachmentRecord).type = record.type;
+          }
+
+          if (record.startDate) {
+            (savedRecord as ExtendedAttachmentRecord).startDate =
+              record.startDate;
+          }
+
+          if (record.technicianId) {
+            (savedRecord as ExtendedAttachmentRecord).technicianId =
+              record.technicianId;
+          }
+
+          if (record.signerName) {
+            (savedRecord as ExtendedAttachmentRecord).signerName =
+              record.signerName;
+          }
+        } catch (error) {
+          logDatabaseError('Failed to update custom fields', error);
+          // Still return the saved record even if custom fields failed
+        }
+      }
+
+      logDatabase('saveToQueue completed successfully', {
+        finalId: savedRecord.id,
+        state: savedRecord.state
+      });
+
+      return savedRecord as ExtendedAttachmentRecord;
+    } catch (error) {
+      logDatabaseError('saveToQueue failed', {
+        recordId: record.id,
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
   }
 
   /**
@@ -204,12 +235,26 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       signerName?: string;
     }>
   ): Promise<ExtendedAttachmentRecord[]> {
-    if (!photoData || photoData.length === 0) return [];
+    logPhoto('Starting batchSavePhotosFromUri', {
+      photoCount: photoData?.length || 0
+    });
+
+    if (!photoData || photoData.length === 0) {
+      logPhoto('No photo data provided, returning empty array');
+      return [];
+    }
 
     const attachments: ExtendedAttachmentRecord[] = [];
 
     // First, create all the attachment records and copy files
-    for (const photo of photoData) {
+    for (let i = 0; i < photoData.length; i++) {
+      const photo = photoData[i];
+      logPhoto(`Processing photo ${i + 1} of ${photoData.length}`, {
+        sourceUri: photo.sourceUri,
+        scheduleId: photo.scheduleId,
+        type: photo.type
+      });
+
       try {
         // Sanitize technicianId - ensure it's a string without array brackets or quotes
         let sanitizedTechnicianId = photo.technicianId || '';
@@ -221,6 +266,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
             .replace(/\\/g, ''); // Remove backslashes
         }
 
+        logPhoto(`Creating attachment record for photo ${i + 1}`);
         // Create a new attachment record with scheduleId, jobTitle, and type
         const photoAttachment = await this.newAttachmentRecord({
           scheduleId: photo.scheduleId,
@@ -231,38 +277,141 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           signerName: photo.signerName,
         });
 
+        logPhoto(`Attachment record created for photo ${i + 1}`, {
+          id: photoAttachment.id,
+          filename: photoAttachment.filename
+        });
+
         // Set the local URI path
         photoAttachment.local_uri = this.getLocalFilePathSuffix(
           photoAttachment.filename
         );
         const destinationUri = this.getLocalUri(photoAttachment.local_uri);
 
+        logPhoto(`File paths set for photo ${i + 1}`, {
+          localUri: photoAttachment.local_uri,
+          destinationUri
+        });
+
         // Verify source file exists
-        const sourceInfo = await FileSystem.getInfoAsync(photo.sourceUri);
-        if (!sourceInfo.exists) {
+        logPhoto(`Checking source file exists for photo ${i + 1}`);
+        try {
+          const sourceInfo = await FileSystem.getInfoAsync(photo.sourceUri);
+          if (!sourceInfo.exists) {
+            logPhotoError(`Source file does not exist for photo ${i + 1}`, {
+              sourceUri: photo.sourceUri
+            });
+            continue;
+          }
+
+          logPhoto(`Source file verified for photo ${i + 1}`, {
+            size: sourceInfo.size,
+            isDirectory: sourceInfo.isDirectory,
+            modificationTime: sourceInfo.modificationTime
+          });
+        } catch (sourceCheckError) {
+          logPhotoError(`Failed to check source file for photo ${i + 1}`, {
+            sourceUri: photo.sourceUri,
+            error: sourceCheckError instanceof Error ? sourceCheckError.message : String(sourceCheckError)
+          });
+          continue;
+        }
+
+        // Check destination directory exists and create if needed
+        logPhoto(`Checking destination directory for photo ${i + 1}`, {
+          destinationUri
+        });
+        try {
+          const destinationDir = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
+          const dirInfo = await FileSystem.getInfoAsync(destinationDir);
+          if (!dirInfo.exists) {
+            logPhoto(`Creating destination directory: ${destinationDir}`);
+            await FileSystem.makeDirectoryAsync(destinationDir, { intermediates: true });
+            logPhoto(`Destination directory created successfully`);
+          } else {
+            logPhoto(`Destination directory exists`, {
+              isDirectory: dirInfo.isDirectory
+            });
+          }
+        } catch (dirError) {
+          logPhotoError(`Failed to prepare destination directory for photo ${i + 1}`, {
+            destinationUri,
+            error: dirError instanceof Error ? dirError.message : String(dirError)
+          });
           continue;
         }
 
         // Copy the file directly
-        await FileSystem.copyAsync({
+        logPhoto(`Starting file copy for photo ${i + 1}`, {
           from: photo.sourceUri,
-          to: destinationUri,
+          to: destinationUri
         });
+        try {
+          await FileSystem.copyAsync({
+            from: photo.sourceUri,
+            to: destinationUri,
+          });
+          logPhoto(`File copied successfully for photo ${i + 1}`);
+        } catch (copyError) {
+          logPhotoError(`File copy failed for photo ${i + 1}`, {
+            from: photo.sourceUri,
+            to: destinationUri,
+            error: copyError instanceof Error ? copyError.message : String(copyError),
+            errorName: copyError instanceof Error ? copyError.name : 'Unknown',
+            stack: copyError instanceof Error ? copyError.stack : undefined
+          });
+          continue;
+        }
 
-        // Get file info
-        const fileInfo = await FileSystem.getInfoAsync(destinationUri);
-        if (fileInfo.exists) {
-          photoAttachment.size = fileInfo.size;
+        // Get file info and verify copy was successful
+        logPhoto(`Verifying copied file for photo ${i + 1}`);
+        try {
+          const fileInfo = await FileSystem.getInfoAsync(destinationUri);
+          if (fileInfo.exists) {
+            photoAttachment.size = fileInfo.size;
+            logPhoto(`File info retrieved for photo ${i + 1}`, {
+              size: fileInfo.size,
+              isDirectory: fileInfo.isDirectory,
+              modificationTime: fileInfo.modificationTime
+            });
+          } else {
+            logPhotoError(`Destination file does not exist after copy for photo ${i + 1}`, {
+              destinationUri
+            });
+            continue;
+          }
+        } catch (verifyError) {
+          logPhotoError(`Failed to verify copied file for photo ${i + 1}`, {
+            destinationUri,
+            error: verifyError instanceof Error ? verifyError.message : String(verifyError)
+          });
+          continue;
         }
 
         attachments.push(photoAttachment);
+        logPhoto(`Photo ${i + 1} processed successfully`);
       } catch (error) {
+        logPhotoError(`Failed to process photo ${i + 1}`, {
+          error: error instanceof Error ? error.message : String(error),
+          sourceUri: photo.sourceUri
+        });
         // Continue with other photos
       }
     }
 
+    logPhoto('File processing complete', {
+      processedCount: attachments.length,
+      originalCount: photoData.length
+    });
+
     // Then batch save all to queue
-    return await this.batchSaveToQueue(attachments);
+    logPhoto('Starting batch save to queue');
+    const result = await this.batchSaveToQueue(attachments);
+    logPhoto('Batch save completed', {
+      savedCount: result.length
+    });
+
+    return result;
   }
 
   /**

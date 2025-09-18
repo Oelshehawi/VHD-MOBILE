@@ -12,6 +12,7 @@ import { LoadingModal } from './LoadingModal';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
 import * as FileSystem from 'expo-file-system';
 import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
+import { logPhoto, logPhotoError, logDatabase, logDatabaseError } from '@/utils/DebugLogger';
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -160,6 +161,16 @@ export function PhotoCapture({
    * Handle photo selection from the PhotoCaptureModal
    */
   const handlePhotoSelected = async (result: ImagePicker.ImagePickerResult) => {
+    logPhoto('Photo selection started', {
+      type,
+      scheduleId,
+      technicianId,
+      canceled: result.canceled,
+      assetsLength: result.assets?.length,
+      isUploading,
+      hasQueue: !!system?.attachmentQueue
+    });
+
     if (
       result.canceled ||
       !result.assets?.length ||
@@ -167,11 +178,19 @@ export function PhotoCapture({
       !scheduleId ||
       !system?.attachmentQueue
     ) {
+      logPhotoError('Photo selection early return', {
+        canceled: result.canceled,
+        noAssets: !result.assets?.length,
+        isUploading,
+        noScheduleId: !scheduleId,
+        noQueue: !system?.attachmentQueue
+      });
       return;
     }
 
     try {
       setIsUploading(true);
+      logPhoto('Starting photo upload process', { assetsCount: result.assets.length });
 
       // Get the queue from system
       const queue = system.attachmentQueue;
@@ -180,10 +199,22 @@ export function PhotoCapture({
       setShowModal(false);
 
       // Check each photo's file size and filter out photos that are too large
+      logPhoto('Starting file size validation', { assetsToCheck: result.assets.length });
       const validationResults = await Promise.all(
-        result.assets.map(async (asset) => {
-          const isValidSize = await checkFileSize(asset.uri);
-          return { asset, isValidSize };
+        result.assets.map(async (asset, index) => {
+          try {
+            const isValidSize = await checkFileSize(asset.uri);
+            logPhoto(`Asset ${index} validation`, {
+              uri: asset.uri,
+              isValidSize,
+              width: asset.width,
+              height: asset.height
+            });
+            return { asset, isValidSize };
+          } catch (error) {
+            logPhotoError(`Asset ${index} validation failed`, { uri: asset.uri, error });
+            return { asset, isValidSize: false };
+          }
         })
       );
 
@@ -193,6 +224,11 @@ export function PhotoCapture({
       const invalidAssets = validationResults
         .filter((r) => !r.isValidSize)
         .map((r) => r.asset);
+
+      logPhoto('File validation complete', {
+        valid: validAssets.length,
+        invalid: invalidAssets.length
+      });
 
       // Show error for oversized files
       if (invalidAssets.length > 0) {
@@ -207,6 +243,7 @@ export function PhotoCapture({
 
       // If no valid photos remain, stop here
       if (validAssets.length === 0) {
+        logPhotoError('No valid assets to process', { totalAssets: result.assets.length });
         showToast(
           'No photos were added - all files exceeded the 20MB size limit'
         );
@@ -214,6 +251,7 @@ export function PhotoCapture({
       }
 
       // Prepare batch data for valid photos only
+      logPhoto('Preparing photo data for batch save', { validAssets: validAssets.length });
       const photoData = validAssets.map((asset) => ({
         sourceUri: asset.uri,
         scheduleId: scheduleId!,
@@ -223,61 +261,110 @@ export function PhotoCapture({
         technicianId: technicianId,
       }));
 
+      logPhoto('Photo data prepared', { photoDataCount: photoData.length });
+
       // Batch save all valid photos at once
+      logPhoto('Starting batch save to queue');
       const savedAttachments = await queue.batchSavePhotosFromUri(photoData);
+      logPhoto('Batch save completed', {
+        savedCount: savedAttachments.length,
+        savedIds: savedAttachments.map(a => a.id)
+      });
 
       if (savedAttachments.length > 0) {
         // Update the schedule with all attachment information at once
-        await powerSync.writeTransaction(async (tx) => {
-          // Get existing photos
-          const currentPhotosData = await tx.getAll<PhotosData>(
-            `SELECT photos FROM schedules WHERE id = ?`,
-            [scheduleId]
-          );
+        logDatabase('Starting PowerSync transaction');
+        try {
+          await powerSync.writeTransaction(async (tx) => {
+            logDatabase('Transaction started, getting existing photos');
+            // Get existing photos
+            const currentPhotosData = await tx.getAll<PhotosData>(
+              `SELECT photos FROM schedules WHERE id = ?`,
+              [scheduleId]
+            );
 
-          // Parse existing photos or create empty array
-          let allPhotos: PhotoType[] = [];
-          if (currentPhotosData.length > 0 && currentPhotosData[0].photos) {
-            try {
-              allPhotos = JSON.parse(currentPhotosData[0].photos);
-            } catch (e) {
-              // Silent error handling
+            logDatabase('Current photos retrieved', {
+              hasData: currentPhotosData.length > 0,
+              photosExist: currentPhotosData.length > 0 && !!currentPhotosData[0].photos
+            });
+
+            // Parse existing photos or create empty array
+            let allPhotos: PhotoType[] = [];
+            if (currentPhotosData.length > 0 && currentPhotosData[0].photos) {
+              try {
+                allPhotos = JSON.parse(currentPhotosData[0].photos);
+                logDatabase('Parsed existing photos', { existingCount: allPhotos.length });
+              } catch (e) {
+                logDatabaseError('Failed to parse existing photos', e);
+              }
             }
-          }
 
-          // Create new photo objects for all attachments
-          const newPhotos: PhotoType[] = savedAttachments.map((attachment) => ({
-            _id: attachment.id,
-            id: attachment.id,
-            url: attachment.filename, // Store the filename to match with attachment table
-            local_uri: attachment.local_uri, // Include local_uri for easy local file access
-            type: type,
-            timestamp: new Date().toISOString(),
-            attachmentId: attachment.id,
-            technicianId: technicianId,
-            status: 'pending', // Mark as pending initially
-          }));
+            // Create new photo objects for all attachments
+            logDatabase('Creating new photo objects', { attachmentCount: savedAttachments.length });
+            const newPhotos: PhotoType[] = savedAttachments.map((attachment) => ({
+              _id: attachment.id,
+              id: attachment.id,
+              url: attachment.filename, // Store the filename to match with attachment table
+              local_uri: attachment.local_uri, // Include local_uri for easy local file access
+              type: type,
+              timestamp: new Date().toISOString(),
+              attachmentId: attachment.id,
+              technicianId: technicianId,
+              status: 'pending', // Mark as pending initially
+            }));
 
-          // Add new photos to existing ones
-          const updatedPhotos = [...allPhotos, ...newPhotos];
+            logDatabase('New photos created', {
+              newPhotosCount: newPhotos.length,
+              newPhotoIds: newPhotos.map(p => p._id)
+            });
 
-          // Update schedules table once with all photos
-          await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
-            JSON.stringify(updatedPhotos),
-            scheduleId,
-          ]);
-        });
+            // Add new photos to existing ones
+            const updatedPhotos = [...allPhotos, ...newPhotos];
+            logDatabase('Photos merged', {
+              existingCount: allPhotos.length,
+              newCount: newPhotos.length,
+              totalCount: updatedPhotos.length
+            });
+
+            // Update schedules table once with all photos
+            logDatabase('Updating schedules table');
+            await tx.execute(`UPDATE schedules SET photos = ? WHERE id = ?`, [
+              JSON.stringify(updatedPhotos),
+              scheduleId,
+            ]);
+            logDatabase('Schedules table updated successfully');
+          });
+          logDatabase('PowerSync transaction completed successfully');
+        } catch (transactionError) {
+          logDatabaseError('PowerSync transaction failed', transactionError);
+          throw transactionError;
+        }
 
         // Start background upload process for photos
-        await checkAndStartBackgroundUpload();
+        logPhoto('Starting background upload service');
+        try {
+          await checkAndStartBackgroundUpload();
+          logPhoto('Background upload service started successfully');
+        } catch (uploadError) {
+          logPhotoError('Failed to start background upload service', uploadError);
+        }
       }
 
-      showToast(
-        `Added ${savedAttachments.length} ${type} photo${
-          savedAttachments.length > 1 ? 's' : ''
-        } - uploading in background`
-      );
+      const successMessage = `Added ${savedAttachments.length} ${type} photo${
+        savedAttachments.length > 1 ? 's' : ''
+      } - uploading in background`;
+      logPhoto('Photo save process completed successfully', {
+        savedCount: savedAttachments.length,
+        message: successMessage
+      });
+
+      showToast(successMessage);
     } catch (error) {
+      logPhotoError('Photo save process failed', {
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined
+      });
+
       Alert.alert(
         'Error',
         error instanceof Error
@@ -286,6 +373,7 @@ export function PhotoCapture({
       );
     } finally {
       setIsUploading(false);
+      logPhoto('Photo save process finished (finally block)');
     }
   };
 
