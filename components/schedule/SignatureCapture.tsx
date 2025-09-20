@@ -14,6 +14,7 @@ import { PhotoType, showToast, SignatureType } from '@/utils/photos';
 import { useSystem } from '@/services/database/System';
 import * as FileSystem from 'expo-file-system';
 import { AttachmentRecord } from '@powersync/attachments';
+import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 
 // Define extended attachment type locally
 interface ExtendedAttachmentRecord extends AttachmentRecord {
@@ -106,12 +107,41 @@ export function SignatureCapture({
         signerName // Pass the signer name
       )) as ExtendedAttachmentRecord;
 
+      // Update schedule record in PowerSync database to trigger UI refresh
+      try {
+        const signatureData = {
+          id: attachmentRecord.id,
+          url: attachmentRecord.local_uri,
+          filename: attachmentRecord.filename,
+          type: 'signature',
+          status: 'pending',
+          signerName: signerName,
+          timestamp: new Date().toISOString(),
+        };
+
+        await powerSync.execute(
+          `UPDATE schedules SET signature = ? WHERE id = ?`,
+          [JSON.stringify(signatureData), schedule.id]
+        );
+      } catch (dbError) {
+        console.error('Failed to update schedule signature in database:', dbError);
+        // Don't throw - the attachment is saved, just the UI won't update immediately
+      }
+
       // Clean up the temporary file
       await FileSystem.deleteAsync(tempFilePath, { idempotent: true });
 
+      // Trigger background upload
+      try {
+        checkAndStartBackgroundUpload();
+      } catch (uploadError) {
+        // Silent error handling - signature is still saved locally
+      }
+
       showToast('Signature saved and will sync when online');
+
+      // Close immediately
       onSignatureCapture();
-      onClose();
     } catch (error) {
       console.error('Error handling signature:', error);
       Alert.alert(

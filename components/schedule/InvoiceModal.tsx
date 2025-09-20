@@ -139,7 +139,8 @@ export function InvoiceModal({
   const hasBeforePhotos = photos.before?.length > 0;
   const hasAfterPhotos = photos.after?.length > 0;
   const hasSignature = !!signature;
-  const isWorkComplete = hasBeforePhotos && hasAfterPhotos && hasSignature;
+  const isSignatureUploading = hasSignature && signature?.status === 'pending';
+  const isWorkComplete = hasBeforePhotos && hasAfterPhotos && hasSignature && !isSignatureUploading;
 
   // Send invoice function
   const sendInvoice = async () => {
@@ -272,33 +273,39 @@ export function InvoiceModal({
             Customer Signature {hasSignature && '✓'}
           </Text>
           {!hasSignature ? (
-            <View className='flex flex-col gap-4'>
-              <TouchableOpacity
-                onPress={() => setShowSignatureModal(true)}
-                className='p-4 rounded-lg flex-row justify-center items-center bg-darkGreen'
-              >
-                <Text className='text-white font-medium text-lg'>
-                  ✍️ Tap to Sign
-                </Text>
-              </TouchableOpacity>
-              <SignatureCapture
-                onSignatureCapture={() => {
-                  setShowSignatureModal(false);
-                }}
-                technicianId={technicianId}
-                schedule={schedule}
-                visible={showSignatureModal}
-                onClose={() => setShowSignatureModal(false)}
-                startDate={schedule?.startDateTime}
-              />
+            <TouchableOpacity
+              onPress={() => setShowSignatureModal(true)}
+              className='p-4 rounded-lg flex-row justify-center items-center bg-darkGreen'
+            >
+              <Text className='text-white font-medium text-lg'>
+                ✍️ Tap to Sign
+              </Text>
+            </TouchableOpacity>
+          ) : isSignatureUploading ? (
+            <View className='p-4 rounded-lg flex-row justify-center items-center bg-blue-600'>
+              <View className='h-5 w-5 rounded-full border-2 border-t-white animate-spin mr-2' />
+              <Text className='text-white font-medium text-lg'>
+                📤 Uploading Signature...
+              </Text>
             </View>
           ) : (
-            <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
-              <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
-                ✓ Signature Captured
+            <View className='p-4 rounded-lg flex-row justify-center items-center bg-green-600'>
+              <Text className='text-white font-medium text-lg'>
+                ✅ Signature Captured
               </Text>
             </View>
           )}
+
+          <SignatureCapture
+            onSignatureCapture={() => {
+              setShowSignatureModal(false);
+            }}
+            technicianId={technicianId}
+            schedule={schedule}
+            visible={showSignatureModal}
+            onClose={() => setShowSignatureModal(false)}
+            startDate={schedule?.startDateTime}
+          />
         </View>
 
         {/* Work Complete Status */}

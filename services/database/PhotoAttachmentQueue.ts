@@ -451,6 +451,18 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       );
       const destinationUri = this.getLocalUri(photoAttachment.local_uri);
 
+      // Check destination directory exists and create if needed
+      try {
+        const destinationDir = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
+        const dirInfo = await FileSystem.getInfoAsync(destinationDir);
+        if (!dirInfo.exists) {
+          await FileSystem.makeDirectoryAsync(destinationDir, { intermediates: true });
+        }
+      } catch (dirError) {
+        console.error('Failed to prepare destination directory:', dirError);
+        throw new Error(`Could not create destination directory: ${dirError}`);
+      }
+
       // Copy the file directly instead of using base64
       await FileSystem.copyAsync({
         from: sourceUri,

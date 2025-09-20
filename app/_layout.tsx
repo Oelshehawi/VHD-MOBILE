@@ -75,8 +75,8 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
       {children}
-      {/* Debug button - only show in development or for specific users */}
-      <DebugButton visible={__DEV__ || canManage as boolean} />
+      {/* Debug button - commented out to prevent hooks error on iOS */}
+      {/* <DebugButton visible={__DEV__ || canManage as boolean} /> */}
     </>
   );
 }
