@@ -4,6 +4,7 @@ import { Slot } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { AppState } from 'react-native';
+import * as Updates from 'expo-updates';
 import './global.css';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
@@ -55,6 +56,32 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
       });
     }
   }, [isLoaded]);
+
+  // Check for OTA updates on app launch
+  useEffect(() => {
+    async function checkForUpdates() {
+      // Only check for updates in production/preview builds, not in development
+      if (__DEV__) {
+        return;
+      }
+
+      try {
+        const update = await Updates.checkForUpdateAsync();
+
+        if (update.isAvailable) {
+          console.log('Update available, downloading...');
+          await Updates.fetchUpdateAsync();
+          console.log('Update downloaded, reloading app...');
+          await Updates.reloadAsync();
+        }
+      } catch (error) {
+        // Handle errors gracefully - don't crash the app if update check fails
+        console.warn('Error checking for updates:', error);
+      }
+    }
+
+    checkForUpdates();
+  }, []);
 
   // Add AppState listener to resume uploads when app becomes active
   useEffect(() => {
