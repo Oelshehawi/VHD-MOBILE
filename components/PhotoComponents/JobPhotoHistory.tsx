@@ -14,6 +14,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { FastImageWrapper } from '@/components/common/FastImageWrapper';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { preloadImages } from '@/utils/imageCache';
+import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
+
+// Cloudinary configuration
+const CLOUD_NAME = 'dhu4yrn5k';
+const THUMBNAIL_WIDTH = 240; // Width for grid thumbnails
 
 // Photo type with signature name extension
 interface EnhancedPhotoType extends PhotoType {
@@ -117,12 +122,31 @@ export function JobPhotoHistory({
           afterPhotos.length ||
           signaturePhotos.length
         ) {
-          // Add photo URLs for preloading
-          photoUrls.push(
-            ...beforePhotos.map((p) => p.url),
-            ...afterPhotos.map((p) => p.url),
-            ...signaturePhotos.map((p) => p.url)
-          );
+          // Add transformed photo URLs for preloading (w_720 for viewer)
+          const transformedUrls = [
+            ...beforePhotos.map((p) =>
+              buildCloudinaryUrlMobile({
+                urlOrPublicId: p.url,
+                cloudName: CLOUD_NAME,
+                width: 720,
+              })
+            ),
+            ...afterPhotos.map((p) =>
+              buildCloudinaryUrlMobile({
+                urlOrPublicId: p.url,
+                cloudName: CLOUD_NAME,
+                width: 720,
+              })
+            ),
+            ...signaturePhotos.map((p) =>
+              buildCloudinaryUrlMobile({
+                urlOrPublicId: p.url,
+                cloudName: CLOUD_NAME,
+                width: 720,
+              })
+            ),
+          ];
+          photoUrls.push(...transformedUrls);
 
           // Create job section
           sections.push({
@@ -235,6 +259,13 @@ export function JobPhotoHistory({
 
       const style = styles[photoType];
 
+      // Transform thumbnail URL to optimize bandwidth
+      const thumbnailUrl = buildCloudinaryUrlMobile({
+        urlOrPublicId: photo.url,
+        cloudName: CLOUD_NAME,
+        width: THUMBNAIL_WIDTH,
+      });
+
       return (
         <Pressable
           key={photo.id || `${jobSection.id}-${photoType}-${photoIndex}`}
@@ -248,7 +279,7 @@ export function JobPhotoHistory({
           className='rounded-lg overflow-hidden'
         >
           <FastImageWrapper
-            uri={photo.url}
+            uri={thumbnailUrl}
             style={{ width: '100%', height: '100%', borderRadius: 8 }}
             showLoader={true}
           />

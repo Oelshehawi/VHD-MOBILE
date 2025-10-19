@@ -1,8 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import ImageView from 'react-native-image-viewing';
-import { Image, ImageContentFit } from 'expo-image';
-import { ActivityIndicator, View } from 'react-native';
+import { Image } from 'expo-image';
+import { ActivityIndicator, View, Dimensions } from 'react-native';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
+import {
+  buildCloudinaryUrlMobile,
+  pickCloudinaryWidth,
+  getCloudinaryCacheKey,
+} from '@/utils/cloudinaryUrl.native';
 
 // Simplified props interface
 export interface FastImageViewerProps {
@@ -31,6 +36,9 @@ interface ExtendedImageViewProps {
   [key: string]: any; // Allow other props
 }
 
+// Cloudinary configuration
+const CLOUD_NAME = 'dhu4yrn5k';
+
 /**
  * A simplified image viewer component that uses Expo Image for better performance
  */
@@ -47,6 +55,29 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
 }) => {
   // Track the current index separately from props
   const [currentIndex, setCurrentIndex] = useState(imageIndex);
+
+  // Calculate optimal width for viewer images
+  const targetWidth = useMemo(() => {
+    const screenWidth = Math.min(Dimensions.get('window').width, 1080);
+    return pickCloudinaryWidth(screenWidth);
+  }, []);
+
+  // Transform images with Cloudinary optimization and stable cache keys
+  const optimizedImages = useMemo(() => {
+    return images.map((img) => {
+      const transformedUri = buildCloudinaryUrlMobile({
+        urlOrPublicId: img.uri,
+        cloudName: CLOUD_NAME,
+        width: targetWidth,
+      });
+
+      return {
+        ...img,
+        uri: transformedUri,
+        cacheKey: getCloudinaryCacheKey(img.uri, targetWidth),
+      };
+    });
+  }, [images, targetWidth]);
 
   // Update internal index when props change or visibility changes
   useEffect(() => {
@@ -72,16 +103,22 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     }
   };
 
-  // Custom image component with loading indicator
+  // Custom image component with loading indicator and cache key support
   const CustomImageComponent = ({ source, style }: any) => {
     const [isLoading, setIsLoading] = useState(true);
+
+    // Extract cacheKey from source if available
+    const imageSource = source.cacheKey
+      ? { uri: source.uri, cacheKey: source.cacheKey }
+      : source;
 
     return (
       <View className='flex-1 justify-center items-center' style={style}>
         <Image
-          source={source}
+          source={imageSource}
           style={style}
           contentFit='contain'
+          cachePolicy='disk'
           onLoad={() => setIsLoading(false)}
           onError={() => setIsLoading(false)}
         />
@@ -113,7 +150,7 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
 
   return (
     <ExtendedImageView
-      images={images}
+      images={optimizedImages}
       imageIndex={imageIndex}
       visible={visible}
       onRequestClose={onRequestClose}

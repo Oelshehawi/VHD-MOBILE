@@ -5,6 +5,11 @@ import { FastImageWrapper } from '@/components/common/FastImageWrapper';
 import { useSystem } from '@/services/database/System';
 import * as FileSystem from 'expo-file-system';
 import { Image } from 'react-native';
+import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
+
+// Cloudinary configuration
+const CLOUD_NAME = 'dhu4yrn5k';
+const THUMBNAIL_WIDTH = 240; // Grid thumbnails are ~1/3 screen width
 
 /**
  * Individual photo item component
@@ -74,8 +79,13 @@ export function PhotoItem({
           setImageError(true);
         }
       } else {
-        // For uploaded photos, use the original URL
-        setResolvedUrl(photo.url);
+        // For uploaded photos, transform to thumbnail size for bandwidth optimization
+        const transformedUrl = buildCloudinaryUrlMobile({
+          urlOrPublicId: photo.url,
+          cloudName: CLOUD_NAME,
+          width: THUMBNAIL_WIDTH,
+        });
+        setResolvedUrl(transformedUrl);
       }
     };
 
