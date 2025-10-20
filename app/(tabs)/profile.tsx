@@ -13,6 +13,7 @@ import { formatDateReadable } from '../../utils/date';
 import { useState, useEffect } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import NetInfo from '@react-native-community/netinfo';
+import * as Updates from 'expo-updates';
 // Import functions to get URLs
 import {
   getPowerSyncUrl,
@@ -172,6 +173,50 @@ export default function ProfileScreen() {
                   : 'N/A'}
               </Text>
             </View>
+          </View>
+        </View>
+      </Card>
+
+      <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
+        <View className='p-4'>
+          <Text className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4'>
+            App Version
+          </Text>
+          <View className='space-y-2'>
+            <View>
+              <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                Version
+              </Text>
+              <Text className='text-gray-800 dark:text-gray-200'>
+                1.0.0
+              </Text>
+            </View>
+            <View>
+              <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                Update Channel
+              </Text>
+              <Text className='text-gray-800 dark:text-gray-200'>
+                {Updates.channel || 'development'}
+              </Text>
+            </View>
+            <View>
+              <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                Update ID
+              </Text>
+              <Text className='text-gray-800 dark:text-gray-200 text-xs'>
+                {Updates.updateId || 'No OTA update installed'}
+              </Text>
+            </View>
+            {Updates.createdAt && (
+              <View>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  Update Published
+                </Text>
+                <Text className='text-gray-800 dark:text-gray-200'>
+                  {formatDateReadable(Updates.createdAt)}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
       </Card>
