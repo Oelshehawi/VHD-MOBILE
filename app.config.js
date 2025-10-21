@@ -24,11 +24,20 @@ export default {
       bundleIdentifier: 'com.braille71.vhdapp',
       buildNumber: '1',
       infoPlist: {
-        NSCameraUsageDescription: 'This app uses the camera to capture photos of work completed.',
-        NSPhotoLibraryUsageDescription: 'This app needs access to your photos to save work documentation.',
-        NSLocationWhenInUseUsageDescription: 'VHD needs your location to track job sites and provide navigation.',
-        NSLocationAlwaysAndWhenInUseUsageDescription: 'VHD needs background location to track your location during active jobs.',
-        UIBackgroundModes: ['fetch', 'remote-notification', 'processing', 'location'],
+        NSCameraUsageDescription:
+          'This app uses the camera to capture photos of work completed.',
+        NSPhotoLibraryUsageDescription:
+          'This app needs access to your photos to save work documentation.',
+        NSLocationWhenInUseUsageDescription:
+          'VHD needs your location to track job sites and provide navigation.',
+        NSLocationAlwaysAndWhenInUseUsageDescription:
+          'VHD needs background location to track your location during active jobs.',
+        UIBackgroundModes: [
+          'fetch',
+          'remote-notification',
+          'processing',
+          'location',
+        ],
         ITSAppUsesNonExemptEncryption: false,
       },
       config: {
@@ -66,6 +75,8 @@ export default {
     plugins: [
       'expo-router',
       'expo-sqlite',
+      'expo-font',
+      'expo-web-browser',
       [
         'expo-local-authentication',
         {
@@ -76,7 +87,8 @@ export default {
         'expo-secure-store',
         {
           configureAndroidBackup: true,
-          faceIDPermission: 'Allow $(Vancouver Hood Doctors) to access your Face ID biometric data.',
+          faceIDPermission:
+            'Allow $(Vancouver Hood Doctors) to access your Face ID biometric data.',
         },
       ],
       [
@@ -91,8 +103,10 @@ export default {
       [
         'expo-location',
         {
-          locationAlwaysAndWhenInUsePermission: 'VHD tracks your location during active jobs to help managers coordinate schedules.',
-          locationWhenInUsePermission: 'VHD needs your location to track job sites and provide navigation.',
+          locationAlwaysAndWhenInUsePermission:
+            'VHD tracks your location during active jobs to help managers coordinate schedules.',
+          locationWhenInUsePermission:
+            'VHD needs your location to track job sites and provide navigation.',
           isIosBackgroundLocationEnabled: true,
           isAndroidBackgroundLocationEnabled: true,
         },

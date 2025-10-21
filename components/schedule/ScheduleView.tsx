@@ -1,9 +1,11 @@
 import React, { useState, useCallback } from 'react';
-import { SafeAreaView, StatusBar } from 'react-native';
+import { SafeAreaView, StatusBar, View, Text, TouchableOpacity } from 'react-native';
 import { useQuery } from '@powersync/react-native';
 import { Schedule, AppointmentType } from '@/types';
 import { MonthView } from './MonthView';
 import { DailyAgenda } from './DailyAgenda';
+import { WeekView } from './WeekView';
+import { startOfWeek, endOfWeek, format } from 'date-fns';
 
 interface ScheduleViewProps {
   userId: string;
@@ -12,6 +14,8 @@ interface ScheduleViewProps {
   isManager: boolean;
 }
 
+type ViewMode = 'month' | 'week' | 'day';
+
 export function ScheduleView({
   userId,
   currentDate,
@@ -19,6 +23,7 @@ export function ScheduleView({
   isManager,
 }: ScheduleViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(currentDate);
+  const [viewMode, setViewMode] = useState<ViewMode>('month');
 
   // Get schedules for the selected date - adjust query based on role
   const { data: schedules = [] } = useQuery<Schedule>(
@@ -34,6 +39,18 @@ export function ScheduleView({
       ? `SELECT * FROM schedules WHERE datetime(startDateTime) BETWEEN datetime('now', 'start of month', '-67 days') AND datetime('now', 'start of month', '+67 days') ORDER BY startDateTime`
       : `SELECT * FROM schedules WHERE datetime(startDateTime) BETWEEN datetime('now', 'start of month', '-67 days') AND datetime('now', 'start of month', '+67 days') AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
     isManager ? [] : [`%${userId}%`]
+  );
+
+  // Get schedules for the week view (current week +/- 1 week for smooth navigation)
+  const weekStart = startOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
+  const weekEnd = endOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
+  const { data: weekSchedules = [] } = useQuery<Schedule>(
+    isManager
+      ? `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) ORDER BY startDateTime`
+      : `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
+    isManager
+      ? [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')]
+      : [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'), `%${userId}%`]
   );
 
   // Convert schedules to appointments format for MonthView
@@ -64,26 +81,116 @@ export function ScheduleView({
     [onDateChange]
   );
 
+  // Handle schedule press - for now, this is a placeholder
+  // In the future, this could open a schedule detail modal
+  const handleSchedulePress = useCallback((schedule: Schedule) => {
+    console.log('Schedule pressed:', schedule.id);
+    // TODO: Open schedule detail modal or navigate to detail screen
+  }, []);
+
 
   return (
     <SafeAreaView className='flex-1 bg-white dark:bg-gray-900'>
       <StatusBar barStyle='light-content' backgroundColor='#22543D' />
 
-      {/* Month Calendar */}
-      <MonthView
-        currentDate={currentDate}
-        onDateChange={onDateChange}
-        appointments={appointments}
-        onDayPress={handleDayPress}
-      />
+      {/* Tab Navigation Bar */}
+      <View className='flex-row bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800'>
+        <TouchableOpacity
+          className={`flex-1 py-4 items-center border-b-2 ${
+            viewMode === 'month'
+              ? 'border-blue-500'
+              : 'border-transparent'
+          }`}
+          onPress={() => setViewMode('month')}
+        >
+          <Text
+            className={`font-semibold ${
+              viewMode === 'month'
+                ? 'text-blue-500'
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            Month
+          </Text>
+        </TouchableOpacity>
 
-      {/* Daily Schedule */}
-      <DailyAgenda
-        selectedDate={selectedDate}
-        schedules={schedules}
-        isManager={isManager}
-        userId={userId}
-      />
+        <TouchableOpacity
+          className={`flex-1 py-4 items-center border-b-2 ${
+            viewMode === 'week'
+              ? 'border-blue-500'
+              : 'border-transparent'
+          }`}
+          onPress={() => setViewMode('week')}
+        >
+          <Text
+            className={`font-semibold ${
+              viewMode === 'week'
+                ? 'text-blue-500'
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            Week
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          className={`flex-1 py-4 items-center border-b-2 ${
+            viewMode === 'day'
+              ? 'border-blue-500'
+              : 'border-transparent'
+          }`}
+          onPress={() => setViewMode('day')}
+        >
+          <Text
+            className={`font-semibold ${
+              viewMode === 'day'
+                ? 'text-blue-500'
+                : 'text-gray-500 dark:text-gray-400'
+            }`}
+          >
+            Day
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Conditional View Rendering */}
+      {viewMode === 'month' && (
+        <>
+          {/* Month Calendar */}
+          <MonthView
+            currentDate={currentDate}
+            onDateChange={onDateChange}
+            appointments={appointments}
+            onDayPress={handleDayPress}
+          />
+
+          {/* Daily Schedule */}
+          <DailyAgenda
+            selectedDate={selectedDate}
+            schedules={schedules}
+            isManager={isManager}
+            userId={userId}
+          />
+        </>
+      )}
+
+      {viewMode === 'week' && (
+        <WeekView
+          schedules={weekSchedules}
+          selectedDate={selectedDate}
+          onDateSelect={handleDayPress}
+          onSchedulePress={handleSchedulePress}
+        />
+      )}
+
+      {viewMode === 'day' && (
+        <DailyAgenda
+          selectedDate={selectedDate}
+          schedules={schedules}
+          isManager={isManager}
+          userId={userId}
+        />
+      )}
     </SafeAreaView>
   );
 }
