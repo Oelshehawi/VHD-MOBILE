@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { StatusBar, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@powersync/react-native';
@@ -7,7 +7,7 @@ import { MonthView } from './MonthView';
 import { DailyAgenda } from './DailyAgenda';
 import { WeekView } from './WeekView';
 import { InvoiceModal } from './InvoiceModal';
-import { startOfWeek, endOfWeek, format } from 'date-fns';
+import { startOfWeek, endOfWeek, format, startOfDay } from 'date-fns';
 
 interface ScheduleViewProps {
   userId: string;
@@ -24,11 +24,18 @@ export function ScheduleView({
   onDateChange,
   isManager,
 }: ScheduleViewProps) {
-  const [selectedDate, setSelectedDate] = useState<string>(currentDate);
-  const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [selectedDate, setSelectedDate] = useState<string>(
+    startOfDay(new Date(currentDate)).toISOString()
+  );
+  const [viewMode, setViewMode] = useState<ViewMode>('day'); // Changed from 'month' to 'day'
   const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
   const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] =
     useState<Schedule | null>(null);
+
+  useEffect(() => {
+    const normalized = startOfDay(new Date(currentDate)).toISOString();
+    setSelectedDate(normalized);
+  }, [currentDate]);
 
   // Get schedules for the selected date - adjust query based on role
   const { data: schedules = [] } = useQuery<Schedule>(
@@ -55,7 +62,11 @@ export function ScheduleView({
       : `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
     isManager
       ? [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')]
-      : [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'), `%${userId}%`]
+      : [
+          format(weekStart, 'yyyy-MM-dd'),
+          format(weekEnd, 'yyyy-MM-dd'),
+          `%${userId}%`,
+        ]
   );
 
   // Convert schedules to appointments format for MonthView
@@ -67,10 +78,18 @@ export function ScheduleView({
   }));
 
   // Function to handle day press in the MonthView
+  const handleDateSelection = useCallback(
+    (date: string) => {
+      const normalized = startOfDay(new Date(date)).toISOString();
+      setSelectedDate(normalized);
+      onDateChange(normalized);
+    },
+    [onDateChange]
+  );
+
   const handleDayPress = useCallback(
     (date: string) => {
-      setSelectedDate(date);
-      onDateChange(date);
+      handleDateSelection(date);
 
       // NOTE: Performance optimization possibility:
       // Instead of triggering a new query when a day is selected,
@@ -83,7 +102,7 @@ export function ScheduleView({
       // );
       // And then use this filtered list instead of making a new query
     },
-    [onDateChange]
+    [handleDateSelection]
   );
 
   // Helper function to safely extract technician ID
@@ -91,7 +110,9 @@ export function ScheduleView({
     if (typeof technicians === 'string') {
       try {
         const parsed = JSON.parse(technicians);
-        return Array.isArray(parsed) ? parsed[0] : technicians.split(',')[0] || '';
+        return Array.isArray(parsed)
+          ? parsed[0]
+          : technicians.split(',')[0] || '';
       } catch {
         return technicians.split(',')[0] || '';
       }
@@ -110,37 +131,32 @@ export function ScheduleView({
     }
   }, []);
 
-
   return (
-    <SafeAreaView edges={["top"]} className='flex-1 bg-white dark:bg-gray-900'>
+    <SafeAreaView edges={['top']} className='flex-1 bg-white dark:bg-gray-900'>
       <StatusBar barStyle='light-content' backgroundColor='#22543D' />
 
       {/* Tab Navigation Bar */}
       <View className='flex-row bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800'>
         <TouchableOpacity
           className={`flex-1 py-4 items-center border-b-2 ${
-            viewMode === 'month'
-              ? 'border-blue-500'
-              : 'border-transparent'
+            viewMode === 'day' ? 'border-blue-500' : 'border-transparent'
           }`}
-          onPress={() => setViewMode('month')}
+          onPress={() => setViewMode('day')}
         >
           <Text
             className={`font-semibold ${
-              viewMode === 'month'
+              viewMode === 'day'
                 ? 'text-blue-500'
                 : 'text-gray-500 dark:text-gray-400'
             }`}
           >
-            Month
+            Day
           </Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           className={`flex-1 py-4 items-center border-b-2 ${
-            viewMode === 'week'
-              ? 'border-blue-500'
-              : 'border-transparent'
+            viewMode === 'week' ? 'border-blue-500' : 'border-transparent'
           }`}
           onPress={() => setViewMode('week')}
         >
@@ -157,20 +173,18 @@ export function ScheduleView({
 
         <TouchableOpacity
           className={`flex-1 py-4 items-center border-b-2 ${
-            viewMode === 'day'
-              ? 'border-blue-500'
-              : 'border-transparent'
+            viewMode === 'month' ? 'border-blue-500' : 'border-transparent'
           }`}
-          onPress={() => setViewMode('day')}
+          onPress={() => setViewMode('month')}
         >
           <Text
             className={`font-semibold ${
-              viewMode === 'day'
+              viewMode === 'month'
                 ? 'text-blue-500'
                 : 'text-gray-500 dark:text-gray-400'
             }`}
           >
-            Day
+            Month
           </Text>
         </TouchableOpacity>
       </View>
@@ -181,18 +195,19 @@ export function ScheduleView({
           {/* Month Calendar */}
           <MonthView
             currentDate={currentDate}
-            onDateChange={onDateChange}
+            onDateChange={handleDateSelection}
             appointments={appointments}
             schedules={monthSchedules}
             onDayPress={handleDayPress}
           />
 
-          {/* Daily Schedule */}
+          {/* Daily Schedule - now without severe weather alert */}
           <DailyAgenda
             selectedDate={selectedDate}
             schedules={schedules}
             isManager={isManager}
             userId={userId}
+            showSevereWeatherAlert={false} // Hide weather alert in month view
           />
         </>
       )}
@@ -212,6 +227,8 @@ export function ScheduleView({
           schedules={schedules}
           isManager={isManager}
           userId={userId}
+          onDateChange={handleDateSelection} // Enable navigation in day view
+          showSevereWeatherAlert={true} // Show weather alert in day view
         />
       )}
 
@@ -221,7 +238,9 @@ export function ScheduleView({
           visible={invoiceModalVisible}
           onClose={() => setInvoiceModalVisible(false)}
           scheduleId={selectedScheduleForInvoice.id}
-          technicianId={getTechnicianId(selectedScheduleForInvoice.assignedTechnicians)}
+          technicianId={getTechnicianId(
+            selectedScheduleForInvoice.assignedTechnicians
+          )}
           isManager={isManager}
         />
       )}

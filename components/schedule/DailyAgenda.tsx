@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
-import { parseISO, format } from 'date-fns';
+import { parseISO, format, addDays } from 'date-fns';
 import { Schedule } from '@/types';
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -15,6 +15,8 @@ interface DailyAgendaProps {
   schedules: Schedule[];
   isManager?: boolean;
   userId: string;
+  onDateChange?: (date: string) => void; // For navigation
+  showSevereWeatherAlert?: boolean; // Add this prop to control weather alert visibility
 }
 
 // Helper function to safely extract technician ID
@@ -33,6 +35,8 @@ export function DailyAgenda({
   schedules,
   isManager,
   userId,
+  onDateChange,
+  showSevereWeatherAlert = true, // Default to true for backward compatibility
 }: DailyAgendaProps) {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
@@ -41,7 +45,9 @@ export function DailyAgenda({
   const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
   const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] =
     useState<Schedule | null>(null);
-  const [weatherDataMap, setWeatherDataMap] = useState<Map<string, WeatherData>>(new Map());
+  const [weatherDataMap, setWeatherDataMap] = useState<
+    Map<string, WeatherData>
+  >(new Map());
 
   // Load weather for all locations on selected date
   useEffect(() => {
@@ -66,7 +72,10 @@ export function DailyAgenda({
       const coords = await GeocodingService.getCoordinates(location);
       if (!coords) continue;
 
-      const forecast = await WeatherService.getForecast(coords.latitude, coords.longitude);
+      const forecast = await WeatherService.getForecast(
+        coords.latitude,
+        coords.longitude
+      );
       const dayWeather = forecast.find((day) => day.date === dateStr);
       if (dayWeather) {
         weatherMap.set(location, dayWeather);
@@ -130,14 +139,54 @@ export function DailyAgenda({
     return weather && WeatherService.isSevereWeather(weather);
   });
 
+  const goToPreviousDay = () => {
+    if (onDateChange) {
+      const previousDate = addDays(parseISO(selectedDate), -1);
+      onDateChange(previousDate.toISOString());
+    }
+  };
+
+  const goToNextDay = () => {
+    if (onDateChange) {
+      const followingDate = addDays(parseISO(selectedDate), 1);
+      onDateChange(followingDate.toISOString());
+    }
+  };
+
   return (
     <View className='flex-1 bg-white dark:bg-gray-900 p-4'>
-      <Text className='text-xl font-bold mb-4 text-gray-900 dark:text-white'>
-        {formatDateReadable(new Date(selectedDate))}
-      </Text>
+      {/* Date Navigation Header - only show in day view */}
+      {onDateChange && (
+        <View className='flex-row items-center justify-between mb-4'>
+          <TouchableOpacity
+            onPress={goToPreviousDay}
+            className='p-2 bg-gray-100 dark:bg-gray-800 rounded-full'
+          >
+            <Ionicons name='chevron-back' size={20} color='#6B7280' />
+          </TouchableOpacity>
 
-      {/* Severe Weather Alert */}
-      {severeWeatherJobs.length > 0 && (
+          <Text className='text-xl font-bold text-gray-900 dark:text-white'>
+            {formatDateReadable(new Date(selectedDate))}
+          </Text>
+
+          <TouchableOpacity
+            onPress={goToNextDay}
+            className='p-2 bg-gray-100 dark:bg-gray-800 rounded-full'
+          >
+            <Ionicons name='chevron-forward' size={20} color='#6B7280' />
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Date header for month view (no navigation arrows) */}
+      {!onDateChange && (
+        <Text className='text-xl font-bold mb-4 text-gray-900 dark:text-white'>
+          {formatDateReadable(new Date(selectedDate))}
+        </Text>
+      )}
+
+      {/* Severe Weather Alert - conditionally show based on prop */}
+      {showSevereWeatherAlert && severeWeatherJobs.length > 0 && (
         <View className='mb-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3'>
           <View className='flex-row items-start gap-2'>
             <Text className='text-2xl'>⚠️</Text>
@@ -146,14 +195,20 @@ export function DailyAgenda({
                 Severe Weather Alert
               </Text>
               <Text className='text-sm text-yellow-700 dark:text-yellow-300'>
-                {severeWeatherJobs.length} job{severeWeatherJobs.length !== 1 ? 's' : ''} affected by adverse weather conditions
+                {severeWeatherJobs.length} job
+                {severeWeatherJobs.length !== 1 ? 's' : ''} affected by adverse
+                weather conditions
               </Text>
               <View className='mt-2 gap-1'>
                 {severeWeatherJobs.slice(0, 3).map((job) => {
                   const weather = weatherDataMap.get(job.location)!;
                   return (
-                    <Text key={job.id} className='text-xs text-yellow-700 dark:text-yellow-300'>
-                      • {job.jobTitle}: {weather.condition.text} ({Math.round(weather.temp_c)}°)
+                    <Text
+                      key={job.id}
+                      className='text-xs text-yellow-700 dark:text-yellow-300'
+                    >
+                      • {job.jobTitle}: {weather.condition.text} (
+                      {Math.round(weather.temp_c)}°)
                     </Text>
                   );
                 })}
@@ -250,19 +305,33 @@ export function DailyAgenda({
                           <View className='p-4'>
                             <View className='flex-row justify-between items-start'>
                               <View className='flex-1'>
-                                <View className='flex-row items-center gap-2 mb-1'>
-                                  <Text className='text-lg font-medium text-gray-900 dark:text-white'>
+                                <View className='flex-row items-start gap-2 mb-1'>
+                                  <Text
+                                    className='flex-1 text-lg font-medium text-gray-900 dark:text-white pr-2'
+                                    numberOfLines={2}
+                                    ellipsizeMode='tail'
+                                  >
                                     {schedule.jobTitle}
                                   </Text>
                                   {/* Weather Indicator */}
                                   {weatherDataMap.get(schedule.location) && (
-                                    <View className='flex-row items-center gap-1'>
+                                    <View className='flex-row items-center gap-1 flex-shrink-0'>
                                       <Image
-                                        source={{ uri: WeatherService.getIconUrl(weatherDataMap.get(schedule.location)!.condition.icon) }}
+                                        source={{
+                                          uri: WeatherService.getIconUrl(
+                                            weatherDataMap.get(
+                                              schedule.location
+                                            )!.condition.icon
+                                          ),
+                                        }}
                                         style={{ width: 20, height: 20 }}
                                       />
                                       <Text className='text-sm font-semibold text-gray-700 dark:text-gray-300'>
-                                        {Math.round(weatherDataMap.get(schedule.location)!.temp_c)}°
+                                        {Math.round(
+                                          weatherDataMap.get(schedule.location)!
+                                            .temp_c
+                                        )}
+                                        °
                                       </Text>
                                     </View>
                                   )}

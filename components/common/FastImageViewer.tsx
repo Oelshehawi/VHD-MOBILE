@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -7,10 +7,15 @@ import {
   Dimensions,
   ActivityIndicator,
   Platform,
+  StyleSheet,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Zoomable } from '@likashefqet/react-native-image-zoom';
-import { gestureHandlerRootHOC } from 'react-native-gesture-handler'; // Add this import
+import {
+  Zoomable,
+  ZoomableRef,
+  ZOOM_TYPE,
+} from '@likashefqet/react-native-image-zoom';
+import { gestureHandlerRootHOC } from 'react-native-gesture-handler';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 import {
   buildCloudinaryUrlMobile,
@@ -33,11 +38,33 @@ export interface FastImageViewerProps {
   doubleTapScale?: number;
   onZoomInteractionStart?: () => void;
   onZoomInteractionEnd?: () => void;
-  onDoubleTap?: (zoomType: any) => void;
+  onDoubleTap?: (zoomType: ZOOM_TYPE) => void;
 }
 
 // Cloudinary configuration
 const CLOUD_NAME = 'dhu4yrn5k';
+
+const styles = StyleSheet.create({
+  viewerContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  zoomable: {
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+  },
+});
 
 /**
  * A custom image viewer component using expo-image with zoom capabilities
@@ -51,16 +78,40 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
   doubleTapToZoomEnabled = true,
   title,
   getSubtitle,
-  ...otherProps
+  minScale = 1,
+  maxScale = 5,
+  doubleTapScale = 3,
+  onZoomInteractionStart,
+  onZoomInteractionEnd,
+  onDoubleTap,
 }) => {
+  const zoomableRef = useRef<ZoomableRef | null>(null);
   const [currentIndex, setCurrentIndex] = useState(imageIndex);
   const [isLoading, setIsLoading] = useState(true);
 
+  useEffect(() => {
+    if (!visible) return;
+    setCurrentIndex(imageIndex);
+    setIsLoading(true);
+  }, [imageIndex, visible]);
+
+  useEffect(() => {
+    if (!visible) return;
+    setIsLoading(true);
+    requestAnimationFrame(() => {
+      zoomableRef.current?.reset?.();
+    });
+  }, [currentIndex, visible]);
+
+  const windowDimensions = Dimensions.get('window');
+  const viewerWidth = windowDimensions.width;
+  const viewerHeight = windowDimensions.height * 0.8;
+
   // Calculate optimal width for viewer images
   const targetWidth = useMemo(() => {
-    const screenWidth = Math.min(Dimensions.get('window').width, 1080);
+    const screenWidth = Math.min(viewerWidth, 1080);
     return pickCloudinaryWidth(screenWidth);
-  }, []);
+  }, [viewerWidth]);
 
   // Transform images with Cloudinary optimization
   const optimizedImages = useMemo(() => {
@@ -96,19 +147,48 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
     }
   };
 
+  const handleInteractionStart = useCallback(() => {
+    onZoomInteractionStart?.();
+  }, [onZoomInteractionStart]);
+
+  const handleInteractionEnd = useCallback(() => {
+    onZoomInteractionEnd?.();
+  }, [onZoomInteractionEnd]);
+
+  const handleDoubleTap = useCallback(
+    (zoomType: ZOOM_TYPE) => {
+      onDoubleTap?.(zoomType);
+    },
+    [onDoubleTap]
+  );
+
+  const handleImageLoad = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
+  const handleImageError = useCallback(() => {
+    setIsLoading(false);
+  }, []);
+
   // Navigation functions
   const goToPrevious = () => {
-    if (currentIndex > 0) {
-      setCurrentIndex(currentIndex - 1);
+    setCurrentIndex((prev) => {
+      if (prev <= 0) {
+        return prev;
+      }
       setIsLoading(true);
-    }
+      return prev - 1;
+    });
   };
 
   const goToNext = () => {
-    if (currentIndex < images.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+    setCurrentIndex((prev) => {
+      if (prev >= images.length - 1) {
+        return prev;
+      }
       setIsLoading(true);
-    }
+      return prev + 1;
+    });
   };
 
   if (!visible || !optimizedImages[currentIndex]) return null;
@@ -133,63 +213,43 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
 
         {/* Image Container with Zoomable */}
         <View
-          style={{
-            flex: 1,
-            width: Dimensions.get('window').width,
-            height: Dimensions.get('window').height * 0.8,
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
+          style={[
+            styles.viewerContainer,
+            { width: viewerWidth, height: viewerHeight },
+          ]}
         >
           <Zoomable
-            minScale={1}
-            maxScale={5}
-            doubleTapScale={3}
+            ref={zoomableRef}
+            minScale={minScale}
+            maxScale={maxScale}
+            doubleTapScale={doubleTapScale}
             isDoubleTapEnabled={doubleTapToZoomEnabled}
             isSingleTapEnabled={false}
             isPanEnabled={true}
             isPinchEnabled={true}
-            onInteractionStart={() => {
-              // Handle interaction start if needed
-            }}
-            onInteractionEnd={() => {
-              // Handle interaction end if needed
-            }}
-            onDoubleTap={(zoomType) => {
-              // Handle double tap events
-              console.log('Double tap zoom type:', zoomType);
-            }}
+            maxPanPointers={2}
+            onInteractionStart={handleInteractionStart}
+            onInteractionEnd={handleInteractionEnd}
+            onDoubleTap={handleDoubleTap}
+            style={styles.zoomable}
+            key={`${currentImage.cacheKey ?? currentImage.uri}-${currentIndex}`}
           >
             <Image
               source={{
                 uri: currentImage.uri,
                 cacheKey: currentImage.cacheKey,
               }}
-              style={{
-                width: Dimensions.get('window').width,
-                height: Dimensions.get('window').height * 0.8,
-              }}
+              style={{ width: viewerWidth, height: viewerHeight }}
               contentFit='contain'
               cachePolicy='disk'
-              onLoad={() => setIsLoading(false)}
-              onError={() => setIsLoading(false)}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
             />
           </Zoomable>
 
           {/* Loading indicator */}
           {isLoading && (
-            <View
-              style={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                right: 0,
-                bottom: 0,
-                justifyContent: 'center',
-                alignItems: 'center',
-                backgroundColor: 'rgba(0, 0, 0, 0.5)',
-              }}
-            >
+            <View style={styles.loadingOverlay}>
               <ActivityIndicator size='large' color='#ffffff' />
             </View>
           )}
