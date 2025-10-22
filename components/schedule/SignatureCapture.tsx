@@ -7,13 +7,14 @@ import {
   Alert,
   Modal,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 
 import SignatureCanvas from 'react-native-signature-canvas';
 import { usePowerSync } from '@powersync/react-native';
-import { PhotoType, showToast, SignatureType } from '@/utils/photos';
+import { PhotoType, showToast } from '@/utils/photos';
 import { useSystem } from '@/services/database/System';
+import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 import { AttachmentRecord } from '@powersync/attachments';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Define extended attachment type locally
 interface ExtendedAttachmentRecord extends AttachmentRecord {
@@ -66,7 +67,9 @@ export function SignatureCapture({
       return;
     }
 
-    if (!signerName.trim()) {
+    const trimmedSignerName = signerName.trim();
+
+    if (!trimmedSignerName) {
       Alert.alert('Error', "Please enter the signer's name");
       return;
     }
@@ -79,31 +82,35 @@ export function SignatureCapture({
     try {
       setIsSaving(true);
 
-      // Get the queue from system
       const queue = system.attachmentQueue;
 
-      // Pass the data URI directly to savePhotoFromUri
-      // The signature canvas returns a data URI like "data:image/png;base64,iVBORw0KG..."
-      // prepareImageForUpload can handle this directly - no temp file needed!
       const attachmentRecord = (await queue.savePhotoFromUri(
-        signature, // Pass data URI directly - much faster!
+        signature,
         schedule.id,
         schedule.jobTitle,
-        'signature', // Set type as signature
+        'signature',
         startDate,
         technicianId,
-        signerName // Pass the signer name
+        trimmedSignerName
       )) as ExtendedAttachmentRecord;
 
-      // Update schedule record in PowerSync database to trigger UI refresh
+      const resolvedLocalUri =
+        attachmentRecord.local_uri && queue
+          ? queue.getLocalUri(attachmentRecord.local_uri)
+          :attachmentRecord.local_uri || '';
+
       try {
         const signatureData = {
+          _id: attachmentRecord.id,
           id: attachmentRecord.id,
-          url: attachmentRecord.local_uri,
+          url: resolvedLocalUri,
           filename: attachmentRecord.filename,
           type: 'signature',
-          status: 'pending',
-          signerName: signerName,
+          status: 'pending' as const,
+          signerName: trimmedSignerName,
+          technicianId,
+          attachmentId: attachmentRecord.id,
+          local_uri: attachmentRecord.local_uri,
           timestamp: new Date().toISOString(),
         };
 
@@ -113,14 +120,24 @@ export function SignatureCapture({
         );
       } catch (dbError) {
         console.error('Failed to update schedule signature in database:', dbError);
-        // Don't throw - the attachment is saved, just the UI won't update immediately
       }
 
-      // PowerSync automatically syncs signature every 5 seconds
-      // No manual service call needed - signature will upload in background automatically
-      showToast('Signature saved and will sync when online');
+      setIsUploading(true);
 
-      // Close immediately
+      try {
+        await checkAndStartBackgroundUpload();
+      } catch (uploadError) {
+        console.error('Failed to start background upload service for signature:', uploadError);
+      }
+
+      if (signatureRef.current?.clearSignature) {
+        signatureRef.current.clearSignature();
+      }
+
+      setSignerName('');
+
+      showToast('Signature captured - uploading in background');
+
       onSignatureCapture();
     } catch (error) {
       console.error('Error handling signature:', error);
@@ -132,6 +149,7 @@ export function SignatureCapture({
       );
     } finally {
       setIsSaving(false);
+      setIsUploading(false);
     }
   };
 
@@ -151,7 +169,7 @@ export function SignatureCapture({
                 Electronic Signature Agreement
               </Text>
               {(isUploading || isSaving) && (
-                <View className='h-5 w-5 rounded-full border-2 border-t-darkGreen animate-spin' />
+                <View className='h-5 w-5 rounded-full border-2 border-t-[#22543D] animate-spin' />
               )}
             </View>
             <TouchableOpacity

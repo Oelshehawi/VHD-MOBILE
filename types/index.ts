@@ -97,6 +97,17 @@ export interface ShiftType {
   hoursWorked?: number;
 }
 
+export interface TechnicianLocation {
+  id: string;
+  technicianId: string;
+  latitude: number;
+  longitude: number;
+  timestamp: string;
+  isActive: number;
+  currentJobId: string | null;
+  accuracy?: number | null;
+}
+
 export interface DashboardData {
   name: string;
   canManage: boolean;

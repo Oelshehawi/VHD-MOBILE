@@ -237,9 +237,9 @@ export function MonthView({
                       {dayAppointments.map((apt) => (
                         <View key={apt.id} className='mb-0.5'>
                           <View
-                            className={`h-1 rounded-full ${
+                              className={`h-1 rounded-full ${
                               apt.status === 'confirmed'
-                                ? 'bg-darkGreen'
+                                ? 'bg-[#22543D]'
                                 : 'bg-blue-500'
                             }`}
                           />

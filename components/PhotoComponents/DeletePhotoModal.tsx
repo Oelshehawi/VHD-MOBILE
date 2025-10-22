@@ -1,6 +1,5 @@
 import { Modal, Text, View, TouchableOpacity, ActivityIndicator } from "react-native";
-import { SafeAreaView } from 'react-native-safe-area-context';
-
+import { SafeAreaView } from "react-native-safe-area-context";
 /**
  * DeletePhotoModal component to confirm photo deletion
  */

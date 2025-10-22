@@ -47,6 +47,24 @@ const schedules = new Table(
   { indexes: { invoices: ['invoiceRef'] } }
 );
 
+const technicianlocations = new Table(
+  {
+    technicianId: column.text,
+    latitude: column.real,
+    longitude: column.real,
+    timestamp: column.text,
+    isActive: column.integer,
+    currentJobId: column.text,
+    accuracy: column.real,
+  },
+  {
+    indexes: {
+      technician: ['technicianId'],
+      active: ['isActive'],
+    },
+  }
+);
+
 // Insert-only table for photo deletion operations
 const delete_photo_operations = new Table(
   {
@@ -100,6 +118,7 @@ export const AppSchema = new Schema({
   payrollperiods,
   delete_photo_operations,
   add_photo_operations,
+  technicianlocations,
   attachments: new AttachmentTable({
     name: 'attachments',
     additionalColumns: [

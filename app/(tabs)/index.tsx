@@ -1,6 +1,5 @@
 import { useUser } from '@clerk/clerk-expo';
 import { DashboardView } from '@/components/dashboard/DashboardView';
-import { Stack } from 'expo-router';
 
 export default function Page() {
   const { user } = useUser();
@@ -11,11 +10,6 @@ export default function Page() {
 
   return (
     <>
-      <Stack.Screen
-        options={{
-          headerShown: false,
-        }}
-      />
       <DashboardView userId={user?.id} isManager={isManager} />
     </>
   );

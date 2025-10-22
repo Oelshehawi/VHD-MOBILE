@@ -105,7 +105,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           fields: updates
         });
 
-        try {
+    try {
           // Add the ID to params for the WHERE clause
           params.push(savedRecord.id);
 
@@ -182,7 +182,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       // Process each record individually instead of in a transaction
       // This avoids nested transaction issues if parent saveToQueue uses transactions
       for (const record of records) {
-        try {
+    try {
           // Ensure state is QUEUED_UPLOAD
           record.state = AttachmentState.QUEUED_UPLOAD;
 
@@ -204,7 +204,11 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     record?: Partial<ExtendedAttachmentRecord>
   ): Promise<ExtendedAttachmentRecord> {
     const photoId = record?.id ?? randomUUID();
-    const filename = record?.filename ?? `${photoId}.jpg`;
+    const inferredType = record?.type;
+    const defaultExtension = inferredType === 'signature' ? 'png' : 'jpg';
+    const filename = record?.filename ?? `${photoId}.${defaultExtension}`;
+    const defaultMediaType =
+      inferredType === 'signature' ? 'image/png' : 'image/jpeg';
 
     // Always use QUEUED_UPLOAD state to prevent download attempts
     // Create a new object without the state property from record, if it exists
@@ -213,9 +217,10 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     return {
       id: photoId,
       filename,
-      media_type: 'image/jpeg',
+      media_type: record?.media_type ?? defaultMediaType,
       state: AttachmentState.QUEUED_UPLOAD,
       scheduleId: record?.scheduleId,
+      timestamp: record?.timestamp ?? Date.now(),
       ...restOfRecord,
     };
   }
@@ -267,12 +272,20 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
             .replace(/\\/g, ''); // Remove backslashes
         }
 
-        // Prepare image (resize to 2560×2560, quality 1.0)
-        logPhoto(`Preparing image ${i + 1} for upload`, { sourceUri: photo.sourceUri });
-        const prepared = await prepareImageForUpload(photo.sourceUri);
+        const isSignature = photo.type === 'signature';
+
+        // Prepare image (resize to 2560x2560, quality 1.0)
+        logPhoto(`Preparing image ${i + 1} for upload`, {
+          sourceUri: photo.sourceUri,
+          type: photo.type
+        });
+        const prepared = await prepareImageForUpload(photo.sourceUri, {
+          format: isSignature ? 'png' : 'jpeg'
+        });
         logPhoto(`Image ${i + 1} prepared`, {
           size: prepared.size,
-          dimensions: `${prepared.width}×${prepared.height}`
+          dimensions: `${prepared.width}x${prepared.height}`,
+          format: isSignature ? 'png' : 'jpeg'
         });
         const processUri = prepared.uri;
 
@@ -305,7 +318,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
         // Verify prepared file exists using new File API
         logPhoto(`Checking prepared file exists for photo ${i + 1}`);
-        try {
+    try {
           const sourceFile = new File(processUri);
           if (!sourceFile.exists) {
             logPhotoError(`Prepared file does not exist for photo ${i + 1}`, {
@@ -329,7 +342,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
         logPhoto(`Checking destination directory for photo ${i + 1}`, {
           destinationUri
         });
-        try {
+    try {
           const destinationDirPath = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
           const destinationDir = new Directory(destinationDirPath);
           if (!destinationDir.exists) {
@@ -352,7 +365,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           from: processUri,
           to: destinationUri
         });
-        try {
+    try {
           const sourceFile = new File(processUri);
           const destinationFile = new File(destinationUri);
           sourceFile.copy(destinationFile);
@@ -382,7 +395,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
         // Get file info and verify copy was successful using new File API
         logPhoto(`Verifying copied file for photo ${i + 1}`);
-        try {
+    try {
           const destinationFile = new File(destinationUri);
           if (destinationFile.exists) {
             photoAttachment.size = destinationFile.size ?? 0;
@@ -450,14 +463,18 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     signerName?: string
   ): Promise<ExtendedAttachmentRecord> {
     try {
-      // 1. Resize image to 2560×2560 max, quality 1.0
-      logPhoto('Preparing image for upload', { sourceUri, scheduleId });
-      const prepared = await prepareImageForUpload(sourceUri);
+      const isSignature = type === 'signature';
+
+      // 1. Resize image to 2560x2560 max, respecting format
+      logPhoto('Preparing image for upload', { sourceUri, scheduleId, type });
+      const prepared = await prepareImageForUpload(sourceUri, {
+        format: isSignature ? 'png' : 'jpeg',
+      });
       logPhoto('Image prepared', {
         size: prepared.size,
-        dimensions: `${prepared.width}×${prepared.height}`
+        dimensions: `${prepared.width}x${prepared.height}`,
+        format: isSignature ? 'png' : 'jpeg',
       });
-
       // 2. Create attachment record
       const photoAttachment = await this.newAttachmentRecord({
         scheduleId,
@@ -486,7 +503,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
       // 6. Clean up temp file
       if (prepared.uri !== sourceUri) {
-        try {
+    try {
           const tempFile = new File(prepared.uri);
           if (tempFile.exists) {
             tempFile.delete();
@@ -534,3 +551,13 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     }
   }
 }
+
+
+
+
+
+
+
+
+
+

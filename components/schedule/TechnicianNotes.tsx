@@ -62,7 +62,7 @@ export function TechnicianNotes({
         {!isManager && !editingNotes && (
           <TouchableOpacity
             onPress={() => setEditingNotes(true)}
-            className='px-3 py-1 bg-darkGreen rounded-lg'
+            className='px-3 py-1 bg-[#22543D] rounded-lg'
           >
             <Text className='text-white font-medium'>Edit</Text>
           </TouchableOpacity>
@@ -94,7 +94,7 @@ export function TechnicianNotes({
             </TouchableOpacity>
             <TouchableOpacity
               onPress={saveTechnicianNotes}
-              className='px-4 py-2 bg-darkGreen rounded-lg'
+              className='px-4 py-2 bg-[#22543D] rounded-lg'
               disabled={isSaving}
             >
               <Text className='text-white font-medium'>

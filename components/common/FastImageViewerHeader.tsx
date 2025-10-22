@@ -5,9 +5,8 @@ import {
   TouchableOpacity,
   Platform,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-
+import { SafeAreaView } from 'react-native-safe-area-context';  
 interface FastImageViewerHeaderProps {
   title?: string;
   subtitle?: string;
@@ -22,8 +21,8 @@ export const FastImageViewerHeader = ({
   rightAction,
 }: FastImageViewerHeaderProps) => {
   return (
-    <SafeAreaView className='bg-black/70'>
-      <View className='flex-row justify-between items-center p-6'>
+    < SafeAreaView className='bg-black/70'>
+       <View className='flex-row justify-between items-center p-6'>
         <View className='flex-1 pr-4'>
           {title && (
             <Text className='text-white text-lg font-semibold'>{title}</Text>

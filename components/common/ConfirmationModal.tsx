@@ -65,7 +65,7 @@ export function ConfirmationModal({
             )}
             <TouchableOpacity
               onPress={onConfirm}
-              className='px-4 py-2 bg-darkGreen rounded-lg'
+              className='px-4 py-2 bg-[#22543D] rounded-lg'
               disabled={isLoading}
             >
               <Text className='text-white font-medium'>

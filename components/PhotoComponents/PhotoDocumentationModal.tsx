@@ -6,12 +6,12 @@ import {
   TouchableOpacity,
   ScrollView,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
 import { parsePhotosData } from '@/utils/photos';
 import { useQuery } from '@powersync/react-native';
 import { ATTACHMENT_TABLE, AttachmentState } from '@powersync/attachments';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface PhotoDocumentationModalProps {
   visible: boolean;
@@ -153,7 +153,7 @@ export function PhotoDocumentationModal({
       <SafeAreaView className='flex-1 bg-gray-50'>
         <View className='flex-1'>
           {/* Header */}
-          <View className='bg-darkGreen p-4 shadow-md flex-row justify-between items-center'>
+          <View className='bg-[#22543D] p-4 shadow-md flex-row justify-between items-center'>
             <Text className='text-white text-xl font-bold'>{jobTitle}</Text>
             <TouchableOpacity
               onPress={onClose}
@@ -170,12 +170,12 @@ export function PhotoDocumentationModal({
                 key={tab}
                 onPress={() => setActiveTab(tab as TabType)}
                 className={`flex-1 py-4 px-4 ${
-                  activeTab === tab ? 'border-b-2 border-darkGreen' : ''
+                  activeTab === tab ? 'border-b-2 border-[#22543D]' : ''
                 }`}
               >
                 <Text
                   className={`text-center font-semibold ${
-                    activeTab === tab ? 'text-darkGreen' : 'text-gray-500'
+                    activeTab === tab ? 'text-[#22543D]' : 'text-gray-500'
                   }`}
                 >
                   {tab === 'before'

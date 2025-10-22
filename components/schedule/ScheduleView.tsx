@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { StatusBar, View, Text, TouchableOpacity } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@powersync/react-native';
 import { Schedule, AppointmentType } from '@/types';
 import { MonthView } from './MonthView';
@@ -8,6 +7,7 @@ import { DailyAgenda } from './DailyAgenda';
 import { WeekView } from './WeekView';
 import { InvoiceModal } from './InvoiceModal';
 import { startOfWeek, endOfWeek, format, startOfDay } from 'date-fns';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 interface ScheduleViewProps {
   userId: string;

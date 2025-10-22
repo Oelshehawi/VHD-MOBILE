@@ -33,6 +33,9 @@ export default function TabLayout() {
     <ClerkLoaded>
       <Tabs
         screenOptions={{
+          sceneStyle: {
+            backgroundColor: isDark ? '#111827' : '#f3f4f6', // Match the background color
+          },
           headerStyle: {
             backgroundColor: isDark ? '#111827' : '#ffffff', // dark: gray-900, light: white
           },
@@ -47,37 +50,35 @@ export default function TabLayout() {
           tabBarInactiveTintColor: isDark ? '#9ca3af' : '#6b7280', // dark: gray-400, light: gray-500
         }}
       >
-          <Tabs.Screen
-            name='index'
-            options={{
-              title: 'Dashboard',
-              headerShown: false,
-              tabBarIcon: ({ color }) => (
-                <FontAwesome name='home' size={24} color={color} />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name='schedule'
-            options={{
-              title: 'Schedule',
-              headerShown: false,
-              tabBarIcon: ({ color }) => (
-                <FontAwesome name='calendar' size={24} color={color} />
-              ),
-            }}
-          />
-          <Tabs.Screen
-            name='profile'
-            options={{
-              title: 'Profile',
-              headerShown: false,
-              tabBarIcon: ({ color }) => (
-                <TabBarIcon name='user' color={color} />
-              ),
-            }}
-          />
-        </Tabs>
-      </ClerkLoaded>
+        <Tabs.Screen
+          name='index'
+          options={{
+            title: 'Dashboard',
+            headerShown: false,
+            tabBarIcon: ({ color }) => (
+              <FontAwesome name='home' size={24} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name='schedule'
+          options={{
+            title: 'Schedule',
+            headerShown: false,
+            tabBarIcon: ({ color }) => (
+              <FontAwesome name='calendar' size={24} color={color} />
+            ),
+          }}
+        />
+        <Tabs.Screen
+          name='profile'
+          options={{
+            title: 'Profile',
+            headerShown: false,
+            tabBarIcon: ({ color }) => <TabBarIcon name='user' color={color} />,
+          }}
+        />
+      </Tabs>
+    </ClerkLoaded>
   );
 }

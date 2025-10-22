@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
 import { parseISO, format, addDays } from 'date-fns';
 import { Schedule } from '@/types';
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
@@ -9,6 +9,8 @@ import { PhotoDocumentationModal } from '../PhotoComponents/PhotoDocumentationMo
 import { InvoiceModal } from './InvoiceModal';
 import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
 import { GeocodingService } from '@/services/weather/GeocodingService';
+import { LocationTracker } from '@/services/location/LocationTracker';
+import { useSystem } from '@/services/database/System';
 
 interface DailyAgendaProps {
   selectedDate: string; // ISO string in UTC
@@ -30,6 +32,28 @@ const getTechnicianId = (technicians: any): string => {
   return '';
 };
 
+const isUserAssignedToSchedule = (technicians: any, userId: string): boolean => {
+  if (!userId) {
+    return false;
+  }
+
+  if (Array.isArray(technicians)) {
+    return technicians.includes(userId);
+  }
+
+  if (typeof technicians === 'string') {
+    try {
+      const parsed = JSON.parse(technicians);
+      if (Array.isArray(parsed)) {
+        return parsed.includes(userId);
+      }
+    } catch {
+      return technicians.split(',').includes(userId);
+    }
+  }
+
+  return false;
+};
 export function DailyAgenda({
   selectedDate,
   schedules,
@@ -38,6 +62,7 @@ export function DailyAgenda({
   onDateChange,
   showSevereWeatherAlert = true, // Default to true for backward compatibility
 }: DailyAgendaProps) {
+  const { powersync } = useSystem();
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
     null
@@ -48,6 +73,85 @@ export function DailyAgenda({
   const [weatherDataMap, setWeatherDataMap] = useState<
     Map<string, WeatherData>
   >(new Map());
+  const [trackingStatus, setTrackingStatus] = useState(() =>
+    LocationTracker.getTrackingStatus()
+  );
+  const [trackingBusyJobId, setTrackingBusyJobId] = useState<string | null>(
+    null
+  );
+
+  useEffect(() => {
+    if (!powersync) {
+      return;
+    }
+
+    let isMounted = true;
+
+    LocationTracker.initialize(powersync, userId).catch((error) => {
+      console.warn('Failed to initialise location tracker', error);
+    });
+
+    const unsubscribe = LocationTracker.subscribe((status) => {
+      if (isMounted) {
+        setTrackingStatus(status);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubscribe();
+    };
+  }, [powersync, userId]);
+
+  const handleStartTracking = useCallback(
+    async (scheduleId: string) => {
+      if (!powersync || !userId) {
+        return;
+      }
+
+      setTrackingBusyJobId(scheduleId);
+
+      try {
+        await LocationTracker.startTracking(scheduleId, userId, powersync);
+      } catch (error) {
+        console.error('Failed to start location tracking', error);
+        Alert.alert(
+          'Location Tracking',
+          error instanceof Error
+            ? error.message
+            : 'Could not start location tracking. Please check permissions.'
+        );
+      } finally {
+        setTrackingBusyJobId(null);
+      }
+    },
+    [powersync, userId]
+  );
+
+  const handleStopTracking = useCallback(
+    async (scheduleId: string) => {
+      if (!powersync || !userId) {
+        return;
+      }
+
+      setTrackingBusyJobId(scheduleId);
+
+      try {
+        await LocationTracker.stopTracking(userId, powersync);
+      } catch (error) {
+        console.error('Failed to stop location tracking', error);
+        Alert.alert(
+          'Location Tracking',
+          error instanceof Error
+            ? error.message
+            : 'Could not stop location tracking. Please try again.'
+        );
+      } finally {
+        setTrackingBusyJobId(null);
+      }
+    },
+    [powersync, userId]
+  );
 
   // Load weather for all locations on selected date
   useEffect(() => {
@@ -295,6 +399,17 @@ export function DailyAgenda({
 
                       // Determine if we should show notification badge
                       const showNotificationBadge = hasTechnicianNotes;
+                      const assignedToCurrentUser =
+                        !isManager &&
+                        isUserAssignedToSchedule(
+                          schedule.assignedTechnicians,
+                          userId
+                        );
+                      const isTrackingThisJob =
+                        trackingStatus.isTracking &&
+                        trackingStatus.jobId === schedule.id;
+                      const isTrackingBusy =
+                        trackingBusyJobId === schedule.id;
 
                       return (
                         <TouchableOpacity
@@ -315,7 +430,7 @@ export function DailyAgenda({
                                   </Text>
                                   {/* Weather Indicator */}
                                   {weatherDataMap.get(schedule.location) && (
-                                    <View className='flex-row items-center gap-1 flex-shrink-0'>
+                                    <View className='flex-row items-center gap-1 shrink-0'>
                                       <Image
                                         source={{
                                           uri: WeatherService.getIconUrl(
@@ -370,6 +485,19 @@ export function DailyAgenda({
                                     {schedule.location}
                                   </Text>
                                 </View>
+
+                                {assignedToCurrentUser && isTrackingThisJob && (
+                                  <View className='mt-2 flex-row items-center'>
+                                    <Ionicons
+                                      name='radio-button-on'
+                                      size={12}
+                                      color='#10B981'
+                                    />
+                                    <Text className='text-xs text-green-600 dark:text-green-400 ml-1'>
+                                      Location tracking active
+                                    </Text>
+                                  </View>
+                                )}
                               </View>
 
                               <View className='flex-row'>
@@ -398,7 +526,7 @@ export function DailyAgenda({
                                       schedule.location
                                     )
                                   }
-                                  className='bg-darkGreen p-2 rounded-full'
+                                  className='bg-[#22543D] p-2 rounded-full'
                                 >
                                   <Ionicons
                                     name='navigate'
@@ -407,6 +535,30 @@ export function DailyAgenda({
                                   />
                                 </TouchableOpacity>
                               </View>
+
+                              {assignedToCurrentUser && (
+                                <TouchableOpacity
+                                  onPress={() =>
+                                    isTrackingThisJob
+                                      ? handleStopTracking(schedule.id)
+                                      : handleStartTracking(schedule.id)
+                                  }
+                                  disabled={isTrackingBusy}
+                                  className={`mt-3 py-2 rounded-md ${
+                                    isTrackingThisJob
+                                      ? 'bg-red-600'
+                                      : 'bg-blue-600'
+                                  } ${isTrackingBusy ? 'opacity-60' : ''}`}
+                                >
+                                  <Text className='text-center text-white font-semibold'>
+                                    {isTrackingBusy
+                                      ? 'Updating...'
+                                      : isTrackingThisJob
+                                      ? 'Stop Location Tracking'
+                                      : 'Start Location Tracking'}
+                                  </Text>
+                                </TouchableOpacity>
+                              )}
                             </View>
                           </View>
                         </TouchableOpacity>

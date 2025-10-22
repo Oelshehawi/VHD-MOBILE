@@ -275,7 +275,7 @@ export function InvoiceModal({
           {!hasSignature ? (
             <TouchableOpacity
               onPress={() => setShowSignatureModal(true)}
-              className='p-4 rounded-lg flex-row justify-center items-center bg-darkGreen'
+              className='p-4 rounded-lg flex-row justify-center items-center bg-[#22543D]'
             >
               <Text className='text-white font-medium text-lg'>
                 ✍️ Tap to Sign
@@ -336,7 +336,7 @@ export function InvoiceModal({
               className={`p-4 rounded-lg flex-row justify-center items-center ${
                 isSendingInvoice
                   ? 'bg-gray-400 dark:bg-gray-600'
-                  : 'bg-darkGreen'
+                  : 'bg-[#22543D]'
               }`}
             >
               {isSendingInvoice ? (
@@ -514,7 +514,7 @@ export function InvoiceModal({
                   </View>
                   <TouchableOpacity
                     onPress={() => openMaps(invoice.jobTitle, invoice.location)}
-                    className='bg-darkGreen p-2 rounded-full ml-2'
+                    className='bg-[#22543D] p-2 rounded-full ml-2'
                   >
                     <Ionicons name='navigate' size={20} color='#ffffff' />
                   </TouchableOpacity>

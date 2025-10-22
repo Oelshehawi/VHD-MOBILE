@@ -1,7 +1,20 @@
-const { getDefaultConfig } = require("expo/metro-config");
-const { withNativeWind } = require("nativewind/metro");
+const { getDefaultConfig } = require('expo/metro-config');
+const { withNativewind } = require('nativewind/metro');
 
-// This extends @expo/metro-config
+/** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(__dirname);
 
-module.exports = withNativeWind(config, { input: "./app/global.css" });
+config.transformer = {
+  ...config.transformer,
+  getTransformOptions: async () => ({
+    transform: {
+      inlineRequires: {
+        blockList: {
+          [require.resolve('@powersync/react-native')]: true,
+        },
+      },
+    },
+  }),
+};
+
+module.exports = withNativewind(config);

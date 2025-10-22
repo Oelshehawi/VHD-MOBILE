@@ -110,7 +110,7 @@ useEffect(() => {
 
 export default function RootLayout() {
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
+    <GestureHandlerRootView>
       <SafeAreaProvider>
         <ClerkProvider
           publishableKey={CLERK_PUBLISHABLE_KEY!}

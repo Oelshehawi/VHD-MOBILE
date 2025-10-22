@@ -1,21 +1,7 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
-import {
-  Modal,
-  View,
-  TouchableOpacity,
-  Text,
-  Dimensions,
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-} from 'react-native';
+import React, { useState, useEffect, useMemo } from 'react';
+import ImageView from 'react-native-image-viewing';
 import { Image } from 'expo-image';
-import {
-  Zoomable,
-  ZoomableRef,
-  ZOOM_TYPE,
-} from '@likashefqet/react-native-image-zoom';
-import { gestureHandlerRootHOC } from 'react-native-gesture-handler';
+import { ActivityIndicator, View, Dimensions } from 'react-native';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 import {
   buildCloudinaryUrlMobile,
@@ -33,43 +19,30 @@ export interface FastImageViewerProps {
   doubleTapToZoomEnabled?: boolean;
   title?: string;
   getSubtitle?: (index: number, currentImage: any) => string;
-  minScale?: number;
-  maxScale?: number;
-  doubleTapScale?: number;
-  onZoomInteractionStart?: () => void;
-  onZoomInteractionEnd?: () => void;
-  onDoubleTap?: (zoomType: ZOOM_TYPE) => void;
+}
+
+// Extended ImageView props to make TypeScript happy
+interface ExtendedImageViewProps {
+  images: { uri: string; title?: string; type?: string }[];
+  imageIndex: number;
+  visible: boolean;
+  onRequestClose: () => void;
+  swipeToCloseEnabled?: boolean;
+  doubleTapToZoomEnabled?: boolean;
+  HeaderComponent?: React.ComponentType<any>;
+  FooterComponent?: React.ComponentType<any>;
+  onImageIndexChange?: (index: number) => void;
+  ImageComponent?: React.ComponentType<any>;
+  [key: string]: any; // Allow other props
 }
 
 // Cloudinary configuration
 const CLOUD_NAME = 'dhu4yrn5k';
 
-const styles = StyleSheet.create({
-  viewerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  zoomable: {
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  loadingOverlay: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
-  },
-});
-
 /**
- * A custom image viewer component using expo-image with zoom capabilities
+ * A simplified image viewer component that uses Expo Image for better performance
  */
-const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
+export const FastImageViewer: React.FC<FastImageViewerProps> = ({
   images,
   imageIndex = 0,
   visible,
@@ -78,42 +51,18 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
   doubleTapToZoomEnabled = true,
   title,
   getSubtitle,
-  minScale = 1,
-  maxScale = 5,
-  doubleTapScale = 3,
-  onZoomInteractionStart,
-  onZoomInteractionEnd,
-  onDoubleTap,
+  ...otherProps
 }) => {
-  const zoomableRef = useRef<ZoomableRef | null>(null);
+  // Track the current index separately from props
   const [currentIndex, setCurrentIndex] = useState(imageIndex);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    if (!visible) return;
-    setCurrentIndex(imageIndex);
-    setIsLoading(true);
-  }, [imageIndex, visible]);
-
-  useEffect(() => {
-    if (!visible) return;
-    setIsLoading(true);
-    requestAnimationFrame(() => {
-      zoomableRef.current?.reset?.();
-    });
-  }, [currentIndex, visible]);
-
-  const windowDimensions = Dimensions.get('window');
-  const viewerWidth = windowDimensions.width;
-  const viewerHeight = windowDimensions.height * 0.8;
 
   // Calculate optimal width for viewer images
   const targetWidth = useMemo(() => {
-    const screenWidth = Math.min(viewerWidth, 1080);
+    const screenWidth = Math.min(Dimensions.get('window').width, 1080);
     return pickCloudinaryWidth(screenWidth);
-  }, [viewerWidth]);
+  }, []);
 
-  // Transform images with Cloudinary optimization
+  // Transform images with Cloudinary optimization and stable cache keys
   const optimizedImages = useMemo(() => {
     return images.map((img) => {
       const transformedUri = buildCloudinaryUrlMobile({
@@ -130,7 +79,14 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
     });
   }, [images, targetWidth]);
 
-  // Create subtitle for the header
+  // Update internal index when props change or visibility changes
+  useEffect(() => {
+    if (visible) {
+      setCurrentIndex(imageIndex);
+    }
+  }, [imageIndex, visible]);
+
+  // Create subtitle for the header based on current index
   const getHeaderSubtitle = () => {
     if (!images || !images[currentIndex]) {
       return 'Loading...';
@@ -147,142 +103,63 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
     }
   };
 
-  const handleInteractionStart = useCallback(() => {
-    onZoomInteractionStart?.();
-  }, [onZoomInteractionStart]);
+  // Custom image component with loading indicator and cache key support
+  const CustomImageComponent = ({ source, style }: any) => {
+    const [isLoading, setIsLoading] = useState(true);
 
-  const handleInteractionEnd = useCallback(() => {
-    onZoomInteractionEnd?.();
-  }, [onZoomInteractionEnd]);
+    // Extract cacheKey from source if available
+    const imageSource = source.cacheKey
+      ? { uri: source.uri, cacheKey: source.cacheKey }
+      : source;
 
-  const handleDoubleTap = useCallback(
-    (zoomType: ZOOM_TYPE) => {
-      onDoubleTap?.(zoomType);
-    },
-    [onDoubleTap]
-  );
-
-  const handleImageLoad = useCallback(() => {
-    setIsLoading(false);
-  }, []);
-
-  const handleImageError = useCallback(() => {
-    setIsLoading(false);
-  }, []);
-
-  // Navigation functions
-  const goToPrevious = () => {
-    setCurrentIndex((prev) => {
-      if (prev <= 0) {
-        return prev;
-      }
-      setIsLoading(true);
-      return prev - 1;
-    });
-  };
-
-  const goToNext = () => {
-    setCurrentIndex((prev) => {
-      if (prev >= images.length - 1) {
-        return prev;
-      }
-      setIsLoading(true);
-      return prev + 1;
-    });
-  };
-
-  if (!visible || !optimizedImages[currentIndex]) return null;
-
-  const currentImage = optimizedImages[currentIndex];
-
-  return (
-    <Modal
-      visible={visible}
-      onRequestClose={onRequestClose}
-      animationType='fade'
-      presentationStyle='overFullScreen'
-      transparent={true}
-    >
-      <View className='flex-1 bg-black'>
-        {/* Header */}
-        <FastImageViewerHeader
-          title={title}
-          subtitle={getHeaderSubtitle()}
-          onClose={onRequestClose}
+    return (
+      <View className='flex-1 justify-center items-center' style={style}>
+        <Image
+          source={imageSource}
+          style={style}
+          contentFit='contain'
+          cachePolicy='disk'
+          onLoad={() => setIsLoading(false)}
+          onError={() => setIsLoading(false)}
         />
 
-        {/* Image Container with Zoomable */}
-        <View
-          style={[
-            styles.viewerContainer,
-            { width: viewerWidth, height: viewerHeight },
-          ]}
-        >
-          <Zoomable
-            ref={zoomableRef}
-            minScale={minScale}
-            maxScale={maxScale}
-            doubleTapScale={doubleTapScale}
-            isDoubleTapEnabled={doubleTapToZoomEnabled}
-            isSingleTapEnabled={false}
-            isPanEnabled={true}
-            isPinchEnabled={true}
-            maxPanPointers={2}
-            onInteractionStart={handleInteractionStart}
-            onInteractionEnd={handleInteractionEnd}
-            onDoubleTap={handleDoubleTap}
-            style={styles.zoomable}
-            key={`${currentImage.cacheKey ?? currentImage.uri}-${currentIndex}`}
-          >
-            <Image
-              source={{
-                uri: currentImage.uri,
-                cacheKey: currentImage.cacheKey,
-              }}
-              style={{ width: viewerWidth, height: viewerHeight }}
-              contentFit='contain'
-              cachePolicy='disk'
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-            />
-          </Zoomable>
-
-          {/* Loading indicator */}
-          {isLoading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size='large' color='#ffffff' />
-            </View>
-          )}
-        </View>
-
-        {/* Navigation arrows */}
-        {images.length > 1 && (
-          <>
-            {currentIndex > 0 && (
-              <TouchableOpacity
-                className='absolute left-4 top-1/2 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
-                onPress={goToPrevious}
-              >
-                <Text className='text-white text-xl font-bold'>‹</Text>
-              </TouchableOpacity>
-            )}
-            {currentIndex < images.length - 1 && (
-              <TouchableOpacity
-                className='absolute right-4 top-1/2 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
-                onPress={goToNext}
-              >
-                <Text className='text-white text-xl font-bold'>›</Text>
-              </TouchableOpacity>
-            )}
-          </>
+        {isLoading && (
+          <View className='absolute inset-0 justify-center items-center bg-black/30'>
+            <ActivityIndicator size='large' color='#ffffff' />
+          </View>
         )}
       </View>
-    </Modal>
+    );
+  };
+
+  // Create fresh header props for each render
+  const headerProps = {
+    title,
+    subtitle: getHeaderSubtitle(),
+    onClose: onRequestClose,
+  };
+
+  // Handle index changes
+  const handleIndexChange = (index: number) => {
+    setCurrentIndex(index);
+  };
+
+  // Type assertion to make TypeScript happy
+  const ExtendedImageView =
+    ImageView as React.ComponentType<ExtendedImageViewProps>;
+
+  return (
+    <ExtendedImageView
+      images={optimizedImages}
+      imageIndex={imageIndex}
+      visible={visible}
+      onRequestClose={onRequestClose}
+      swipeToCloseEnabled={swipeToCloseEnabled}
+      doubleTapToZoomEnabled={doubleTapToZoomEnabled}
+      HeaderComponent={() => <FastImageViewerHeader {...headerProps} />}
+      onImageIndexChange={handleIndexChange}
+      ImageComponent={CustomImageComponent}
+      {...otherProps}
+    />
   );
 };
-
-// Export wrapped component for Android modal compatibility
-export const FastImageViewer =
-  Platform.OS === 'android'
-    ? gestureHandlerRootHOC(FastImageViewerComponent)
-    : FastImageViewerComponent;
