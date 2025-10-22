@@ -13,7 +13,7 @@ import {
 import { useRouter } from 'expo-router';
 import { useSignIn, isClerkRuntimeError } from '@clerk/clerk-expo';
 import { useLocalCredentials } from '@clerk/clerk-expo/local-credentials';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 export default function Page() {
   const router = useRouter();
@@ -114,7 +114,7 @@ export default function Page() {
         contentContainerStyle={{ flexGrow: 1 }}
         className='bg-white dark:bg-gray-900'
       >
-        <View className='flex-1 justify-center p-8'>
+        <View className='flex-1 mt-36 p-8'>
           <View className='mb-8 items-center'>
             <Image
               source={require('@/assets/images/icon.png')}

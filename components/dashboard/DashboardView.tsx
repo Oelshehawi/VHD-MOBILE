@@ -4,10 +4,10 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  SafeAreaView,
   StatusBar,
 } from 'react-native';
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   useCurrentPayrollPeriod,
   usePayrollSchedules,
@@ -264,11 +264,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                     View {isManager ? 'All' : 'My'} Schedules (
                     {payrollSchedules.length})
                   </Text>
-                  <MaterialIcons
-                    name={showSchedules ? 'expand-less' : 'expand-more'}
-                    size={24}
-                    color='#6B7280'
-                  />
+        
                 </TouchableOpacity>
 
                 {showSchedules && (

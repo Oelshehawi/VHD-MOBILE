@@ -6,15 +6,14 @@ import {
   TextInput,
   Alert,
   Modal,
-  SafeAreaView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+
 import SignatureCanvas from 'react-native-signature-canvas';
 import { usePowerSync } from '@powersync/react-native';
 import { PhotoType, showToast, SignatureType } from '@/utils/photos';
 import { useSystem } from '@/services/database/System';
-import * as FileSystem from 'expo-file-system';
 import { AttachmentRecord } from '@powersync/attachments';
-import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 
 // Define extended attachment type locally
 interface ExtendedAttachmentRecord extends AttachmentRecord {
@@ -80,25 +79,14 @@ export function SignatureCapture({
     try {
       setIsSaving(true);
 
-      // Create a temporary file path for the signature image
-      const tempFilePath = `${
-        FileSystem.cacheDirectory
-      }temp_signature_${Date.now()}.png`;
-
-      // The signature is in a base64 format - extract the data part
-      const signatureData = signature.split(',')[1];
-
-      // Write the base64 data to a temporary file
-      await FileSystem.writeAsStringAsync(tempFilePath, signatureData, {
-        encoding: FileSystem.EncodingType.Base64,
-      });
-
       // Get the queue from system
       const queue = system.attachmentQueue;
 
-      // Save the signature with the signerName
+      // Pass the data URI directly to savePhotoFromUri
+      // The signature canvas returns a data URI like "data:image/png;base64,iVBORw0KG..."
+      // prepareImageForUpload can handle this directly - no temp file needed!
       const attachmentRecord = (await queue.savePhotoFromUri(
-        tempFilePath,
+        signature, // Pass data URI directly - much faster!
         schedule.id,
         schedule.jobTitle,
         'signature', // Set type as signature
@@ -128,16 +116,8 @@ export function SignatureCapture({
         // Don't throw - the attachment is saved, just the UI won't update immediately
       }
 
-      // Clean up the temporary file
-      await FileSystem.deleteAsync(tempFilePath, { idempotent: true });
-
-      // Trigger background upload
-      try {
-        checkAndStartBackgroundUpload();
-      } catch (uploadError) {
-        // Silent error handling - signature is still saved locally
-      }
-
+      // PowerSync automatically syncs signature every 5 seconds
+      // No manual service call needed - signature will upload in background automatically
       showToast('Signature saved and will sync when online');
 
       // Close immediately

@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 
 interface LogEntry {
   timestamp: string;
@@ -14,7 +14,7 @@ class DebugLogger {
   private maxLogEntries = 1000; // Keep last 1000 entries
 
   constructor() {
-    this.logFilePath = `${FileSystem.documentDirectory}debug_logs.json`;
+    this.logFilePath = new File(Paths.document, 'debug_logs.json').uri;
   }
 
   async log(level: 'info' | 'warn' | 'error' | 'debug', category: string, message: string, data?: any) {
@@ -58,10 +58,10 @@ class DebugLogger {
     try {
       let logs: LogEntry[] = [];
 
-      // Try to read existing logs
-      const fileInfo = await FileSystem.getInfoAsync(this.logFilePath);
-      if (fileInfo.exists) {
-        const fileContent = await FileSystem.readAsStringAsync(this.logFilePath);
+      // Try to read existing logs using new File API
+      const logFile = new File(this.logFilePath);
+      if (logFile.exists) {
+        const fileContent = await logFile.text();
         try {
           logs = JSON.parse(fileContent) || [];
         } catch (parseError) {
@@ -79,14 +79,15 @@ class DebugLogger {
       }
 
       // Write back to file
-      await FileSystem.writeAsStringAsync(this.logFilePath, JSON.stringify(logs, null, 2));
+      await logFile.write(JSON.stringify(logs, null, 2));
 
-      // Check file size and trim if necessary
-      const updatedFileInfo = await FileSystem.getInfoAsync(this.logFilePath);
-      if (updatedFileInfo.exists && updatedFileInfo.size > this.maxLogSize) {
+      // Check file size and trim if necessary using new File API
+      const updatedFile = new File(this.logFilePath);
+      const size = updatedFile.size ?? 0;
+      if (updatedFile.exists && size > this.maxLogSize) {
         // Keep only the last half of entries
         const trimmedLogs = logs.slice(-Math.floor(this.maxLogEntries / 2));
-        await FileSystem.writeAsStringAsync(this.logFilePath, JSON.stringify(trimmedLogs, null, 2));
+        await updatedFile.write(JSON.stringify(trimmedLogs, null, 2));
       }
     } catch (error) {
       // Silent failure
@@ -95,12 +96,12 @@ class DebugLogger {
 
   async getLogs(): Promise<LogEntry[]> {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(this.logFilePath);
-      if (!fileInfo.exists) {
+      const logFile = new File(this.logFilePath);
+      if (!logFile.exists) {
         return [];
       }
 
-      const fileContent = await FileSystem.readAsStringAsync(this.logFilePath);
+      const fileContent = await logFile.text();
       return JSON.parse(fileContent) || [];
     } catch (error) {
       return [];
@@ -119,9 +120,9 @@ class DebugLogger {
 
   async clearLogs(): Promise<void> {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(this.logFilePath);
-      if (fileInfo.exists) {
-        await FileSystem.deleteAsync(this.logFilePath);
+      const logFile = new File(this.logFilePath);
+      if (logFile.exists) {
+        logFile.delete();
       }
     } catch (error) {
       // Silent failure

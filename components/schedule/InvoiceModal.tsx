@@ -12,7 +12,7 @@ import { InvoiceType } from '@/types';
 import { formatDateReadable } from '@/utils/date';
 import { SignatureCapture } from './SignatureCapture';
 import { useQuery } from '@powersync/react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
 import { ApiClient } from '@/services/ApiClient';

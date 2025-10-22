@@ -4,9 +4,9 @@ import {
   Text,
   Modal,
   TouchableOpacity,
-  SafeAreaView,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
 import { parsePhotosData } from '@/utils/photos';

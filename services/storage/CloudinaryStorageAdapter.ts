@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { File, Directory, Paths } from 'expo-file-system';
 import { decode as decodeBase64 } from 'base64-arraybuffer';
 import { StorageAdapter, ATTACHMENT_TABLE } from '@powersync/attachments';
 import { ApiClient } from '../ApiClient';
@@ -42,12 +42,16 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
   ): Promise<{ success: boolean; error?: string; cloudinaryUrl?: string }> {
     try {
       const filename = attachmentRecord.filename;
-      const localFileUri = `${this.getUserStorageDirectory()}attachments/${filename}`;
+      const localFileUri = new File(Paths.document, 'attachments', filename)
+        .uri;
 
-      // Verify the file exists
-      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
-      if (!fileInfo.exists) {
-        return { success: false, error: `Local file does not exist: ${localFileUri}` };
+      // Verify the file exists using new File API
+      const file = new File(localFileUri);
+      if (!file.exists) {
+        return {
+          success: false,
+          error: `Local file does not exist: ${localFileUri}`,
+        };
       }
 
       // Get upload URL from API
@@ -71,11 +75,13 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
         };
       }
 
-      const { apiKey, timestamp, signature, cloudName, folderPath } = response.data;
+      const { apiKey, timestamp, signature, cloudName, folderPath } =
+        response.data;
       const url = 'https://api.cloudinary.com/v1_1/' + cloudName + '/upload';
 
       // Use streaming upload for better memory efficiency
-      const mimeType = options?.mediaType || this.getMimeTypeFromFilename(filename);
+      const mimeType =
+        options?.mediaType || this.getMimeTypeFromFilename(filename);
 
       // Use FormData with file URI for streaming upload (better compatibility)
       const formData = new FormData();
@@ -232,11 +238,12 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
       const url = 'https://api.cloudinary.com/v1_1/' + cloudName + '/upload';
 
       // Get the local file URI from PowerSync's attachment directory
-      const localFileUri = `${this.getUserStorageDirectory()}attachments/${filename}`;
+      const localFileUri = new File(Paths.document, 'attachments', filename)
+        .uri;
 
-      // Verify the file exists
-      const fileInfo = await FileSystem.getInfoAsync(localFileUri);
-      if (!fileInfo.exists) {
+      // Verify the file exists using new File API
+      const file = new File(localFileUri);
+      if (!file.exists) {
         throw new Error(`Local file does not exist: ${localFileUri}`);
       }
 
@@ -399,7 +406,8 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
     try {
       // Delete the file locally if it exists
       if (await this.fileExists(uri)) {
-        await FileSystem.deleteAsync(uri);
+        const file = new File(uri);
+        file.delete();
       }
     } catch (error) {
       console.error(`Error in deleteFile:`, error);
@@ -409,15 +417,15 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
 
   async readFile(
     fileURI: string,
-    options?: { encoding?: FileSystem.EncodingType; mediaType?: string }
+    options?: { encoding?: 'utf8' | 'base64'; mediaType?: string }
   ): Promise<ArrayBuffer> {
-    const { encoding = FileSystem.EncodingType.UTF8 } = options ?? {};
-    const { exists } = await FileSystem.getInfoAsync(fileURI);
-    if (!exists) {
+    const { encoding = 'utf8' } = options ?? {};
+    const file = new File(fileURI);
+    if (!file.exists) {
       throw new Error(`File does not exist: ${fileURI}`);
     }
-    const fileContent = await FileSystem.readAsStringAsync(fileURI, options);
-    if (encoding === FileSystem.EncodingType.Base64) {
+    const fileContent = await file.text();
+    if (encoding === 'base64') {
       return await this.base64ToArrayBuffer(fileContent);
     }
     const buffer = await this.stringToArrayBuffer(fileContent);
@@ -428,31 +436,36 @@ export class CloudinaryStorageAdapter implements StorageAdapter {
     fileURI: string,
     base64Data: string,
     options?: {
-      encoding?: FileSystem.EncodingType;
+      encoding?: 'utf8' | 'base64';
     }
   ): Promise<void> {
-    const { encoding = FileSystem.EncodingType.UTF8 } = options ?? {};
-    await FileSystem.writeAsStringAsync(fileURI, base64Data, { encoding });
+    const { encoding = 'utf8' } = options ?? {};
+
+    const file = new File(fileURI);
+
+    await file.write(base64Data, { encoding });
   }
 
   async fileExists(fileURI: string): Promise<boolean> {
-    const { exists } = await FileSystem.getInfoAsync(fileURI);
-    return exists;
+    const file = new File(fileURI);
+    return file.exists;
   }
 
   async makeDir(uri: string): Promise<void> {
-    const { exists } = await FileSystem.getInfoAsync(uri);
-    if (!exists) {
-      await FileSystem.makeDirectoryAsync(uri, { intermediates: true });
+    const directory = new Directory(uri);
+    if (!directory.exists) {
+      directory.create();
     }
   }
 
   async copyFile(sourceUri: string, targetUri: string): Promise<void> {
-    await FileSystem.copyAsync({ from: sourceUri, to: targetUri });
+    const sourceFile = new File(sourceUri);
+    const targetFile = new File(targetUri);
+    sourceFile.copy(targetFile);
   }
 
   getUserStorageDirectory(): string {
-    return FileSystem.documentDirectory!;
+    return Paths.document.uri;
   }
 
   async stringToArrayBuffer(str: string): Promise<ArrayBuffer> {

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { PhotoGrid } from './PhotoGrid';
@@ -10,9 +10,14 @@ import { useSystem } from '@/services/database/System';
 import { DeletePhotoModal } from './DeletePhotoModal';
 import { LoadingModal } from './LoadingModal';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
-import { logPhoto, logPhotoError, logDatabase, logDatabaseError } from '@/utils/DebugLogger';
+import {
+  logPhoto,
+  logPhotoError,
+  logDatabase,
+  logDatabaseError,
+} from '@/utils/DebugLogger';
 
 // Use PhotoType directly from utils/photos.ts
 interface PhotoCaptureProps {
@@ -50,25 +55,10 @@ export function PhotoCapture({
     attachmentId?: string;
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [isReady, setIsReady] = useState(false);
   const powerSync = usePowerSync();
   const system = useSystem();
 
-  // Set isReady to true after initial render with a slight delay
-  // to prevent race conditions with modal initialization
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      setIsReady(true);
-    }, 100);
-    return () => clearTimeout(timer);
-  }, []);
 
-  // Close all modals - helper function for cleanup
-  const closeAllModals = useCallback(() => {
-    setShowModal(false);
-    setPhotoToDelete(null);
-    setGalleryVisible(false);
-  }, []);
 
   // State for image gallery
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -96,7 +86,7 @@ export function PhotoCapture({
 
         // If URL is just a filename, construct a path to the attachments directory
         const filename = photo.url.split('/').pop() || photo.url;
-        return `${FileSystem.documentDirectory}attachments/${filename}`;
+        return new File(Paths.document, 'attachments', filename).uri;
       } catch (error) {
         return photo.url || '';
       }
@@ -104,16 +94,13 @@ export function PhotoCapture({
     [system?.attachmentQueue]
   );
 
-  // Prepare gallery images whenever photos change
-  useEffect(() => {
-    if (photos.length === 0) return;
-
-    const images = photos.map((photo) => ({
+  // Helper to prepare gallery images (called lazily when gallery opens)
+  const prepareGalleryImages = useCallback(() => {
+    return photos.map((photo) => ({
       uri: resolvePhotoUrl(photo),
       title: `${type === 'before' ? 'Before' : 'After'} Photo`,
       type: type,
     }));
-    setGalleryImages(images);
   }, [photos, type, resolvePhotoUrl]);
 
   // Helper function to update gallery when a photo is pressed in PhotoGrid
@@ -122,12 +109,8 @@ export function PhotoCapture({
     setShowModal(false);
     setPhotoToDelete(null);
 
-    // First update gallery images with latest resolved URLs
-    const images = photos.map((photo) => ({
-      uri: resolvePhotoUrl(photo),
-      title: `${type === 'before' ? 'Before' : 'After'} Photo`,
-      type: type,
-    }));
+    // Prepare gallery images with latest resolved URLs
+    const images = prepareGalleryImages();
     setGalleryImages(images);
 
     // Then open the gallery at the selected index
@@ -145,12 +128,13 @@ export function PhotoCapture({
   );
 
   /**
-   * Check if file size is within allowed limits
+   * Check if file size is within allowed limits using new File API
    */
   const checkFileSize = async (uri: string): Promise<boolean> => {
     try {
-      const fileInfo = await FileSystem.getInfoAsync(uri, { size: true });
-      return fileInfo.exists && fileInfo.size <= MAX_FILE_SIZE;
+      const file = new File(uri);
+      const size = file.size ?? 0;
+      return file.exists && size <= MAX_FILE_SIZE;
     } catch (error) {
       console.error('Error checking file size:', error);
       return false;
@@ -168,7 +152,7 @@ export function PhotoCapture({
       canceled: result.canceled,
       assetsLength: result.assets?.length,
       isUploading,
-      hasQueue: !!system?.attachmentQueue
+      hasQueue: !!system?.attachmentQueue,
     });
 
     if (
@@ -183,14 +167,16 @@ export function PhotoCapture({
         noAssets: !result.assets?.length,
         isUploading,
         noScheduleId: !scheduleId,
-        noQueue: !system?.attachmentQueue
+        noQueue: !system?.attachmentQueue,
       });
       return;
     }
 
     try {
       setIsUploading(true);
-      logPhoto('Starting photo upload process', { assetsCount: result.assets.length });
+      logPhoto('Starting photo upload process', {
+        assetsCount: result.assets.length,
+      });
 
       // Get the queue from system
       const queue = system.attachmentQueue;
@@ -199,7 +185,9 @@ export function PhotoCapture({
       setShowModal(false);
 
       // Check each photo's file size and filter out photos that are too large
-      logPhoto('Starting file size validation', { assetsToCheck: result.assets.length });
+      logPhoto('Starting file size validation', {
+        assetsToCheck: result.assets.length,
+      });
       const validationResults = await Promise.all(
         result.assets.map(async (asset, index) => {
           try {
@@ -208,11 +196,14 @@ export function PhotoCapture({
               uri: asset.uri,
               isValidSize,
               width: asset.width,
-              height: asset.height
+              height: asset.height,
             });
             return { asset, isValidSize };
           } catch (error) {
-            logPhotoError(`Asset ${index} validation failed`, { uri: asset.uri, error });
+            logPhotoError(`Asset ${index} validation failed`, {
+              uri: asset.uri,
+              error,
+            });
             return { asset, isValidSize: false };
           }
         })
@@ -227,7 +218,7 @@ export function PhotoCapture({
 
       logPhoto('File validation complete', {
         valid: validAssets.length,
-        invalid: invalidAssets.length
+        invalid: invalidAssets.length,
       });
 
       // Show error for oversized files
@@ -243,7 +234,9 @@ export function PhotoCapture({
 
       // If no valid photos remain, stop here
       if (validAssets.length === 0) {
-        logPhotoError('No valid assets to process', { totalAssets: result.assets.length });
+        logPhotoError('No valid assets to process', {
+          totalAssets: result.assets.length,
+        });
         showToast(
           'No photos were added - all files exceeded the 20MB size limit'
         );
@@ -251,7 +244,9 @@ export function PhotoCapture({
       }
 
       // Prepare batch data for valid photos only
-      logPhoto('Preparing photo data for batch save', { validAssets: validAssets.length });
+      logPhoto('Preparing photo data for batch save', {
+        validAssets: validAssets.length,
+      });
       const photoData = validAssets.map((asset) => ({
         sourceUri: asset.uri,
         scheduleId: scheduleId!,
@@ -268,7 +263,7 @@ export function PhotoCapture({
       const savedAttachments = await queue.batchSavePhotosFromUri(photoData);
       logPhoto('Batch save completed', {
         savedCount: savedAttachments.length,
-        savedIds: savedAttachments.map(a => a.id)
+        savedIds: savedAttachments.map((a) => a.id),
       });
 
       if (savedAttachments.length > 0) {
@@ -285,7 +280,8 @@ export function PhotoCapture({
 
             logDatabase('Current photos retrieved', {
               hasData: currentPhotosData.length > 0,
-              photosExist: currentPhotosData.length > 0 && !!currentPhotosData[0].photos
+              photosExist:
+                currentPhotosData.length > 0 && !!currentPhotosData[0].photos,
             });
 
             // Parse existing photos or create empty array
@@ -293,29 +289,35 @@ export function PhotoCapture({
             if (currentPhotosData.length > 0 && currentPhotosData[0].photos) {
               try {
                 allPhotos = JSON.parse(currentPhotosData[0].photos);
-                logDatabase('Parsed existing photos', { existingCount: allPhotos.length });
+                logDatabase('Parsed existing photos', {
+                  existingCount: allPhotos.length,
+                });
               } catch (e) {
                 logDatabaseError('Failed to parse existing photos', e);
               }
             }
 
             // Create new photo objects for all attachments
-            logDatabase('Creating new photo objects', { attachmentCount: savedAttachments.length });
-            const newPhotos: PhotoType[] = savedAttachments.map((attachment) => ({
-              _id: attachment.id,
-              id: attachment.id,
-              url: attachment.filename, // Store the filename to match with attachment table
-              local_uri: attachment.local_uri, // Include local_uri for easy local file access
-              type: type,
-              timestamp: new Date().toISOString(),
-              attachmentId: attachment.id,
-              technicianId: technicianId,
-              status: 'pending', // Mark as pending initially
-            }));
+            logDatabase('Creating new photo objects', {
+              attachmentCount: savedAttachments.length,
+            });
+            const newPhotos: PhotoType[] = savedAttachments.map(
+              (attachment) => ({
+                _id: attachment.id,
+                id: attachment.id,
+                url: attachment.filename, // Store the filename to match with attachment table
+                local_uri: attachment.local_uri, // Include local_uri for easy local file access
+                type: type,
+                timestamp: new Date().toISOString(),
+                attachmentId: attachment.id,
+                technicianId: technicianId,
+                status: 'pending', // Mark as pending initially
+              })
+            );
 
             logDatabase('New photos created', {
               newPhotosCount: newPhotos.length,
-              newPhotoIds: newPhotos.map(p => p._id)
+              newPhotoIds: newPhotos.map((p) => p._id),
             });
 
             // Add new photos to existing ones
@@ -323,7 +325,7 @@ export function PhotoCapture({
             logDatabase('Photos merged', {
               existingCount: allPhotos.length,
               newCount: newPhotos.length,
-              totalCount: updatedPhotos.length
+              totalCount: updatedPhotos.length,
             });
 
             // Update schedules table once with all photos
@@ -346,7 +348,10 @@ export function PhotoCapture({
           await checkAndStartBackgroundUpload();
           logPhoto('Background upload service started successfully');
         } catch (uploadError) {
-          logPhotoError('Failed to start background upload service', uploadError);
+          logPhotoError(
+            'Failed to start background upload service',
+            uploadError
+          );
         }
       }
 
@@ -355,14 +360,14 @@ export function PhotoCapture({
       } - uploading in background`;
       logPhoto('Photo save process completed successfully', {
         savedCount: savedAttachments.length,
-        message: successMessage
+        message: successMessage,
       });
 
       showToast(successMessage);
     } catch (error) {
       logPhotoError('Photo save process failed', {
         error: error instanceof Error ? error.message : String(error),
-        stack: error instanceof Error ? error.stack : undefined
+        stack: error instanceof Error ? error.stack : undefined,
       });
 
       Alert.alert(
@@ -489,54 +494,8 @@ export function PhotoCapture({
     setGalleryVisible(true);
   };
 
-  // Calculate isLoading state, but only if component is ready
-  // This prevents showing loading state before component is ready
-  const isLoading = isReady && (externalLoading || isUploading);
-
-  // If component is not ready yet, render minimal content
-  // to prevent modals from initializing too early
-  if (!isReady) {
-    return (
-      <View className='flex-1 mb-6'>
-        {/* Header with Add Button (disabled) */}
-        <View className='flex-row justify-between items-center mb-3'>
-          <View className='flex-row items-center'>
-            <View
-              className={`px-2 py-1 rounded-xl ${
-                type === 'before' ? 'bg-blue-100' : 'bg-green-100'
-              }`}
-            >
-              <Text
-                className={`text-xs font-semibold ${
-                  type === 'before' ? 'text-blue-800' : 'text-green-800'
-                }`}
-              >
-                {type === 'before' ? 'Before' : 'After'}
-              </Text>
-            </View>
-            <Text className='ml-1 text-base font-semibold'>
-              {photos.length > 0 && `(${photos.length})`}
-            </Text>
-          </View>
-          <TouchableOpacity
-            disabled={true}
-            className='px-4 py-2 rounded-lg bg-gray-300'
-          >
-            <Text className='text-white font-semibold text-sm'>
-              Initializing...
-            </Text>
-          </TouchableOpacity>
-        </View>
-        {/* Photo grid (disabled) */}
-        <PhotoGrid
-          photos={photos}
-          onDeletePhoto={() => {}}
-          onPhotoPress={() => {}}
-          currentScheduleId={scheduleId}
-        />
-      </View>
-    );
-  }
+  // Calculate isLoading state
+  const isLoading = (externalLoading || isUploading);
 
   return (
     <View className='flex-1 mb-6'>
@@ -593,7 +552,9 @@ export function PhotoCapture({
       {showModal && (
         <PhotoCaptureModal
           visible={showModal}
-          onClose={() => setShowModal(false)}
+          onClose={() => {
+            setShowModal(false);
+          }}
           onPhotoSelected={handlePhotoSelected}
         />
       )}

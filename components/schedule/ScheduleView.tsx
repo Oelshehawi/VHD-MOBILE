@@ -1,5 +1,6 @@
 import React, { useState, useCallback } from 'react';
-import { SafeAreaView, StatusBar, View, Text, TouchableOpacity } from 'react-native';
+import { StatusBar, View, Text, TouchableOpacity } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery } from '@powersync/react-native';
 import { Schedule, AppointmentType } from '@/types';
 import { MonthView } from './MonthView';

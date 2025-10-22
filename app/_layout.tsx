@@ -8,13 +8,12 @@ import * as Updates from 'expo-updates';
 import './global.css';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
-import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
-import { DebugButton } from '@/components/debug/DebugButton';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -57,7 +56,7 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
     }
   }, [isLoaded]);
 
-  // Check for OTA updates on app launch
+  // Check for OTA updates on app launch and when app comes to foreground
   useEffect(() => {
     async function checkForUpdates() {
       // Only check for updates in production/preview builds, not in development
@@ -80,17 +79,17 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
       }
     }
 
+    // Check on initial mount
     checkForUpdates();
-  }, []);
 
-  // Add AppState listener to resume uploads when app becomes active
-  useEffect(() => {
+    // Add AppState listener to check for updates when app becomes active
     const subscription = AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
-        // Resume any pending uploads when app becomes active
-        checkAndStartBackgroundUpload().catch((err) => {
-          console.warn('Failed to resume background uploads:', err);
-        });
+        // Check for OTA updates when app comes to foreground
+        checkForUpdates();
+
+        // PowerSync automatically syncs pending attachments when app becomes active
+        // No manual intervention needed - QUEUED_UPLOAD attachments sync every 5 seconds
       }
     });
 
@@ -110,18 +109,20 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   return (
-    <ClerkProvider
-      publishableKey={CLERK_PUBLISHABLE_KEY!}
-      tokenCache={tokenCache}
-      __experimental_resourceCache={resourceCache}
-    >
-      <InitialLayout>
-        <ThemeProvider>
-          <PowerSyncProvider>
-            <Slot />
-          </PowerSyncProvider>
-        </ThemeProvider>
-      </InitialLayout>
-    </ClerkProvider>
+    <SafeAreaProvider>
+      <ClerkProvider
+        publishableKey={CLERK_PUBLISHABLE_KEY!}
+        tokenCache={tokenCache}
+        __experimental_resourceCache={resourceCache}
+      >
+        <InitialLayout>
+          <ThemeProvider>
+            <PowerSyncProvider>
+              <Slot />
+            </PowerSyncProvider>
+          </ThemeProvider>
+        </InitialLayout>
+      </ClerkProvider>
+    </SafeAreaProvider>
   );
 }

@@ -3,7 +3,7 @@ import { Tabs, Redirect, SplashScreen } from 'expo-router';
 import '../global.css';
 import { ClerkLoaded, useUser } from '@clerk/clerk-expo';
 import { useEffect } from 'react';
-import { useSystem } from '@/services/database/System';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { useTheme } from '@/providers/ThemeProvider';
 
 function TabBarIcon(props: {
@@ -28,52 +28,55 @@ export default function TabLayout() {
     }
   }, [isLoaded]);
 
-
   return (
-    <ClerkLoaded>
-      <Tabs
-        screenOptions={{
-          headerStyle: {
-            backgroundColor: isDark ? '#111827' : '#ffffff', // dark: gray-900, light: white
-          },
-          headerTintColor: isDark ? '#e5e7eb' : '#111827', // dark: gray-200, light: gray-900
-          tabBarStyle: {
-            backgroundColor: isDark ? '#111827' : '#ffffff', // dark: gray-900, light: white
-            borderTopColor: isDark ? '#1f2937' : '#e5e7eb', // dark: gray-800, light: gray-200
-          },
-          tabBarActiveTintColor: '#0ea5e9', // blue-500 for both themes
-          tabBarInactiveTintColor: isDark ? '#9ca3af' : '#6b7280', // dark: gray-400, light: gray-500
-        }}
-      >
-        <Tabs.Screen
-          name='index'
-          options={{
-            title: 'Dashboard',
-            headerShown: false,
-            tabBarIcon: ({ color }) => (
-              <FontAwesome name='home' size={24} color={color} />
-            ),
+    <SafeAreaProvider>
+      <ClerkLoaded>
+        <Tabs
+          screenOptions={{
+            headerStyle: {
+              backgroundColor: isDark ? '#111827' : '#ffffff', // dark: gray-900, light: white
+            },
+            headerTintColor: isDark ? '#e5e7eb' : '#111827', // dark: gray-200, light: gray-900
+            tabBarStyle: {
+              backgroundColor: isDark ? '#111827' : '#ffffff', // dark: gray-900, light: white
+              borderTopColor: isDark ? '#1f2937' : '#e5e7eb', // dark: gray-800, light: gray-200
+            },
+            tabBarActiveTintColor: '#0ea5e9', // blue-500 for both themes
+            tabBarInactiveTintColor: isDark ? '#9ca3af' : '#6b7280', // dark: gray-400, light: gray-500
           }}
-        />
-        <Tabs.Screen
-          name='schedule'
-          options={{
-            title: 'Schedule',
-            headerShown: false,
-            tabBarIcon: ({ color }) => (
-              <FontAwesome name='calendar' size={24} color={color} />
-            ),
-          }}
-        />
-        <Tabs.Screen
-          name='profile'
-          options={{
-            title: 'Profile',
-            headerShown: false,
-            tabBarIcon: ({ color }) => <TabBarIcon name='user' color={color} />,
-          }}
-        />
-      </Tabs>
-    </ClerkLoaded>
+        >
+          <Tabs.Screen
+            name='index'
+            options={{
+              title: 'Dashboard',
+              headerShown: false,
+              tabBarIcon: ({ color }) => (
+                <FontAwesome name='home' size={24} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name='schedule'
+            options={{
+              title: 'Schedule',
+              headerShown: false,
+              tabBarIcon: ({ color }) => (
+                <FontAwesome name='calendar' size={24} color={color} />
+              ),
+            }}
+          />
+          <Tabs.Screen
+            name='profile'
+            options={{
+              title: 'Profile',
+              headerShown: false,
+              tabBarIcon: ({ color }) => (
+                <TabBarIcon name='user' color={color} />
+              ),
+            }}
+          />
+        </Tabs>
+      </ClerkLoaded>
+    </SafeAreaProvider>
   );
 }

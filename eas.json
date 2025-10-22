@@ -10,9 +10,6 @@
       "ios": {
         "buildConfiguration": "Debug"
       },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app"
-      },
       "channel": "development"
     },
     "preview": {
@@ -25,44 +22,7 @@
         "buildConfiguration": "Release",
         "distribution": "internal"
       },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app",
-        "EXPO_PUBLIC_POWERSYNC_URL": "https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com",
-        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "dhu4yrn5k"
-      },
       "channel": "preview"
-    },
-    "production": {
-      "android": {
-        "buildType": "app-bundle"
-      },
-      "ios": {
-        "buildConfiguration": "Release",
-        "distribution": "store"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://vhd-psi.vercel.app",
-        "EXPO_PUBLIC_POWERSYNC_URL": "https://679ff7c36bc62bf1f163ab46.powersync.journeyapps.com"
-
-      },
-      "channel": "production"
-    },
-    "development-simulator": {
-      "developmentClient": true,
-      "distribution": "internal",
-      "ios": {
-        "simulator": true
-      },
-      "environment": "development"
-    }
-  },
-  "submit": {
-    "production": {
-      "ios": {
-        "appleId": "your-apple-id@example.com",
-        "ascAppId": "your-app-store-connect-app-id",
-        "appleTeamId": "your-apple-team-id"
-      }
     }
   }
 }

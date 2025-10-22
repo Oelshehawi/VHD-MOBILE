@@ -25,7 +25,7 @@ export interface CloudinaryStorageOptions {
 }
 
 const PROD_URL = process.env.EXPO_PUBLIC_API_URL || '';
-const LOCAL_URL = 'http://192.168.1.128:3000'; // Replace with your machine's IP
+const LOCAL_URL = 'http://192.168.1.131:3000'; // Replace with your machine's IP
 
 // Environment configuration
 const ENV = {

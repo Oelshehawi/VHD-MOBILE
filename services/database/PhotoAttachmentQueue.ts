@@ -1,4 +1,4 @@
-import * as FileSystem from 'expo-file-system';
+import { File, Directory } from 'expo-file-system';
 import { randomUUID } from 'expo-crypto';
 import { AppConfig } from './AppConfig';
 import {
@@ -8,6 +8,7 @@ import {
   AttachmentState,
 } from '@powersync/attachments';
 import { logDatabase, logDatabaseError, logPhoto, logPhotoError } from '@/utils/DebugLogger';
+import { prepareImageForUpload } from '@/utils/imagePrep';
 
 // Extend AttachmentRecord to include the scheduleId property
 export interface ExtendedAttachmentRecord extends AttachmentRecord {
@@ -266,6 +267,15 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
             .replace(/\\/g, ''); // Remove backslashes
         }
 
+        // Prepare image (resize to 2560×2560, quality 1.0)
+        logPhoto(`Preparing image ${i + 1} for upload`, { sourceUri: photo.sourceUri });
+        const prepared = await prepareImageForUpload(photo.sourceUri);
+        logPhoto(`Image ${i + 1} prepared`, {
+          size: prepared.size,
+          dimensions: `${prepared.width}×${prepared.height}`
+        });
+        const processUri = prepared.uri;
+
         logPhoto(`Creating attachment record for photo ${i + 1}`);
         // Create a new attachment record with scheduleId, jobTitle, and type
         const photoAttachment = await this.newAttachmentRecord({
@@ -293,45 +303,41 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           destinationUri
         });
 
-        // Verify source file exists
-        logPhoto(`Checking source file exists for photo ${i + 1}`);
+        // Verify prepared file exists using new File API
+        logPhoto(`Checking prepared file exists for photo ${i + 1}`);
         try {
-          const sourceInfo = await FileSystem.getInfoAsync(photo.sourceUri);
-          if (!sourceInfo.exists) {
-            logPhotoError(`Source file does not exist for photo ${i + 1}`, {
-              sourceUri: photo.sourceUri
+          const sourceFile = new File(processUri);
+          if (!sourceFile.exists) {
+            logPhotoError(`Prepared file does not exist for photo ${i + 1}`, {
+              sourceUri: processUri
             });
             continue;
           }
 
-          logPhoto(`Source file verified for photo ${i + 1}`, {
-            size: sourceInfo.size,
-            isDirectory: sourceInfo.isDirectory,
-            modificationTime: sourceInfo.modificationTime
+          logPhoto(`Prepared file verified for photo ${i + 1}`, {
+            size: sourceFile.size
           });
         } catch (sourceCheckError) {
-          logPhotoError(`Failed to check source file for photo ${i + 1}`, {
-            sourceUri: photo.sourceUri,
+          logPhotoError(`Failed to check prepared file for photo ${i + 1}`, {
+            sourceUri: processUri,
             error: sourceCheckError instanceof Error ? sourceCheckError.message : String(sourceCheckError)
           });
           continue;
         }
 
-        // Check destination directory exists and create if needed
+        // Check destination directory exists and create if needed using new Directory API
         logPhoto(`Checking destination directory for photo ${i + 1}`, {
           destinationUri
         });
         try {
-          const destinationDir = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
-          const dirInfo = await FileSystem.getInfoAsync(destinationDir);
-          if (!dirInfo.exists) {
-            logPhoto(`Creating destination directory: ${destinationDir}`);
-            await FileSystem.makeDirectoryAsync(destinationDir, { intermediates: true });
+          const destinationDirPath = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
+          const destinationDir = new Directory(destinationDirPath);
+          if (!destinationDir.exists) {
+            logPhoto(`Creating destination directory: ${destinationDirPath}`);
+            destinationDir.create();
             logPhoto(`Destination directory created successfully`);
           } else {
-            logPhoto(`Destination directory exists`, {
-              isDirectory: dirInfo.isDirectory
-            });
+            logPhoto(`Destination directory exists`);
           }
         } catch (dirError) {
           logPhotoError(`Failed to prepare destination directory for photo ${i + 1}`, {
@@ -341,20 +347,31 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           continue;
         }
 
-        // Copy the file directly
+        // Copy the prepared file
         logPhoto(`Starting file copy for photo ${i + 1}`, {
-          from: photo.sourceUri,
+          from: processUri,
           to: destinationUri
         });
         try {
-          await FileSystem.copyAsync({
-            from: photo.sourceUri,
-            to: destinationUri,
-          });
+          const sourceFile = new File(processUri);
+          const destinationFile = new File(destinationUri);
+          sourceFile.copy(destinationFile);
           logPhoto(`File copied successfully for photo ${i + 1}`);
+
+          // Clean up temp file if different from original
+          if (processUri !== photo.sourceUri) {
+            try {
+              const tempFile = new File(processUri);
+              if (tempFile.exists) {
+                tempFile.delete();
+              }
+            } catch {
+              // Ignore cleanup errors
+            }
+          }
         } catch (copyError) {
           logPhotoError(`File copy failed for photo ${i + 1}`, {
-            from: photo.sourceUri,
+            from: processUri,
             to: destinationUri,
             error: copyError instanceof Error ? copyError.message : String(copyError),
             errorName: copyError instanceof Error ? copyError.name : 'Unknown',
@@ -363,16 +380,14 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           continue;
         }
 
-        // Get file info and verify copy was successful
+        // Get file info and verify copy was successful using new File API
         logPhoto(`Verifying copied file for photo ${i + 1}`);
         try {
-          const fileInfo = await FileSystem.getInfoAsync(destinationUri);
-          if (fileInfo.exists) {
-            photoAttachment.size = fileInfo.size;
+          const destinationFile = new File(destinationUri);
+          if (destinationFile.exists) {
+            photoAttachment.size = destinationFile.size ?? 0;
             logPhoto(`File info retrieved for photo ${i + 1}`, {
-              size: fileInfo.size,
-              isDirectory: fileInfo.isDirectory,
-              modificationTime: fileInfo.modificationTime
+              size: destinationFile.size
             });
           } else {
             logPhotoError(`Destination file does not exist after copy for photo ${i + 1}`, {
@@ -435,7 +450,15 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     signerName?: string
   ): Promise<ExtendedAttachmentRecord> {
     try {
-      // Create a new attachment record with scheduleId, jobTitle, and type
+      // 1. Resize image to 2560×2560 max, quality 1.0
+      logPhoto('Preparing image for upload', { sourceUri, scheduleId });
+      const prepared = await prepareImageForUpload(sourceUri);
+      logPhoto('Image prepared', {
+        size: prepared.size,
+        dimensions: `${prepared.width}×${prepared.height}`
+      });
+
+      // 2. Create attachment record
       const photoAttachment = await this.newAttachmentRecord({
         scheduleId,
         jobTitle,
@@ -445,40 +468,47 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
         signerName,
       });
 
-      // Set the local URI path
-      photoAttachment.local_uri = this.getLocalFilePathSuffix(
-        photoAttachment.filename
-      );
+      // 3. Set destination path
+      photoAttachment.local_uri = this.getLocalFilePathSuffix(photoAttachment.filename);
       const destinationUri = this.getLocalUri(photoAttachment.local_uri);
 
-      // Check destination directory exists and create if needed
-      try {
-        const destinationDir = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
-        const dirInfo = await FileSystem.getInfoAsync(destinationDir);
-        if (!dirInfo.exists) {
-          await FileSystem.makeDirectoryAsync(destinationDir, { intermediates: true });
+      // 4. Ensure destination directory exists using new Directory API
+      const destinationDirPath = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
+      const destinationDir = new Directory(destinationDirPath);
+      if (!destinationDir.exists) {
+        destinationDir.create();
+      }
+
+      // 5. Copy prepared file
+      const preparedFile = new File(prepared.uri);
+      const destFile = new File(destinationUri);
+      preparedFile.copy(destFile);
+
+      // 6. Clean up temp file
+      if (prepared.uri !== sourceUri) {
+        try {
+          const tempFile = new File(prepared.uri);
+          if (tempFile.exists) {
+            tempFile.delete();
+          }
+        } catch {
+          // Ignore cleanup errors
         }
-      } catch (dirError) {
-        console.error('Failed to prepare destination directory:', dirError);
-        throw new Error(`Could not create destination directory: ${dirError}`);
       }
 
-      // Copy the file directly instead of using base64
-      await FileSystem.copyAsync({
-        from: sourceUri,
-        to: destinationUri,
-      });
-
-      // Get file info
-      const fileInfo = await FileSystem.getInfoAsync(destinationUri);
-      if (fileInfo.exists) {
-        photoAttachment.size = fileInfo.size;
+      // 7. Set file size using new File API
+      const destinationFile = new File(destinationUri);
+      if (destinationFile.exists) {
+        photoAttachment.size = destinationFile.size ?? 0;
       }
 
-      // Save to queue
+      // 8. Save to queue
       const savedAttachment = await this.saveToQueue(photoAttachment);
+      logPhoto('Photo saved to queue', { id: savedAttachment.id, size: savedAttachment.size });
+
       return savedAttachment as ExtendedAttachmentRecord;
     } catch (error) {
+      logPhotoError('Failed to save photo', error);
       throw error;
     }
   }

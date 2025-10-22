@@ -6,6 +6,7 @@ import {
   Alert,
   ScrollView,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '../../components/ui/Card';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
@@ -91,20 +92,6 @@ export default function ProfileScreen() {
     }
   };
 
-  // Toggle environment for testing
-  const toggleEnvironment = () => {
-    // Only allow toggling in development mode
-    if (__DEV__) {
-      const newEnv = apiUrl.includes('192.168') ? 'PRODUCTION' : 'DEVELOPMENT';
-      setEnvironment(newEnv);
-      // Force reload to apply changes
-      Alert.alert(
-        'Environment Changed',
-        `Switched to ${newEnv} environment. Changes will apply on app restart.`
-      );
-    }
-  };
-
   // Use cached data when offline
   const displayUser = isOffline ? cachedUser : user;
 
@@ -119,118 +106,119 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView className='flex-1 bg-white dark:bg-gray-950 p-4'>
-      <Stack.Screen options={{ headerShown: false }} />
+    <SafeAreaView>
+      <ScrollView className='flex-1 bg-white dark:bg-gray-950 p-4'>
+        <Stack.Screen options={{ headerShown: false }} />
 
-      {isOffline && (
-        <View className='bg-yellow-600/20 p-3 rounded-lg mb-4'>
-          <Text className='text-yellow-800 dark:text-yellow-200 text-center'>
-            Offline Mode - Limited functionality available
-          </Text>
-        </View>
-      )}
-
-      <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
-        <View className='p-4 items-center'>
-          {displayUser.imageUrl && (
-            <Image
-              source={{ uri: displayUser.imageUrl }}
-              className='w-24 h-24 rounded-full mb-4 border-2 border-gray-200 dark:border-gray-800'
-            />
-          )}
-          <Text className='text-xl font-bold text-gray-800 dark:text-gray-200 mb-2'>
-            {displayUser.fullName || displayUser.username}
-          </Text>
-          <Text className='text-gray-600 dark:text-gray-400 mb-1'>
-            {displayUser.email || displayUser.primaryEmailAddress?.emailAddress}
-          </Text>
-        </View>
-      </Card>
-
-      <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
-        <View className='p-4'>
-          <Text className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4'>
-            Account Details
-          </Text>
-          <View className='space-y-2'>
-            <View>
-              <Text className='text-sm text-gray-600 dark:text-gray-400'>
-                Member Since
-              </Text>
-              <Text className='text-gray-800 dark:text-gray-200'>
-                {displayUser.createdAt
-                  ? formatDateReadable(displayUser.createdAt)
-                  : 'N/A'}
-              </Text>
-            </View>
-            <View>
-              <Text className='text-sm text-gray-600 dark:text-gray-400'>
-                Last Updated
-              </Text>
-              <Text className='text-gray-800 dark:text-gray-200'>
-                {displayUser.updatedAt
-                  ? formatDateReadable(displayUser.updatedAt)
-                  : 'N/A'}
-              </Text>
-            </View>
+        {isOffline && (
+          <View className='bg-yellow-600/20 p-3 rounded-lg mb-4'>
+            <Text className='text-yellow-800 dark:text-yellow-200 text-center'>
+              Offline Mode - Limited functionality available
+            </Text>
           </View>
-        </View>
-      </Card>
+        )}
 
-      <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
-        <View className='p-4'>
-          <Text className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4'>
-            App Version
-          </Text>
-          <View className='space-y-2'>
-            <View>
-              <Text className='text-sm text-gray-600 dark:text-gray-400'>
-                Version
-              </Text>
-              <Text className='text-gray-800 dark:text-gray-200'>
-                1.0.0
-              </Text>
-            </View>
-            <View>
-              <Text className='text-sm text-gray-600 dark:text-gray-400'>
-                Update Channel
-              </Text>
-              <Text className='text-gray-800 dark:text-gray-200'>
-                {Updates.channel || 'development'}
-              </Text>
-            </View>
-            <View>
-              <Text className='text-sm text-gray-600 dark:text-gray-400'>
-                Update ID
-              </Text>
-              <Text className='text-gray-800 dark:text-gray-200 text-xs'>
-                {Updates.updateId || 'No OTA update installed'}
-              </Text>
-            </View>
-            {Updates.createdAt && (
+        <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
+          <View className='p-4 items-center'>
+            {displayUser.imageUrl && (
+              <Image
+                source={{ uri: displayUser.imageUrl }}
+                className='w-24 h-24 rounded-full mb-4 border-2 border-gray-200 dark:border-gray-800'
+              />
+            )}
+            <Text className='text-xl font-bold text-gray-800 dark:text-gray-200 mb-2'>
+              {displayUser.fullName || displayUser.username}
+            </Text>
+            <Text className='text-gray-600 dark:text-gray-400 mb-1'>
+              {displayUser.email ||
+                displayUser.primaryEmailAddress?.emailAddress}
+            </Text>
+          </View>
+        </Card>
+
+        <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
+          <View className='p-4'>
+            <Text className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4'>
+              Account Details
+            </Text>
+            <View className='space-y-2'>
               <View>
                 <Text className='text-sm text-gray-600 dark:text-gray-400'>
-                  Update Published
+                  Member Since
                 </Text>
                 <Text className='text-gray-800 dark:text-gray-200'>
-                  {formatDateReadable(Updates.createdAt)}
+                  {displayUser.createdAt
+                    ? formatDateReadable(displayUser.createdAt)
+                    : 'N/A'}
                 </Text>
               </View>
-            )}
+              <View>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  Last Updated
+                </Text>
+                <Text className='text-gray-800 dark:text-gray-200'>
+                  {displayUser.updatedAt
+                    ? formatDateReadable(displayUser.updatedAt)
+                    : 'N/A'}
+                </Text>
+              </View>
+            </View>
           </View>
-        </View>
-      </Card>
+        </Card>
 
-      <TouchableOpacity
-        onPress={handleSignOut}
-        className={`py-4 rounded-lg mt-auto ${
-          isOffline ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'
-        }`}
-      >
-        <Text className='text-center text-white font-semibold'>
-          {isOffline ? 'Offline - Sign Out Unavailable' : 'Sign Out'}
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Card className='mb-4 bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800'>
+          <View className='p-4'>
+            <Text className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4'>
+              App Version
+            </Text>
+            <View className='space-y-2'>
+              <View>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  Version
+                </Text>
+                <Text className='text-gray-800 dark:text-gray-200'>1.0.0</Text>
+              </View>
+              <View>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  Update Channel
+                </Text>
+                <Text className='text-gray-800 dark:text-gray-200'>
+                  {Updates.channel || 'development'}
+                </Text>
+              </View>
+              <View>
+                <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                  Update ID
+                </Text>
+                <Text className='text-gray-800 dark:text-gray-200 text-xs'>
+                  {Updates.updateId || 'No OTA update installed'}
+                </Text>
+              </View>
+              {Updates.createdAt && (
+                <View>
+                  <Text className='text-sm text-gray-600 dark:text-gray-400'>
+                    Update Published
+                  </Text>
+                  <Text className='text-gray-800 dark:text-gray-200'>
+                    {formatDateReadable(Updates.createdAt)}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </View>
+        </Card>
+
+        <TouchableOpacity
+          onPress={handleSignOut}
+          className={`py-4 rounded-lg mt-auto ${
+            isOffline ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'
+          }`}
+        >
+          <Text className='text-center text-white font-semibold'>
+            {isOffline ? 'Offline - Sign Out Unavailable' : 'Sign Out'}
+          </Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </SafeAreaView>
   );
 }

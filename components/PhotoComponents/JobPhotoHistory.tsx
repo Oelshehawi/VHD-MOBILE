@@ -10,7 +10,7 @@ import {
 import { format } from 'date-fns';
 import { useQuery } from '@powersync/react-native';
 import { PhotoType } from '@/utils/photos';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { FastImageWrapper } from '@/components/common/FastImageWrapper';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { preloadImages } from '@/utils/imageCache';

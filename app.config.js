@@ -1,6 +1,8 @@
 export default {
   expo: {
-    runtimeVersion: '1.0.0',
+    runtimeVersion: {
+      policy: 'fingerprint',
+    },
     name: 'Vancouver Hood Doctors',
     slug: 'VHD-App',
     version: '1.0.0',
@@ -67,11 +69,6 @@ export default {
         },
       },
     },
-    web: {
-      bundler: 'metro',
-      output: 'static',
-      favicon: './assets/images/favicon.png',
-    },
     plugins: [
       'expo-router',
       'expo-sqlite',
@@ -118,9 +115,6 @@ export default {
       androidMode: 'default',
       androidCollapsedTitle: 'VHD Schedule',
     },
-    experiments: {
-      typedRoutes: true,
-    },
     extra: {
       router: {
         origin: false,
@@ -131,9 +125,6 @@ export default {
     },
     updates: {
       url: 'https://u.expo.dev/9b65aa8e-9c42-4db2-9033-ef5bab2d849a',
-    },
-    developmentClient: {
-      silentLaunch: false,
     },
   },
 };

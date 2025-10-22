@@ -1,7 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import ImageView from 'react-native-image-viewing';
+import {
+  Modal,
+  View,
+  TouchableOpacity,
+  Text,
+  Dimensions,
+  ActivityIndicator,
+} from 'react-native';
 import { Image } from 'expo-image';
-import { ActivityIndicator, View, Dimensions } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSpring,
+  runOnJS,
+} from 'react-native-reanimated';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 import {
   buildCloudinaryUrlMobile,
@@ -21,26 +34,11 @@ export interface FastImageViewerProps {
   getSubtitle?: (index: number, currentImage: any) => string;
 }
 
-// Extended ImageView props to make TypeScript happy
-interface ExtendedImageViewProps {
-  images: { uri: string; title?: string; type?: string }[];
-  imageIndex: number;
-  visible: boolean;
-  onRequestClose: () => void;
-  swipeToCloseEnabled?: boolean;
-  doubleTapToZoomEnabled?: boolean;
-  HeaderComponent?: React.ComponentType<any>;
-  FooterComponent?: React.ComponentType<any>;
-  onImageIndexChange?: (index: number) => void;
-  ImageComponent?: React.ComponentType<any>;
-  [key: string]: any; // Allow other props
-}
-
 // Cloudinary configuration
 const CLOUD_NAME = 'dhu4yrn5k';
 
 /**
- * A simplified image viewer component that uses Expo Image for better performance
+ * A custom image viewer component using expo-image with zoom capabilities
  */
 export const FastImageViewer: React.FC<FastImageViewerProps> = ({
   images,
@@ -53,8 +51,14 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
   getSubtitle,
   ...otherProps
 }) => {
-  // Track the current index separately from props
   const [currentIndex, setCurrentIndex] = useState(imageIndex);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Zoom and pan animation values
+  const scale = useSharedValue(1);
+  const translateX = useSharedValue(0);
+  const translateY = useSharedValue(0);
+  const savedScale = useSharedValue(1);
 
   // Calculate optimal width for viewer images
   const targetWidth = useMemo(() => {
@@ -62,7 +66,7 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     return pickCloudinaryWidth(screenWidth);
   }, []);
 
-  // Transform images with Cloudinary optimization and stable cache keys
+  // Transform images with Cloudinary optimization
   const optimizedImages = useMemo(() => {
     return images.map((img) => {
       const transformedUri = buildCloudinaryUrlMobile({
@@ -79,14 +83,19 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     });
   }, [images, targetWidth]);
 
-  // Update internal index when props change or visibility changes
+  // Reset zoom when image changes
   useEffect(() => {
     if (visible) {
       setCurrentIndex(imageIndex);
+      scale.value = 1;
+      translateX.value = 0;
+      translateY.value = 0;
+      savedScale.value = 1;
+      setIsLoading(true);
     }
   }, [imageIndex, visible]);
 
-  // Create subtitle for the header based on current index
+  // Create subtitle for the header
   const getHeaderSubtitle = () => {
     if (!images || !images[currentIndex]) {
       return 'Loading...';
@@ -103,63 +112,181 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     }
   };
 
-  // Custom image component with loading indicator and cache key support
-  const CustomImageComponent = ({ source, style }: any) => {
-    const [isLoading, setIsLoading] = useState(true);
+  // Animated style for zoom and pan
+  const animatedStyle = useAnimatedStyle(() => ({
+    transform: [
+      { scale: scale.value },
+      { translateX: translateX.value },
+      { translateY: translateY.value },
+    ],
+  }));
 
-    // Extract cacheKey from source if available
-    const imageSource = source.cacheKey
-      ? { uri: source.uri, cacheKey: source.cacheKey }
-      : source;
+  // Pan gesture for dragging when zoomed
+  const panGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      if (scale.value > 1) {
+        translateX.value = event.translationX;
+        translateY.value = event.translationY;
+      }
+    })
+    .onEnd(() => {
+      // Reset position if not zoomed
+      if (scale.value <= 1) {
+        translateX.value = withSpring(0);
+        translateY.value = withSpring(0);
+      }
+    });
 
-    return (
-      <View className='flex-1 justify-center items-center' style={style}>
-        <Image
-          source={imageSource}
-          style={style}
-          contentFit='contain'
-          cachePolicy='disk'
-          onLoad={() => setIsLoading(false)}
-          onError={() => setIsLoading(false)}
-        />
+  // Pinch gesture for zooming
+  const pinchGesture = Gesture.Pinch()
+    .onUpdate((event) => {
+      scale.value = savedScale.value * event.scale;
+    })
+    .onEnd(() => {
+      savedScale.value = scale.value;
+    });
 
-        {isLoading && (
-          <View className='absolute inset-0 justify-center items-center bg-black/30'>
-            <ActivityIndicator size='large' color='#ffffff' />
-          </View>
-        )}
-      </View>
-    );
+  // Double tap to zoom
+  const doubleTapGesture = Gesture.Tap()
+    .numberOfTaps(2)
+    .onStart(() => {
+      if (doubleTapToZoomEnabled) {
+        if (scale.value > 1) {
+          // Zoom out
+          scale.value = withSpring(1);
+          translateX.value = withSpring(0);
+          translateY.value = withSpring(0);
+          savedScale.value = 1;
+        } else {
+          // Zoom in
+          scale.value = withSpring(2);
+          savedScale.value = 2;
+        }
+      }
+    });
+
+  // Swipe to close
+  const swipeGesture = Gesture.Pan()
+    .onUpdate((event) => {
+      if (swipeToCloseEnabled && scale.value <= 1) {
+        translateY.value = event.translationY;
+      }
+    })
+    .onEnd((event) => {
+      if (swipeToCloseEnabled && scale.value <= 1) {
+        const threshold = 100;
+        if (Math.abs(event.translationY) > threshold && event.velocityY > 500) {
+          runOnJS(onRequestClose)();
+        } else {
+          translateY.value = withSpring(0);
+        }
+      }
+    });
+
+  // Combine gestures
+  const composedGesture = Gesture.Simultaneous(
+    swipeGesture,
+    Gesture.Simultaneous(pinchGesture, panGesture),
+    doubleTapGesture
+  );
+
+  // Navigation functions
+  const goToPrevious = () => {
+    if (currentIndex > 0) {
+      setCurrentIndex(currentIndex - 1);
+      scale.value = 1;
+      translateX.value = 0;
+      translateY.value = 0;
+      savedScale.value = 1;
+      setIsLoading(true);
+    }
   };
 
-  // Create fresh header props for each render
-  const headerProps = {
-    title,
-    subtitle: getHeaderSubtitle(),
-    onClose: onRequestClose,
+  const goToNext = () => {
+    if (currentIndex < images.length - 1) {
+      setCurrentIndex(currentIndex + 1);
+      scale.value = 1;
+      translateX.value = 0;
+      translateY.value = 0;
+      savedScale.value = 1;
+      setIsLoading(true);
+    }
   };
 
-  // Handle index changes
-  const handleIndexChange = (index: number) => {
-    setCurrentIndex(index);
-  };
+  if (!visible || !optimizedImages[currentIndex]) return null;
 
-  // Type assertion to make TypeScript happy
-  const ExtendedImageView =
-    ImageView as React.ComponentType<ExtendedImageViewProps>;
+  const currentImage = optimizedImages[currentIndex];
 
   return (
-    <ExtendedImageView
-      images={optimizedImages}
-      imageIndex={imageIndex}
+    <Modal
       visible={visible}
       onRequestClose={onRequestClose}
-      swipeToCloseEnabled={swipeToCloseEnabled}
-      doubleTapToZoomEnabled={doubleTapToZoomEnabled}
-      HeaderComponent={() => <FastImageViewerHeader {...headerProps} />}
-      onImageIndexChange={handleIndexChange}
-      ImageComponent={CustomImageComponent}
-      {...otherProps}
-    />
+      animationType='fade'
+      presentationStyle='overFullScreen'
+      transparent={true}
+    >
+      <View className='flex-1 bg-black'>
+        {/* Header */}
+        <FastImageViewerHeader
+          title={title}
+          subtitle={getHeaderSubtitle()}
+          onClose={onRequestClose}
+        />
+
+        {/* Image Container */}
+        <View className='flex-1 relative'>
+          <GestureDetector gesture={composedGesture}>
+            <Animated.View
+              style={animatedStyle}
+              className='flex-1 justify-center items-center'
+            >
+              <Image
+                source={{
+                  uri: currentImage.uri,
+                  cacheKey: currentImage.cacheKey,
+                }}
+                style={{
+                  width: Dimensions.get('window').width,
+                  height: Dimensions.get('window').height * 0.8,
+                }}
+                contentFit='contain'
+                cachePolicy='disk'
+                onLoad={() => setIsLoading(false)}
+                onError={() => setIsLoading(false)}
+              />
+            </Animated.View>
+          </GestureDetector>
+
+          {/* Loading indicator */}
+          {isLoading && (
+            <View className='absolute inset-0 justify-center items-center bg-black/50'>
+              <ActivityIndicator size='large' color='#ffffff' />
+            </View>
+          )}
+        </View>
+
+        {/* Navigation arrows */}
+        {images.length > 1 && (
+          <>
+            {currentIndex > 0 && (
+              <TouchableOpacity
+                className='absolute left-4 top-1/2 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
+                onPress={goToPrevious}
+              >
+                <Text className='text-white text-xl font-bold'>‹</Text>
+              </TouchableOpacity>
+            )}
+            {currentIndex < images.length - 1 && (
+              <TouchableOpacity
+                className='absolute right-4 top-1/2 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
+                onPress={goToNext}
+              >
+                <Text className='text-white text-xl font-bold'>›</Text>
+              </TouchableOpacity>
+            )}
+          </>
+        )}
+      </View>
+    </Modal>
   );
 };

@@ -17,7 +17,7 @@ import {
   startOfDay,
 } from 'date-fns';
 import { Schedule } from '@/types';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 interface WeekViewProps {
   schedules: Schedule[];

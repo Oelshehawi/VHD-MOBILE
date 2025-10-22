@@ -3,7 +3,7 @@ import { PhotoType } from '@/utils/photos';
 import { useState, useEffect } from 'react';
 import { FastImageWrapper } from '@/components/common/FastImageWrapper';
 import { useSystem } from '@/services/database/System';
-import * as FileSystem from 'expo-file-system';
+import { File, Paths } from 'expo-file-system';
 import { Image } from 'react-native';
 import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
 
@@ -50,9 +50,9 @@ export function PhotoItem({
             );
             setResolvedUrl(localUri);
 
-            // Verify the file exists
-            const fileInfo = await FileSystem.getInfoAsync(localUri);
-            if (!fileInfo.exists) {
+            // Verify the file exists using new File API
+            const file = new File(localUri);
+            if (!file.exists) {
               setImageError(true);
             }
             return;
@@ -61,11 +61,11 @@ export function PhotoItem({
           // Fallback if no local_uri - try direct attachments folder access
           if (photo.url) {
             const filename = photo.url.split('/').pop() || photo.url;
-            const directPath = `${FileSystem.documentDirectory}attachments/${filename}`;
+            const directPath = new File(Paths.document, 'attachments', filename).uri;
 
-            // Check if file exists
-            const fileInfo = await FileSystem.getInfoAsync(directPath);
-            if (fileInfo.exists) {
+            // Check if file exists using new File API
+            const file = new File(directPath);
+            if (file.exists) {
               setResolvedUrl(directPath);
               return;
             }

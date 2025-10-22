@@ -5,13 +5,11 @@ import {
   TouchableOpacity,
   Modal,
   Alert,
-  Platform,
-  Dimensions,
-  Animated,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { requestMediaPermission } from '@/utils/photos';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 interface PhotoCaptureModalProps {
   visible: boolean;
@@ -24,25 +22,7 @@ export function PhotoCaptureModal({
   onClose,
   onPhotoSelected,
 }: PhotoCaptureModalProps) {
-  const slideAnim = React.useRef(new Animated.Value(0)).current;
-
-  // Animation when modal becomes visible
-  React.useEffect(() => {
-    if (visible) {
-      Animated.spring(slideAnim, {
-        toValue: 1,
-        tension: 70,
-        friction: 12,
-        useNativeDriver: true,
-      }).start();
-    } else {
-      Animated.timing(slideAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }).start();
-    }
-  }, [visible, slideAnim]);
+  const insets = useSafeAreaInsets();
 
   /**
    * Handle image selection from camera or gallery
@@ -99,24 +79,21 @@ export function PhotoCaptureModal({
 
   return (
     <Modal
-      animationType='none'
+      animationType='slide'
       transparent={true}
       visible={visible}
       onRequestClose={onClose}
     >
-      <View className='flex-1 bg-black/50 justify-end'>
-        <Animated.View
+      <View className='flex-1 justify-end bg-black/50'>
+        <View
           style={{
-            transform: [
-              {
-                translateY: slideAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [Dimensions.get('window').height, 0],
-                }),
-              },
-            ],
+            backgroundColor: 'white',
+            borderTopLeftRadius: 24,
+            borderTopRightRadius: 24,
+            paddingHorizontal: 24,
+            paddingTop: 16,
+            paddingBottom: Math.max(insets.bottom, 36),
           }}
-          className='bg-white rounded-t-3xl px-6 py-4 pt-4 pb-9 shadow-lg'
         >
           <View className='w-10 h-1 bg-gray-300 rounded-full self-center mb-4' />
 
@@ -170,7 +147,7 @@ export function PhotoCaptureModal({
               Cancel
             </Text>
           </TouchableOpacity>
-        </Animated.View>
+        </View>
       </View>
     </Modal>
   );
