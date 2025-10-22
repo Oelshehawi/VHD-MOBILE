@@ -74,6 +74,7 @@ export default {
       'expo-sqlite',
       'expo-font',
       'expo-web-browser',
+      './plugins/withBackgroundActionsService',
       [
         'expo-local-authentication',
         {
