@@ -5,16 +5,20 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
+  Image,
 } from 'react-native';
 import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
 import { AppointmentType } from '@/types';
 import { getMonthDays, getAppointmentsForDay } from '@/utils/calendar';
 import { MonthHeader } from './MonthHeader';
+import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
+import { GeocodingService } from '@/services/weather/GeocodingService';
 
 interface MonthViewProps {
   currentDate: string;
   onDateChange: (date: string) => void;
   appointments: AppointmentType[];
+  schedules?: any[]; // Add Schedule data for weather integration
   onDayPress: (date: string) => void;
 }
 
@@ -36,11 +40,13 @@ export function MonthView({
   currentDate,
   onDateChange,
   appointments,
+  schedules = [],
   onDayPress,
 }: MonthViewProps) {
   const [selectedDate, setSelectedDate] = useState(() =>
     startOfDay(new Date(currentDate)).toISOString()
   );
+  const [weatherData, setWeatherData] = useState<Map<string, WeatherData>>(new Map());
   const currentDateObj = startOfDay(new Date(currentDate || selectedDate));
   const allDays = getMonthDays(currentDateObj);
 
@@ -50,6 +56,38 @@ export function MonthView({
       setSelectedDate(newDate.toISOString());
     }
   }, [currentDate]);
+
+  // Load weather for all scheduled locations
+  useEffect(() => {
+    loadWeatherForSchedules();
+  }, [schedules]);
+
+  const loadWeatherForSchedules = async () => {
+    const locationSet = new Set<string>();
+
+    // Collect unique locations from schedules
+    const dataToUse = schedules.length > 0 ? schedules : [];
+    dataToUse.forEach((schedule: any) => {
+      if (schedule.location) {
+        locationSet.add(schedule.location);
+      }
+    });
+
+    const weatherMap = new Map<string, WeatherData>();
+
+    // Fetch weather for each location
+    for (const location of locationSet) {
+      const coords = await GeocodingService.getCoordinates(location);
+      if (!coords) continue;
+
+      const forecast = await WeatherService.getForecast(coords.latitude, coords.longitude);
+      forecast.forEach((day) => {
+        weatherMap.set(`${location}_${day.date}`, day);
+      });
+    }
+
+    setWeatherData(weatherMap);
+  };
 
   const handleDayPress = useCallback(
     (date: Date) => {
@@ -163,6 +201,35 @@ export function MonthView({
                   >
                     {format(date, 'd')}
                   </Text>
+
+                  {/* Weather Indicator */}
+                  {dayAppointments.length > 0 && schedules.length > 0 && (
+                    <View className='mt-1'>
+                      {dayAppointments.slice(0, 1).map((apt) => {
+                        // Find corresponding schedule to get location
+                        const schedule = schedules.find((s: any) => s.id === apt.id);
+                        if (!schedule?.location) return null;
+
+                        const dateStr = format(date, 'yyyy-MM-dd');
+                        const weather = weatherData.get(`${schedule.location}_${dateStr}`);
+                        return (
+                          <View key={`weather-${apt.id}`} className='flex-row items-center gap-1'>
+                            {weather && (
+                              <>
+                                <Image
+                                  source={{ uri: WeatherService.getIconUrl(weather.condition.icon) }}
+                                  style={{ width: 16, height: 16 }}
+                                />
+                                <Text className='text-xs font-medium'>
+                                  {Math.round(weather.temp_c)}°
+                                </Text>
+                              </>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
 
                   {/* Appointment Indicators */}
                   {dayAppointments.length > 0 && (

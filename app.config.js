@@ -1,8 +1,6 @@
 export default {
   expo: {
-    runtimeVersion: {
-      policy: 'fingerprint',
-    },
+    runtimeVersion: "1.0.3",
     name: 'Vancouver Hood Doctors',
     slug: 'VHD-App',
     version: '1.0.0',

@@ -1,12 +1,14 @@
-import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
-import { parseISO } from 'date-fns';
+import React, { useState, useCallback, useEffect } from 'react';
+import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { parseISO, format } from 'date-fns';
 import { Schedule } from '@/types';
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { PhotoDocumentationModal } from '../PhotoComponents/PhotoDocumentationModal';
 import { InvoiceModal } from './InvoiceModal';
+import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
+import { GeocodingService } from '@/services/weather/GeocodingService';
 
 interface DailyAgendaProps {
   selectedDate: string; // ISO string in UTC
@@ -39,6 +41,40 @@ export function DailyAgenda({
   const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
   const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] =
     useState<Schedule | null>(null);
+  const [weatherDataMap, setWeatherDataMap] = useState<Map<string, WeatherData>>(new Map());
+
+  // Load weather for all locations on selected date
+  useEffect(() => {
+    loadWeatherForDate();
+  }, [schedules, selectedDate]);
+
+  const loadWeatherForDate = async () => {
+    const locationSet = new Set<string>();
+
+    // Collect unique locations
+    schedules.forEach((schedule) => {
+      if (schedule.location) {
+        locationSet.add(schedule.location);
+      }
+    });
+
+    const weatherMap = new Map<string, WeatherData>();
+    const dateStr = format(parseISO(selectedDate), 'yyyy-MM-dd');
+
+    // Fetch weather for each location
+    for (const location of locationSet) {
+      const coords = await GeocodingService.getCoordinates(location);
+      if (!coords) continue;
+
+      const forecast = await WeatherService.getForecast(coords.latitude, coords.longitude);
+      const dayWeather = forecast.find((day) => day.date === dateStr);
+      if (dayWeather) {
+        weatherMap.set(location, dayWeather);
+      }
+    }
+
+    setWeatherDataMap(weatherMap);
+  };
 
   // Group schedules by time slot for better visualization
   const groupedSchedules = schedules.reduce(
@@ -88,11 +124,49 @@ export function DailyAgenda({
     }
   };
 
+  // Check for severe weather conditions
+  const severeWeatherJobs = schedules.filter((schedule) => {
+    const weather = weatherDataMap.get(schedule.location);
+    return weather && WeatherService.isSevereWeather(weather);
+  });
+
   return (
     <View className='flex-1 bg-white dark:bg-gray-900 p-4'>
       <Text className='text-xl font-bold mb-4 text-gray-900 dark:text-white'>
         {formatDateReadable(new Date(selectedDate))}
       </Text>
+
+      {/* Severe Weather Alert */}
+      {severeWeatherJobs.length > 0 && (
+        <View className='mb-4 bg-yellow-50 dark:bg-yellow-900/30 border border-yellow-200 dark:border-yellow-700 rounded-lg p-3'>
+          <View className='flex-row items-start gap-2'>
+            <Text className='text-2xl'>⚠️</Text>
+            <View className='flex-1'>
+              <Text className='font-semibold text-yellow-800 dark:text-yellow-200 mb-1'>
+                Severe Weather Alert
+              </Text>
+              <Text className='text-sm text-yellow-700 dark:text-yellow-300'>
+                {severeWeatherJobs.length} job{severeWeatherJobs.length !== 1 ? 's' : ''} affected by adverse weather conditions
+              </Text>
+              <View className='mt-2 gap-1'>
+                {severeWeatherJobs.slice(0, 3).map((job) => {
+                  const weather = weatherDataMap.get(job.location)!;
+                  return (
+                    <Text key={job.id} className='text-xs text-yellow-700 dark:text-yellow-300'>
+                      • {job.jobTitle}: {weather.condition.text} ({Math.round(weather.temp_c)}°)
+                    </Text>
+                  );
+                })}
+                {severeWeatherJobs.length > 3 && (
+                  <Text className='text-xs text-yellow-700 dark:text-yellow-300'>
+                    • +{severeWeatherJobs.length - 3} more...
+                  </Text>
+                )}
+              </View>
+            </View>
+          </View>
+        </View>
+      )}
 
       <ScrollView className='flex-1'>
         {schedules.length === 0 ? (
@@ -176,9 +250,23 @@ export function DailyAgenda({
                           <View className='p-4'>
                             <View className='flex-row justify-between items-start'>
                               <View className='flex-1'>
-                                <Text className='text-lg font-medium text-gray-900 dark:text-white mb-1'>
-                                  {schedule.jobTitle}
-                                </Text>
+                                <View className='flex-row items-center gap-2 mb-1'>
+                                  <Text className='text-lg font-medium text-gray-900 dark:text-white'>
+                                    {schedule.jobTitle}
+                                  </Text>
+                                  {/* Weather Indicator */}
+                                  {weatherDataMap.get(schedule.location) && (
+                                    <View className='flex-row items-center gap-1'>
+                                      <Image
+                                        source={{ uri: WeatherService.getIconUrl(weatherDataMap.get(schedule.location)!.condition.icon) }}
+                                        style={{ width: 20, height: 20 }}
+                                      />
+                                      <Text className='text-sm font-semibold text-gray-700 dark:text-gray-300'>
+                                        {Math.round(weatherDataMap.get(schedule.location)!.temp_c)}°
+                                      </Text>
+                                    </View>
+                                  )}
+                                </View>
                                 <Text className='text-gray-500 dark:text-gray-400 mb-2'>
                                   {startTime} •{' '}
                                   {schedule.assignedTechnicians

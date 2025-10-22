@@ -6,9 +6,11 @@ import {
   Text,
   Dimensions,
   ActivityIndicator,
+  Platform,
 } from 'react-native';
 import { Image } from 'expo-image';
 import { Zoomable } from '@likashefqet/react-native-image-zoom';
+import { gestureHandlerRootHOC } from 'react-native-gesture-handler'; // Add this import
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 import {
   buildCloudinaryUrlMobile,
@@ -26,6 +28,12 @@ export interface FastImageViewerProps {
   doubleTapToZoomEnabled?: boolean;
   title?: string;
   getSubtitle?: (index: number, currentImage: any) => string;
+  minScale?: number;
+  maxScale?: number;
+  doubleTapScale?: number;
+  onZoomInteractionStart?: () => void;
+  onZoomInteractionEnd?: () => void;
+  onDoubleTap?: (zoomType: any) => void;
 }
 
 // Cloudinary configuration
@@ -34,7 +42,7 @@ const CLOUD_NAME = 'dhu4yrn5k';
 /**
  * A custom image viewer component using expo-image with zoom capabilities
  */
-export const FastImageViewer: React.FC<FastImageViewerProps> = ({
+const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
   images,
   imageIndex = 0,
   visible,
@@ -124,11 +132,33 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
         />
 
         {/* Image Container with Zoomable */}
-        <View className='flex-1 relative'>
+        <View
+          style={{
+            flex: 1,
+            width: Dimensions.get('window').width,
+            height: Dimensions.get('window').height * 0.8,
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
           <Zoomable
-            minZoom={1}
-            maxZoom={4}
-            doubleTapZoom={doubleTapToZoomEnabled ? 2 : 1}
+            minScale={1}
+            maxScale={5}
+            doubleTapScale={3}
+            isDoubleTapEnabled={doubleTapToZoomEnabled}
+            isSingleTapEnabled={false}
+            isPanEnabled={true}
+            isPinchEnabled={true}
+            onInteractionStart={() => {
+              // Handle interaction start if needed
+            }}
+            onInteractionEnd={() => {
+              // Handle interaction end if needed
+            }}
+            onDoubleTap={(zoomType) => {
+              // Handle double tap events
+              console.log('Double tap zoom type:', zoomType);
+            }}
           >
             <Image
               source={{
@@ -148,7 +178,18 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
 
           {/* Loading indicator */}
           {isLoading && (
-            <View className='absolute inset-0 justify-center items-center bg-black/50'>
+            <View
+              style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                justifyContent: 'center',
+                alignItems: 'center',
+                backgroundColor: 'rgba(0, 0, 0, 0.5)',
+              }}
+            >
               <ActivityIndicator size='large' color='#ffffff' />
             </View>
           )}
@@ -179,3 +220,8 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     </Modal>
   );
 };
+
+// Export wrapped component for Android modal compatibility
+export const FastImageViewer = Platform.OS === 'android' 
+  ? gestureHandlerRootHOC(FastImageViewerComponent)
+  : FastImageViewerComponent;

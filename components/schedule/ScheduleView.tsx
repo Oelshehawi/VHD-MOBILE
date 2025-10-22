@@ -183,6 +183,7 @@ export function ScheduleView({
             currentDate={currentDate}
             onDateChange={onDateChange}
             appointments={appointments}
+            schedules={monthSchedules}
             onDayPress={handleDayPress}
           />
 
