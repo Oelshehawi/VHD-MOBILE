@@ -54,12 +54,6 @@ const logUploadService = (message: string, details?: any) => {
   logUpload(message, details);
 };
 
-// Memory pressure monitoring
-const checkMemoryPressure = (): boolean => {
-  // Platform-specific memory monitoring could be added here
-  // For now, we'll use a simple heuristic based on active workers
-  return activeWorkers >= CONCURRENT_WORKERS;
-};
 
 // Simple batch processing - no locking needed since PowerSync auto-sync is disabled
 const getBatchForWorker = (allAttachments: any[], workerIndex: number, totalWorkers: number): any[] => {

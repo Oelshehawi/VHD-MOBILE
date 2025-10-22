@@ -97,17 +97,19 @@ export default function ProfileScreen() {
 
   if (!displayUser) {
     return (
-      <View className='flex-1 bg-white dark:bg-gray-950 justify-center items-center p-4'>
-        <Text className='text-gray-800 dark:text-gray-400'>
-          {isOffline ? 'Offline - No cached data available' : 'Loading...'}
-        </Text>
-      </View>
+      <SafeAreaView className='flex-1 bg-white dark:bg-gray-950'>
+        <View className='flex-1 justify-center items-center p-4'>
+          <Text className='text-gray-800 dark:text-gray-400'>
+            {isOffline ? 'Offline - No cached data available' : 'Loading...'}
+          </Text>
+        </View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView>
-      <ScrollView className='flex-1 bg-white dark:bg-gray-950 p-4'>
+      <SafeAreaView className='flex-1 bg-white dark:bg-gray-950'>
+        <ScrollView className='flex-1 p-4'>
         <Stack.Screen options={{ headerShown: false }} />
 
         {isOffline && (
@@ -219,6 +221,6 @@ export default function ProfileScreen() {
           </Text>
         </TouchableOpacity>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
   );
 }

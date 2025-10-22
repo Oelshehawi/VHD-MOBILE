@@ -151,7 +151,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   );
 
   return (
-    <SafeAreaView className='flex-1 bg-gray-100 dark:bg-gray-900'>
+    <SafeAreaView edges={["top"]}  className='flex-1 bg-gray-100 dark:bg-gray-900'>
       <StatusBar
         barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={colorScheme === 'dark' ? '#111827' : '#FFFFFF'}

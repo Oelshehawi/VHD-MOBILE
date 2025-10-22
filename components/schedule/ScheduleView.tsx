@@ -6,6 +6,7 @@ import { Schedule, AppointmentType } from '@/types';
 import { MonthView } from './MonthView';
 import { DailyAgenda } from './DailyAgenda';
 import { WeekView } from './WeekView';
+import { InvoiceModal } from './InvoiceModal';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
 
 interface ScheduleViewProps {
@@ -25,6 +26,9 @@ export function ScheduleView({
 }: ScheduleViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(currentDate);
   const [viewMode, setViewMode] = useState<ViewMode>('month');
+  const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
+  const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] =
+    useState<Schedule | null>(null);
 
   // Get schedules for the selected date - adjust query based on role
   const { data: schedules = [] } = useQuery<Schedule>(
@@ -82,16 +86,33 @@ export function ScheduleView({
     [onDateChange]
   );
 
-  // Handle schedule press - for now, this is a placeholder
-  // In the future, this could open a schedule detail modal
+  // Helper function to safely extract technician ID
+  const getTechnicianId = (technicians: any): string => {
+    if (typeof technicians === 'string') {
+      try {
+        const parsed = JSON.parse(technicians);
+        return Array.isArray(parsed) ? parsed[0] : technicians.split(',')[0] || '';
+      } catch {
+        return technicians.split(',')[0] || '';
+      }
+    }
+    if (Array.isArray(technicians) && technicians.length > 0) {
+      return technicians[0];
+    }
+    return '';
+  };
+
+  // Handle schedule press - open invoice modal
   const handleSchedulePress = useCallback((schedule: Schedule) => {
-    console.log('Schedule pressed:', schedule.id);
-    // TODO: Open schedule detail modal or navigate to detail screen
+    if (schedule.invoiceRef) {
+      setSelectedScheduleForInvoice(schedule);
+      setInvoiceModalVisible(true);
+    }
   }, []);
 
 
   return (
-    <SafeAreaView className='flex-1 bg-white dark:bg-gray-900'>
+    <SafeAreaView edges={["top"]} className='flex-1 bg-white dark:bg-gray-900'>
       <StatusBar barStyle='light-content' backgroundColor='#22543D' />
 
       {/* Tab Navigation Bar */}
@@ -190,6 +211,17 @@ export function ScheduleView({
           schedules={schedules}
           isManager={isManager}
           userId={userId}
+        />
+      )}
+
+      {/* Invoice Modal */}
+      {selectedScheduleForInvoice && (
+        <InvoiceModal
+          visible={invoiceModalVisible}
+          onClose={() => setInvoiceModalVisible(false)}
+          scheduleId={selectedScheduleForInvoice.id}
+          technicianId={getTechnicianId(selectedScheduleForInvoice.assignedTechnicians)}
+          isManager={isManager}
         />
       )}
     </SafeAreaView>

@@ -34,7 +34,7 @@ const ENV = {
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
   DEVELOPMENT: {
-    apiUrl: LOCAL_URL,
+    apiUrl: PROD_URL,
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
 };

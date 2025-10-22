@@ -18,6 +18,7 @@ import {
 } from 'date-fns';
 import { Schedule } from '@/types';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { formatTimeUTC } from '@/utils/date';
 
 interface WeekViewProps {
   schedules: Schedule[];
@@ -26,7 +27,7 @@ interface WeekViewProps {
   onSchedulePress: (schedule: Schedule) => void;
 }
 
-const TIME_SLOTS = Array.from({ length: 16 }, (_, i) => i + 6); // 6 AM to 10 PM (9 PM inclusive)
+const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => i); // 12 AM (0) to 11 PM (23)
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TIME_COLUMN_WIDTH = 60;
 const DAY_COLUMN_WIDTH = (SCREEN_WIDTH - TIME_COLUMN_WIDTH) / 7;
@@ -77,8 +78,13 @@ export function WeekView({
       return schedules.filter((schedule) => {
         try {
           const scheduleDate = parseISO(schedule.startDateTime);
+          // Use UTC hour to match the display time in DailyAgenda
+          const utcHour = scheduleDate.getUTCHours();
+          // Check if the schedule is on the same day (in UTC) and at the same hour (in UTC)
+          const dayUTC = new Date(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
+          const scheduleDateUTC = new Date(scheduleDate.getUTCFullYear(), scheduleDate.getUTCMonth(), scheduleDate.getUTCDate());
           return (
-            isSameDay(scheduleDate, day) && scheduleDate.getHours() === hour
+            dayUTC.getTime() === scheduleDateUTC.getTime() && utcHour === hour
           );
         } catch (err) {
           console.error('Error parsing schedule date:', err);
@@ -180,7 +186,10 @@ export function WeekView({
       {/* Scrollable Time Grid */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
         {TIME_SLOTS.map((hour) => {
-          const timeLabel = format(new Date().setHours(hour, 0, 0, 0), 'ha');
+          // Create a UTC time for display
+          const utcDate = new Date();
+          utcDate.setUTCHours(hour, 0, 0, 0);
+          const timeLabel = formatTimeUTC(utcDate);
 
           return (
             <View

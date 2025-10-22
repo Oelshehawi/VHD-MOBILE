@@ -8,15 +8,12 @@ import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import { PhotoAttachmentQueue } from './PhotoAttachmentQueue';
 import Logger from 'js-logger';
 import { KVStorage } from '../storage/KVStorage';
-import Constants from 'expo-constants';
-import { SQLJSOpenFactory } from '@powersync/adapter-sql-js';
 
 Logger.useDefaults();
 
 Logger.setLevel(Logger.DEBUG);
 
 // Check if running in Expo Go
-const isExpoGo = Constants.executionEnvironment === 'storeClient';
 
 export class System {
   KVstorage: KVStorage;
@@ -30,17 +27,12 @@ export class System {
     this.backendConnector = new BackendConnector(this);
     this.storage = this.backendConnector.storage;
 
-    // Log adapter selection
-    Logger.info(`🔧 Initializing PowerSync with ${isExpoGo ? 'SQL.js adapter (Expo Go)' : 'native Quick SQLite adapter'}`);
+  
 
     // Switch between adapters based on execution environment
     this.powersync = new PowerSyncDatabase({
       schema: AppSchema,
-      database: isExpoGo
-        ? new SQLJSOpenFactory({
-            dbFilename: 'test.db',
-          })
-        : {
+      database: {
             dbFilename: 'test.db',
           },
     });

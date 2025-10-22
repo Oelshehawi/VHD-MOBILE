@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   Modal,
   View,
@@ -8,13 +8,7 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import { Image } from 'expo-image';
-import { Gesture, GestureDetector } from 'react-native-gesture-handler';
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withSpring,
-  runOnJS,
-} from 'react-native-reanimated';
+import { Zoomable } from '@likashefqet/react-native-image-zoom';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 import {
   buildCloudinaryUrlMobile,
@@ -54,12 +48,6 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
   const [currentIndex, setCurrentIndex] = useState(imageIndex);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Zoom and pan animation values
-  const scale = useSharedValue(1);
-  const translateX = useSharedValue(0);
-  const translateY = useSharedValue(0);
-  const savedScale = useSharedValue(1);
-
   // Calculate optimal width for viewer images
   const targetWidth = useMemo(() => {
     const screenWidth = Math.min(Dimensions.get('window').width, 1080);
@@ -83,18 +71,6 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     });
   }, [images, targetWidth]);
 
-  // Reset zoom when image changes
-  useEffect(() => {
-    if (visible) {
-      setCurrentIndex(imageIndex);
-      scale.value = 1;
-      translateX.value = 0;
-      translateY.value = 0;
-      savedScale.value = 1;
-      setIsLoading(true);
-    }
-  }, [imageIndex, visible]);
-
   // Create subtitle for the header
   const getHeaderSubtitle = () => {
     if (!images || !images[currentIndex]) {
@@ -112,92 +88,10 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
     }
   };
 
-  // Animated style for zoom and pan
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { scale: scale.value },
-      { translateX: translateX.value },
-      { translateY: translateY.value },
-    ],
-  }));
-
-  // Pan gesture for dragging when zoomed
-  const panGesture = Gesture.Pan()
-    .onUpdate((event) => {
-      if (scale.value > 1) {
-        translateX.value = event.translationX;
-        translateY.value = event.translationY;
-      }
-    })
-    .onEnd(() => {
-      // Reset position if not zoomed
-      if (scale.value <= 1) {
-        translateX.value = withSpring(0);
-        translateY.value = withSpring(0);
-      }
-    });
-
-  // Pinch gesture for zooming
-  const pinchGesture = Gesture.Pinch()
-    .onUpdate((event) => {
-      scale.value = savedScale.value * event.scale;
-    })
-    .onEnd(() => {
-      savedScale.value = scale.value;
-    });
-
-  // Double tap to zoom
-  const doubleTapGesture = Gesture.Tap()
-    .numberOfTaps(2)
-    .onStart(() => {
-      if (doubleTapToZoomEnabled) {
-        if (scale.value > 1) {
-          // Zoom out
-          scale.value = withSpring(1);
-          translateX.value = withSpring(0);
-          translateY.value = withSpring(0);
-          savedScale.value = 1;
-        } else {
-          // Zoom in
-          scale.value = withSpring(2);
-          savedScale.value = 2;
-        }
-      }
-    });
-
-  // Swipe to close
-  const swipeGesture = Gesture.Pan()
-    .onUpdate((event) => {
-      if (swipeToCloseEnabled && scale.value <= 1) {
-        translateY.value = event.translationY;
-      }
-    })
-    .onEnd((event) => {
-      if (swipeToCloseEnabled && scale.value <= 1) {
-        const threshold = 100;
-        if (Math.abs(event.translationY) > threshold && event.velocityY > 500) {
-          runOnJS(onRequestClose)();
-        } else {
-          translateY.value = withSpring(0);
-        }
-      }
-    });
-
-  // Combine gestures
-  const composedGesture = Gesture.Simultaneous(
-    swipeGesture,
-    Gesture.Simultaneous(pinchGesture, panGesture),
-    doubleTapGesture
-  );
-
   // Navigation functions
   const goToPrevious = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1);
-      scale.value = 1;
-      translateX.value = 0;
-      translateY.value = 0;
-      savedScale.value = 1;
       setIsLoading(true);
     }
   };
@@ -205,10 +99,6 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
   const goToNext = () => {
     if (currentIndex < images.length - 1) {
       setCurrentIndex(currentIndex + 1);
-      scale.value = 1;
-      translateX.value = 0;
-      translateY.value = 0;
-      savedScale.value = 1;
       setIsLoading(true);
     }
   };
@@ -233,29 +123,28 @@ export const FastImageViewer: React.FC<FastImageViewerProps> = ({
           onClose={onRequestClose}
         />
 
-        {/* Image Container */}
+        {/* Image Container with Zoomable */}
         <View className='flex-1 relative'>
-          <GestureDetector gesture={composedGesture}>
-            <Animated.View
-              style={animatedStyle}
-              className='flex-1 justify-center items-center'
-            >
-              <Image
-                source={{
-                  uri: currentImage.uri,
-                  cacheKey: currentImage.cacheKey,
-                }}
-                style={{
-                  width: Dimensions.get('window').width,
-                  height: Dimensions.get('window').height * 0.8,
-                }}
-                contentFit='contain'
-                cachePolicy='disk'
-                onLoad={() => setIsLoading(false)}
-                onError={() => setIsLoading(false)}
-              />
-            </Animated.View>
-          </GestureDetector>
+          <Zoomable
+            minZoom={1}
+            maxZoom={4}
+            doubleTapZoom={doubleTapToZoomEnabled ? 2 : 1}
+          >
+            <Image
+              source={{
+                uri: currentImage.uri,
+                cacheKey: currentImage.cacheKey,
+              }}
+              style={{
+                width: Dimensions.get('window').width,
+                height: Dimensions.get('window').height * 0.8,
+              }}
+              contentFit='contain'
+              cachePolicy='disk'
+              onLoad={() => setIsLoading(false)}
+              onError={() => setIsLoading(false)}
+            />
+          </Zoomable>
 
           {/* Loading indicator */}
           {isLoading && (

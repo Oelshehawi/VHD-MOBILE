@@ -9,6 +9,7 @@ import './global.css';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
@@ -40,7 +41,7 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
     ...FontAwesome.font,
   });
 
-  useEffect(() => {
+useEffect(() => {
     if (isLoaded) {
       SplashScreen.hideAsync();
 
@@ -109,20 +110,22 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   return (
-    <SafeAreaProvider>
-      <ClerkProvider
-        publishableKey={CLERK_PUBLISHABLE_KEY!}
-        tokenCache={tokenCache}
-        __experimental_resourceCache={resourceCache}
-      >
-        <InitialLayout>
-          <ThemeProvider>
-            <PowerSyncProvider>
-              <Slot />
-            </PowerSyncProvider>
-          </ThemeProvider>
-        </InitialLayout>
-      </ClerkProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={{ flex: 1 }}>
+      <SafeAreaProvider>
+        <ClerkProvider
+          publishableKey={CLERK_PUBLISHABLE_KEY!}
+          tokenCache={tokenCache}
+          __experimental_resourceCache={resourceCache}
+        >
+          <InitialLayout>
+            <ThemeProvider>
+              <PowerSyncProvider>
+                <Slot />
+              </PowerSyncProvider>
+            </ThemeProvider>
+          </InitialLayout>
+        </ClerkProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
