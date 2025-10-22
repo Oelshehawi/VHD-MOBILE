@@ -222,6 +222,7 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
 };
 
 // Export wrapped component for Android modal compatibility
-export const FastImageViewer = Platform.OS === 'android' 
-  ? gestureHandlerRootHOC(FastImageViewerComponent)
-  : FastImageViewerComponent;
+export const FastImageViewer =
+  Platform.OS === 'android'
+    ? gestureHandlerRootHOC(FastImageViewerComponent)
+    : FastImageViewerComponent;
