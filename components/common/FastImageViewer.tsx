@@ -1,4 +1,10 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, {
+  useState,
+  useMemo,
+  useEffect,
+  useRef,
+  useCallback,
+} from 'react';
 import {
   Modal,
   View,
@@ -15,7 +21,9 @@ import {
   ZoomableRef,
   ZOOM_TYPE,
 } from '@likashefqet/react-native-image-zoom';
-import { gestureHandlerRootHOC } from 'react-native-gesture-handler';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { scheduleOnRN } from 'react-native-worklets';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 import {
   buildCloudinaryUrlMobile,
@@ -88,6 +96,7 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
   const zoomableRef = useRef<ZoomableRef | null>(null);
   const [currentIndex, setCurrentIndex] = useState(imageIndex);
   const [isLoading, setIsLoading] = useState(true);
+  const [isZoomed, setIsZoomed] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
@@ -147,13 +156,43 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
     }
   };
 
-  const handleInteractionStart = useCallback(() => {
+  // Navigation functions
+  const goToPrevious = useCallback(() => {
+    setCurrentIndex((prev) => {
+      if (prev <= 0) {
+        return prev;
+      }
+      setIsLoading(true);
+      return prev - 1;
+    });
+  }, []);
+
+  const goToNext = useCallback(() => {
+    setCurrentIndex((prev) => {
+      if (prev >= images.length - 1) {
+        return prev;
+      }
+      setIsLoading(true);
+      return prev + 1;
+    });
+  }, [images.length]);
+
+  // Zoom interaction handlers
+  const handleZoomStart = useCallback(() => {
+    setIsZoomed(true);
     onZoomInteractionStart?.();
   }, [onZoomInteractionStart]);
 
-  const handleInteractionEnd = useCallback(() => {
+  const handleZoomEnd = useCallback(() => {
+    // Check if we're back to minimum zoom after interaction ends
+    setTimeout(() => {
+      const info = zoomableRef.current?.getInfo?.();
+      if (info && info.transformations.scale <= minScale + 0.1) {
+        setIsZoomed(false);
+      }
+    }, 100);
     onZoomInteractionEnd?.();
-  }, [onZoomInteractionEnd]);
+  }, [onZoomInteractionEnd, minScale]);
 
   const handleDoubleTap = useCallback(
     (zoomType: ZOOM_TYPE) => {
@@ -170,26 +209,35 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
     setIsLoading(false);
   }, []);
 
-  // Navigation functions
-  const goToPrevious = () => {
-    setCurrentIndex((prev) => {
-      if (prev <= 0) {
-        return prev;
-      }
-      setIsLoading(true);
-      return prev - 1;
-    });
-  };
+  // Swipe gesture using modern Gesture API
+  const swipeGesture = Gesture.Pan()
+    .enabled(images.length > 1 && !isZoomed)
+    .minPointers(1)
+    .maxPointers(1)
+    .onEnd((event) => {
+      const { translationX, velocityX } = event;
+      const swipeThreshold = 50;
+      const velocityThreshold = 500;
 
-  const goToNext = () => {
-    setCurrentIndex((prev) => {
-      if (prev >= images.length - 1) {
-        return prev;
+      // Swipe left to go to next image
+      if (
+        translationX < -swipeThreshold ||
+        velocityX < -velocityThreshold
+      ) {
+        if (currentIndex < images.length - 1) {
+          scheduleOnRN(goToNext);
+        }
       }
-      setIsLoading(true);
-      return prev + 1;
+      // Swipe right to go to previous image
+      else if (
+        translationX > swipeThreshold ||
+        velocityX > velocityThreshold
+      ) {
+        if (currentIndex > 0) {
+          scheduleOnRN(goToPrevious);
+        }
+      }
     });
-  };
 
   if (!visible || !optimizedImages[currentIndex]) return null;
 
@@ -203,86 +251,91 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
       presentationStyle='overFullScreen'
       transparent={true}
     >
-      <View className='flex-1 bg-black'>
-        {/* Header */}
-        <FastImageViewerHeader
-          title={title}
-          subtitle={getHeaderSubtitle()}
-          onClose={onRequestClose}
-        />
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <View className='flex-1 bg-black'>
+          {/* Header */}
+          <FastImageViewerHeader
+            title={title}
+            subtitle={getHeaderSubtitle()}
+            onClose={onRequestClose}
+          />
 
-        {/* Image Container with Zoomable */}
-        <View
-          style={[
-            styles.viewerContainer,
-            { width: viewerWidth, height: viewerHeight },
-          ]}
-        >
-          <Zoomable
-            ref={zoomableRef}
-            minScale={minScale}
-            maxScale={maxScale}
-            doubleTapScale={doubleTapScale}
-            isDoubleTapEnabled={doubleTapToZoomEnabled}
-            isSingleTapEnabled={false}
-            isPanEnabled={true}
-            isPinchEnabled={true}
-            maxPanPointers={2}
-            onInteractionStart={handleInteractionStart}
-            onInteractionEnd={handleInteractionEnd}
-            onDoubleTap={handleDoubleTap}
-            style={styles.zoomable}
-            key={`${currentImage.cacheKey ?? currentImage.uri}-${currentIndex}`}
+          {/* Image Container with Zoomable */}
+          <View
+            style={[
+              styles.viewerContainer,
+              { width: viewerWidth, height: viewerHeight },
+            ]}
           >
-            <Image
-              source={{
-                uri: currentImage.uri,
-                cacheKey: currentImage.cacheKey,
-              }}
-              style={{ width: viewerWidth, height: viewerHeight }}
-              contentFit='contain'
-              cachePolicy='disk'
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-            />
-          </Zoomable>
+            <GestureDetector gesture={swipeGesture}>
+              <View style={{ flex: 1 }}>
+                <Zoomable
+                  ref={zoomableRef}
+                  minScale={minScale}
+                  maxScale={maxScale}
+                  doubleTapScale={doubleTapScale}
+                  isDoubleTapEnabled={doubleTapToZoomEnabled}
+                  isSingleTapEnabled={false}
+                  isPanEnabled={true}
+                  isPinchEnabled={true}
+                  maxPanPointers={2}
+                  onInteractionStart={handleZoomStart}
+                  onInteractionEnd={handleZoomEnd}
+                  onDoubleTap={handleDoubleTap}
+                  style={styles.zoomable}
+                  key={`${
+                    currentImage.cacheKey ?? currentImage.uri
+                  }-${currentIndex}`}
+                >
+                  <Image
+                    source={{
+                      uri: currentImage.uri,
+                      cacheKey: currentImage.cacheKey,
+                    }}
+                    style={{ width: viewerWidth, height: viewerHeight }}
+                    contentFit='contain'
+                    cachePolicy='disk'
+                    onLoad={handleImageLoad}
+                    onError={handleImageError}
+                  />
+                </Zoomable>
+              </View>
+            </GestureDetector>
 
-          {/* Loading indicator */}
-          {isLoading && (
-            <View style={styles.loadingOverlay}>
-              <ActivityIndicator size='large' color='#ffffff' />
-            </View>
+            {/* Loading indicator */}
+            {isLoading && (
+              <View style={styles.loadingOverlay}>
+                <ActivityIndicator size='large' color='#ffffff' />
+              </View>
+            )}
+          </View>
+
+          {/* Navigation arrows */}
+          {images.length > 1 && (
+            <>
+              {currentIndex > 0 && (
+                <TouchableOpacity
+                  className='absolute left-4 bottom-20 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
+                  onPress={goToPrevious}
+                >
+                  <Text className='text-white text-xl font-bold'>‹</Text>
+                </TouchableOpacity>
+              )}
+              {currentIndex < images.length - 1 && (
+                <TouchableOpacity
+                  className='absolute right-4 bottom-20 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
+                  onPress={goToNext}
+                >
+                  <Text className='text-white text-xl font-bold'>›</Text>
+                </TouchableOpacity>
+              )}
+            </>
           )}
         </View>
-
-        {/* Navigation arrows */}
-        {images.length > 1 && (
-          <>
-            {currentIndex > 0 && (
-              <TouchableOpacity
-                className='absolute left-4 top-1/2 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
-                onPress={goToPrevious}
-              >
-                <Text className='text-white text-xl font-bold'>‹</Text>
-              </TouchableOpacity>
-            )}
-            {currentIndex < images.length - 1 && (
-              <TouchableOpacity
-                className='absolute right-4 top-1/2 -translate-y-4 bg-black/50 rounded-full w-10 h-10 justify-center items-center'
-                onPress={goToNext}
-              >
-                <Text className='text-white text-xl font-bold'>›</Text>
-              </TouchableOpacity>
-            )}
-          </>
-        )}
-      </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 };
 
 // Export wrapped component for Android modal compatibility
-export const FastImageViewer =
-  Platform.OS === 'android'
-    ? gestureHandlerRootHOC(FastImageViewerComponent)
-    : FastImageViewerComponent;
+export const FastImageViewer = FastImageViewerComponent;
