@@ -1,7 +1,9 @@
-import * as ImageManipulator from 'expo-image-manipulator';
 import { File } from 'expo-file-system';
+import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 
 const MAX_DIMENSION = 2560;
+
+export type PreparedImageFormat = 'jpeg' | 'png';
 
 export interface PreparedImage {
   uri: string;
@@ -10,21 +12,29 @@ export interface PreparedImage {
   size: number;
 }
 
+export interface PrepareImageOptions {
+  format?: PreparedImageFormat;
+  /**
+   * Compression factor for JPEG output (0-1). Ignored for PNG.
+   * Defaults to 1.0 when not provided.
+   */
+  compress?: number;
+}
+
 /**
- * Resize image to 2560×2560 max, quality 1.0
- * Automatically converts HEIC → JPEG
- *
- * This reduces file sizes from MB to KB range while maintaining excellent quality,
- * matching Cloudinary's server-side transform (w_2560,h_2560,c_limit,q_auto:good,f_auto)
- *
- * @param sourceUri URI of the original image
- * @returns Prepared image with URI, dimensions, and size
+ * Resize image to 2560×2560 max while preserving aspect ratio.
+ * Converts source into the requested output format.
  */
-export async function prepareImageForUpload(sourceUri: string): Promise<PreparedImage> {
-  // Get original dimensions
+export async function prepareImageForUpload(
+  sourceUri: string,
+  options: PrepareImageOptions = {}
+): Promise<PreparedImage> {
+  const targetFormat: PreparedImageFormat = options.format ?? 'jpeg';
+
+  // Determine original dimensions without applying transformations.
   const dimensions = await getImageDimensions(sourceUri);
 
-  // Calculate resize to fit within MAX_DIMENSION (don't upscale)
+  // Calculate resize scale (never upscale).
   const scale = Math.min(
     MAX_DIMENSION / dimensions.width,
     MAX_DIMENSION / dimensions.height,
@@ -34,17 +44,21 @@ export async function prepareImageForUpload(sourceUri: string): Promise<Prepared
   const newWidth = Math.round(dimensions.width * scale);
   const newHeight = Math.round(dimensions.height * scale);
 
-  // Resize (HEIC automatically converts to JPEG)
-  const manipulated = await ImageManipulator.manipulateAsync(
-    sourceUri,
-    [{ resize: { width: newWidth, height: newHeight } }],
-    {
-      compress: 1.0,
-      format: ImageManipulator.SaveFormat.JPEG
-    }
-  );
+  // Resize while preserving quality.
+  const context = ImageManipulator.manipulate(sourceUri);
+  if (newWidth !== dimensions.width || newHeight !== dimensions.height) {
+    context.resize({ width: newWidth, height: newHeight });
+  }
 
-  // Get file size using new File API
+  const imageRef = await context.renderAsync();
+  const manipulated = await imageRef.saveAsync({
+    compress: targetFormat === 'jpeg' ? options.compress ?? 1.0 : 1.0,
+    format:
+      targetFormat === 'png'
+        ? SaveFormat.PNG
+        : SaveFormat.JPEG,
+  });
+
   const file = new File(manipulated.uri);
   const size = file.size ?? 0;
 
@@ -52,14 +66,17 @@ export async function prepareImageForUpload(sourceUri: string): Promise<Prepared
     uri: manipulated.uri,
     width: manipulated.width,
     height: manipulated.height,
-    size
+    size,
   };
 }
 
 /**
- * Helper to get image dimensions without full manipulation
+ * Helper to read image dimensions without writing a new file.
  */
-async function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
-  const result = await ImageManipulator.manipulateAsync(uri, [], {});
-  return { width: result.width, height: result.height };
+async function getImageDimensions(
+  uri: string
+): Promise<{ width: number; height: number }> {
+  const context = ImageManipulator.manipulate(uri);
+  const imageRef = await context.renderAsync();
+  return { width: imageRef.width, height: imageRef.height };
 }

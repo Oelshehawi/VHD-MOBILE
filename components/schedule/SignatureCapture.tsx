@@ -14,6 +14,8 @@ import { usePowerSync } from '@powersync/react-native';
 import { PhotoType, showToast, SignatureType } from '@/utils/photos';
 import { useSystem } from '@/services/database/System';
 import { AttachmentRecord } from '@powersync/attachments';
+import { checkAndStartBackgroundUpload } from '@/services/background/BackgroundUploadService'; // Add this import
+import { logPhoto, logPhotoError } from '@/utils/DebugLogger'; // Add this import for logging
 
 // Define extended attachment type locally
 interface ExtendedAttachmentRecord extends AttachmentRecord {
@@ -78,6 +80,12 @@ export function SignatureCapture({
 
     try {
       setIsSaving(true);
+      logPhoto('Starting signature save process', {
+        // Add logging
+        scheduleId: schedule.id,
+        technicianId,
+        signerName,
+      });
 
       // Get the queue from system
       const queue = system.attachmentQueue;
@@ -95,6 +103,12 @@ export function SignatureCapture({
         signerName // Pass the signer name
       )) as ExtendedAttachmentRecord;
 
+      logPhoto('Signature saved to queue', {
+        // Add logging
+        attachmentId: attachmentRecord.id,
+        filename: attachmentRecord.filename,
+      });
+
       // Update schedule record in PowerSync database to trigger UI refresh
       try {
         const signatureData = {
@@ -111,19 +125,39 @@ export function SignatureCapture({
           `UPDATE schedules SET signature = ? WHERE id = ?`,
           [JSON.stringify(signatureData), schedule.id]
         );
+        logPhoto('Schedule updated with signature data'); // Add logging
       } catch (dbError) {
-        console.error('Failed to update schedule signature in database:', dbError);
+        logPhotoError(
+          'Failed to update schedule signature in database:',
+          dbError
+        ); // Add logging
         // Don't throw - the attachment is saved, just the UI won't update immediately
       }
 
-      // PowerSync automatically syncs signature every 5 seconds
-      // No manual service call needed - signature will upload in background automatically
+      // Start background upload process for signature (like PhotoCapture does)
+      logPhoto('Starting background upload service for signature'); // Add logging
+      try {
+        await checkAndStartBackgroundUpload();
+        logPhoto(
+          'Background upload service started successfully for signature'
+        ); // Add logging
+      } catch (uploadError) {
+        logPhotoError(
+          'Failed to start background upload service for signature',
+          uploadError
+        ); // Add logging
+      }
+
       showToast('Signature saved and will sync when online');
 
       // Close immediately
       onSignatureCapture();
     } catch (error) {
-      console.error('Error handling signature:', error);
+      logPhotoError('Error handling signature:', {
+        // Add logging
+        error: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       Alert.alert(
         'Error',
         error instanceof Error
@@ -132,6 +166,7 @@ export function SignatureCapture({
       );
     } finally {
       setIsSaving(false);
+      logPhoto('Signature save process finished'); // Add logging
     }
   };
 

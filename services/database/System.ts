@@ -8,6 +8,7 @@ import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import { PhotoAttachmentQueue } from './PhotoAttachmentQueue';
 import Logger from 'js-logger';
 import { KVStorage } from '../storage/KVStorage';
+import { OPSqliteOpenFactory } from '@powersync/op-sqlite';
 
 Logger.useDefaults();
 
@@ -15,6 +16,9 @@ Logger.setLevel(Logger.DEBUG);
 
 // Check if running in Expo Go
 
+const opSqlite = new OPSqliteOpenFactory({
+  dbFilename: 'powersync.db'
+});
 export class System {
   KVstorage: KVStorage;
   storage: CloudinaryStorageAdapter;
@@ -32,9 +36,7 @@ export class System {
     // Switch between adapters based on execution environment
     this.powersync = new PowerSyncDatabase({
       schema: AppSchema,
-      database: {
-            dbFilename: 'test.db',
-          },
+      database: opSqlite
     });
 
     this.attachmentQueue = new PhotoAttachmentQueue({

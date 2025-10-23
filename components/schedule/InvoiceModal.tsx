@@ -17,6 +17,7 @@ import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
 import { ApiClient } from '@/services/ApiClient';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { ATTACHMENT_TABLE, AttachmentState } from '@powersync/attachments';
 
 interface InvoiceModalProps {
   visible: boolean;
@@ -66,6 +67,15 @@ export function InvoiceModal({
   );
 
   const invoice = invoiceData[0] || null;
+
+  const { data: signatureAttachmentData = [] } = useQuery<any>(
+    scheduleId
+      ? `SELECT id, state, timestamp FROM ${ATTACHMENT_TABLE} WHERE scheduleId = ? AND type = 'signature' ORDER BY timestamp DESC LIMIT 1`
+      : `SELECT id FROM ${ATTACHMENT_TABLE} WHERE 0`,
+    [scheduleId || '']
+  );
+
+  const latestSignatureAttachment = signatureAttachmentData[0] || null;
 
   if (!visible || !invoice) return null;
 
@@ -138,9 +148,21 @@ export function InvoiceModal({
 
   const hasBeforePhotos = photos.before?.length > 0;
   const hasAfterPhotos = photos.after?.length > 0;
-  const hasSignature = !!signature;
-  const isSignatureUploading = hasSignature && signature?.status === 'pending';
-  const isWorkComplete = hasBeforePhotos && hasAfterPhotos && hasSignature && !isSignatureUploading;
+
+  const attachmentStateValue =
+    latestSignatureAttachment?.state === undefined ||
+    latestSignatureAttachment?.state === null
+      ? undefined
+      : Number(latestSignatureAttachment.state);
+  const hasPendingAttachment = !!latestSignatureAttachment;
+  const attachmentSynced =
+    attachmentStateValue !== undefined &&
+    !Number.isNaN(attachmentStateValue) &&
+    attachmentStateValue === AttachmentState.SYNCED;
+
+  const hasSignature = !!signature || (hasPendingAttachment && !attachmentSynced);
+  const isSignatureUploading =
+  hasPendingAttachment && !attachmentSynced
 
   // Send invoice function
   const sendInvoice = async () => {
@@ -285,7 +307,7 @@ export function InvoiceModal({
             <View className='p-4 rounded-lg flex-row justify-center items-center bg-blue-600'>
               <View className='h-5 w-5 rounded-full border-2 border-t-white animate-spin mr-2' />
               <Text className='text-white font-medium text-lg'>
-                📤 Uploading Signature...
+                📤 Syncing Signature...
               </Text>
             </View>
           ) : (

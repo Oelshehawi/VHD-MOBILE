@@ -7,7 +7,12 @@ import {
   AttachmentRecord,
   AttachmentState,
 } from '@powersync/attachments';
-import { logDatabase, logDatabaseError, logPhoto, logPhotoError } from '@/utils/DebugLogger';
+import {
+  logDatabase,
+  logDatabaseError,
+  logPhoto,
+  logPhotoError,
+} from '@/utils/DebugLogger';
 import { prepareImageForUpload } from '@/utils/imagePrep';
 
 // Extend AttachmentRecord to include the scheduleId property
@@ -30,7 +35,9 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
     // If syncInterval is set to 0, don't initialize automatic sync (manual mode)
     if (this.options.syncInterval === 0) {
-      console.log('[PhotoAttachmentQueue] Manual sync mode enabled - automatic uploads disabled');
+      console.log(
+        '[PhotoAttachmentQueue] Manual sync mode enabled - automatic uploads disabled'
+      );
       return;
     }
 
@@ -53,7 +60,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       recordId: record.id,
       scheduleId: record.scheduleId,
       filename: record.filename,
-      type: record.type
+      type: record.type,
     });
 
     // Ensure state is QUEUED_UPLOAD to prevent download attempts
@@ -102,7 +109,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       if (updates.length > 0) {
         logDatabase('Updating custom fields', {
           updates: updates.length,
-          fields: updates
+          fields: updates,
         });
 
         try {
@@ -124,7 +131,8 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           }
 
           if (record.jobTitle) {
-            (savedRecord as ExtendedAttachmentRecord).jobTitle = record.jobTitle;
+            (savedRecord as ExtendedAttachmentRecord).jobTitle =
+              record.jobTitle;
           }
 
           if (record.type) {
@@ -153,14 +161,14 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
       logDatabase('saveToQueue completed successfully', {
         finalId: savedRecord.id,
-        state: savedRecord.state
+        state: savedRecord.state,
       });
 
       return savedRecord as ExtendedAttachmentRecord;
     } catch (error) {
       logDatabaseError('saveToQueue failed', {
         recordId: record.id,
-        error: error instanceof Error ? error.message : String(error)
+        error: error instanceof Error ? error.message : String(error),
       });
       throw error;
     }
@@ -204,7 +212,8 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     record?: Partial<ExtendedAttachmentRecord>
   ): Promise<ExtendedAttachmentRecord> {
     const photoId = record?.id ?? randomUUID();
-    const filename = record?.filename ?? `${photoId}.jpg`;
+    const filename = record?.filename ?? 
+      `${photoId}.${record?.type === 'signature' ? 'png' : 'jpg'}`;
 
     // Always use QUEUED_UPLOAD state to prevent download attempts
     // Create a new object without the state property from record, if it exists
@@ -237,7 +246,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     }>
   ): Promise<ExtendedAttachmentRecord[]> {
     logPhoto('Starting batchSavePhotosFromUri', {
-      photoCount: photoData?.length || 0
+      photoCount: photoData?.length || 0,
     });
 
     if (!photoData || photoData.length === 0) {
@@ -253,7 +262,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       logPhoto(`Processing photo ${i + 1} of ${photoData.length}`, {
         sourceUri: photo.sourceUri,
         scheduleId: photo.scheduleId,
-        type: photo.type
+        type: photo.type,
       });
 
       try {
@@ -268,11 +277,15 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
         }
 
         // Prepare image (resize to 2560×2560, quality 1.0)
-        logPhoto(`Preparing image ${i + 1} for upload`, { sourceUri: photo.sourceUri });
-        const prepared = await prepareImageForUpload(photo.sourceUri);
+        logPhoto(`Preparing image ${i + 1} for upload`, {
+          sourceUri: photo.sourceUri,
+        });
+        const prepared = await prepareImageForUpload(photo.sourceUri, {
+          format: photo.type === 'signature' ? 'png' : 'jpeg'
+        });
         logPhoto(`Image ${i + 1} prepared`, {
           size: prepared.size,
-          dimensions: `${prepared.width}×${prepared.height}`
+          dimensions: `${prepared.width}×${prepared.height}`,
         });
         const processUri = prepared.uri;
 
@@ -289,7 +302,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
         logPhoto(`Attachment record created for photo ${i + 1}`, {
           id: photoAttachment.id,
-          filename: photoAttachment.filename
+          filename: photoAttachment.filename,
         });
 
         // Set the local URI path
@@ -300,7 +313,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
         logPhoto(`File paths set for photo ${i + 1}`, {
           localUri: photoAttachment.local_uri,
-          destinationUri
+          destinationUri,
         });
 
         // Verify prepared file exists using new File API
@@ -309,28 +322,34 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           const sourceFile = new File(processUri);
           if (!sourceFile.exists) {
             logPhotoError(`Prepared file does not exist for photo ${i + 1}`, {
-              sourceUri: processUri
+              sourceUri: processUri,
             });
             continue;
           }
 
           logPhoto(`Prepared file verified for photo ${i + 1}`, {
-            size: sourceFile.size
+            size: sourceFile.size,
           });
         } catch (sourceCheckError) {
           logPhotoError(`Failed to check prepared file for photo ${i + 1}`, {
             sourceUri: processUri,
-            error: sourceCheckError instanceof Error ? sourceCheckError.message : String(sourceCheckError)
+            error:
+              sourceCheckError instanceof Error
+                ? sourceCheckError.message
+                : String(sourceCheckError),
           });
           continue;
         }
 
         // Check destination directory exists and create if needed using new Directory API
         logPhoto(`Checking destination directory for photo ${i + 1}`, {
-          destinationUri
+          destinationUri,
         });
         try {
-          const destinationDirPath = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
+          const destinationDirPath = destinationUri.substring(
+            0,
+            destinationUri.lastIndexOf('/')
+          );
           const destinationDir = new Directory(destinationDirPath);
           if (!destinationDir.exists) {
             logPhoto(`Creating destination directory: ${destinationDirPath}`);
@@ -340,17 +359,21 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
             logPhoto(`Destination directory exists`);
           }
         } catch (dirError) {
-          logPhotoError(`Failed to prepare destination directory for photo ${i + 1}`, {
-            destinationUri,
-            error: dirError instanceof Error ? dirError.message : String(dirError)
-          });
+          logPhotoError(
+            `Failed to prepare destination directory for photo ${i + 1}`,
+            {
+              destinationUri,
+              error:
+                dirError instanceof Error ? dirError.message : String(dirError),
+            }
+          );
           continue;
         }
 
         // Copy the prepared file
         logPhoto(`Starting file copy for photo ${i + 1}`, {
           from: processUri,
-          to: destinationUri
+          to: destinationUri,
         });
         try {
           const sourceFile = new File(processUri);
@@ -373,9 +396,12 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           logPhotoError(`File copy failed for photo ${i + 1}`, {
             from: processUri,
             to: destinationUri,
-            error: copyError instanceof Error ? copyError.message : String(copyError),
+            error:
+              copyError instanceof Error
+                ? copyError.message
+                : String(copyError),
             errorName: copyError instanceof Error ? copyError.name : 'Unknown',
-            stack: copyError instanceof Error ? copyError.stack : undefined
+            stack: copyError instanceof Error ? copyError.stack : undefined,
           });
           continue;
         }
@@ -387,18 +413,24 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
           if (destinationFile.exists) {
             photoAttachment.size = destinationFile.size ?? 0;
             logPhoto(`File info retrieved for photo ${i + 1}`, {
-              size: destinationFile.size
+              size: destinationFile.size,
             });
           } else {
-            logPhotoError(`Destination file does not exist after copy for photo ${i + 1}`, {
-              destinationUri
-            });
+            logPhotoError(
+              `Destination file does not exist after copy for photo ${i + 1}`,
+              {
+                destinationUri,
+              }
+            );
             continue;
           }
         } catch (verifyError) {
           logPhotoError(`Failed to verify copied file for photo ${i + 1}`, {
             destinationUri,
-            error: verifyError instanceof Error ? verifyError.message : String(verifyError)
+            error:
+              verifyError instanceof Error
+                ? verifyError.message
+                : String(verifyError),
           });
           continue;
         }
@@ -408,7 +440,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       } catch (error) {
         logPhotoError(`Failed to process photo ${i + 1}`, {
           error: error instanceof Error ? error.message : String(error),
-          sourceUri: photo.sourceUri
+          sourceUri: photo.sourceUri,
         });
         // Continue with other photos
       }
@@ -416,14 +448,14 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
     logPhoto('File processing complete', {
       processedCount: attachments.length,
-      originalCount: photoData.length
+      originalCount: photoData.length,
     });
 
     // Then batch save all to queue
     logPhoto('Starting batch save to queue');
     const result = await this.batchSaveToQueue(attachments);
     logPhoto('Batch save completed', {
-      savedCount: result.length
+      savedCount: result.length,
     });
 
     return result;
@@ -452,10 +484,12 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     try {
       // 1. Resize image to 2560×2560 max, quality 1.0
       logPhoto('Preparing image for upload', { sourceUri, scheduleId });
-      const prepared = await prepareImageForUpload(sourceUri);
+      const prepared = await prepareImageForUpload(sourceUri, {
+        format: type === 'signature' ? 'png' : 'jpeg'
+      });
       logPhoto('Image prepared', {
         size: prepared.size,
-        dimensions: `${prepared.width}×${prepared.height}`
+        dimensions: `${prepared.width}×${prepared.height}`,
       });
 
       // 2. Create attachment record
@@ -469,11 +503,16 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
       });
 
       // 3. Set destination path
-      photoAttachment.local_uri = this.getLocalFilePathSuffix(photoAttachment.filename);
+      photoAttachment.local_uri = this.getLocalFilePathSuffix(
+        photoAttachment.filename
+      );
       const destinationUri = this.getLocalUri(photoAttachment.local_uri);
 
       // 4. Ensure destination directory exists using new Directory API
-      const destinationDirPath = destinationUri.substring(0, destinationUri.lastIndexOf('/'));
+      const destinationDirPath = destinationUri.substring(
+        0,
+        destinationUri.lastIndexOf('/')
+      );
       const destinationDir = new Directory(destinationDirPath);
       if (!destinationDir.exists) {
         destinationDir.create();
@@ -504,7 +543,10 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
 
       // 8. Save to queue
       const savedAttachment = await this.saveToQueue(photoAttachment);
-      logPhoto('Photo saved to queue', { id: savedAttachment.id, size: savedAttachment.size });
+      logPhoto('Photo saved to queue', {
+        id: savedAttachment.id,
+        size: savedAttachment.size,
+      });
 
       return savedAttachment as ExtendedAttachmentRecord;
     } catch (error) {
