@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
   Text,
@@ -49,27 +49,8 @@ export function InvoiceModal({
   const [invoiceSent, setInvoiceSent] = useState(false);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
 
-  // Control bottom sheet based on visible prop
-  useEffect(() => {
-    if (visible) {
-      bottomSheetRef.current?.snapToIndex(0);
-    } else {
-      bottomSheetRef.current?.close();
-    }
-  }, [visible]);
-
-  // Reset sheet when schedule changes (but only if already visible)
-  const prevScheduleIdRef = useRef(scheduleId);
-  useEffect(() => {
-    // Only reset if scheduleId changed AND modal is currently visible
-    if (visible && prevScheduleIdRef.current !== scheduleId && bottomSheetRef.current) {
-      bottomSheetRef.current.close();
-      setTimeout(() => {
-        bottomSheetRef.current?.snapToIndex(0);
-      }, 100);
-    }
-    prevScheduleIdRef.current = scheduleId;
-  }, [scheduleId, visible]);
+  // Control bottom sheet index directly based on visible prop
+  const sheetIndex = visible ? 0 : -1;
 
   // First fetch the schedule using the scheduleId
   const scheduleQuery = useQuery<Schedule>(
@@ -515,8 +496,9 @@ export function InvoiceModal({
   return (
     <>
       <BottomSheet
+        key={scheduleId}
         ref={bottomSheetRef}
-        index={-1}
+        index={sheetIndex}
         snapPoints={['75%', '90%']}
         enablePanDownToClose={true}
         enableDynamicSizing={false}
@@ -545,9 +527,10 @@ export function InvoiceModal({
               </View>
               <TouchableOpacity
                 onPress={onClose}
-                className='p-2 bg-gray-100 dark:bg-gray-700 rounded-full'
+                className='w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full items-center justify-center'
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
-                <Text className='text-gray-600 dark:text-gray-300 text-lg'>
+                <Text className='text-gray-600 dark:text-gray-300 text-lg font-bold'>
                   ✕
                 </Text>
               </TouchableOpacity>

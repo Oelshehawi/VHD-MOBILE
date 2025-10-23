@@ -234,6 +234,7 @@ export function ScheduleView({
             isManager={isManager}
             userId={userId}
             showSevereWeatherAlert={false} // Hide weather alert in month view
+            onInvoicePress={handleSchedulePress} // Pass callback to open invoice modal
           />
         </>
       )}
@@ -255,6 +256,7 @@ export function ScheduleView({
           userId={userId}
           onDateChange={handleDateSelection} // Enable navigation in day view
           showSevereWeatherAlert={true} // Show weather alert in day view
+          onInvoicePress={handleSchedulePress} // Pass callback to open invoice modal
         />
       )}
 

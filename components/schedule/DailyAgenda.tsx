@@ -20,7 +20,6 @@ import { formatTimeUTC, formatDateReadable } from '@/utils/date';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { PhotoDocumentationModal } from '../PhotoComponents/PhotoDocumentationModal';
-import { InvoiceModal } from './InvoiceModal';
 import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
 import { GeocodingService } from '@/services/weather/GeocodingService';
 
@@ -31,6 +30,7 @@ interface DailyAgendaProps {
   userId: string;
   onDateChange?: (date: string) => void; // For navigation
   showSevereWeatherAlert?: boolean; // Add this prop to control weather alert visibility
+  onInvoicePress?: (schedule: Schedule) => void; // Callback when invoice is pressed
 }
 
 // Helper function to safely extract technician ID
@@ -224,14 +224,12 @@ export function DailyAgenda({
   userId,
   onDateChange,
   showSevereWeatherAlert = true, // Default to true for backward compatibility
+  onInvoicePress, // Callback for when invoice is pressed
 }: DailyAgendaProps) {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
     null
   );
-  const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
-  const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] =
-    useState<Schedule | null>(null);
   const [weatherDataMap, setWeatherDataMap] = useState<
     Map<string, WeatherData>
   >(new Map());
@@ -345,9 +343,11 @@ export function DailyAgenda({
       return;
     }
 
-    setSelectedScheduleForInvoice(schedule);
-    setInvoiceModalVisible(true);
-  }, []);
+    // Use parent callback if provided
+    if (onInvoicePress) {
+      onInvoicePress(schedule);
+    }
+  }, [onInvoicePress]);
 
   const severeWeatherJobs = useMemo(
     () =>
@@ -525,17 +525,6 @@ export function DailyAgenda({
           location={selectedSchedule.location}
           startDate={selectedSchedule.startDateTime}
           technicianId={getTechnicianId(selectedSchedule.assignedTechnicians)}
-        />
-      )}
-
-      {/* Invoice Modal */}
-      {selectedScheduleForInvoice && (
-        <InvoiceModal
-          visible={invoiceModalVisible}
-          onClose={() => setInvoiceModalVisible(false)}
-          scheduleId={selectedScheduleForInvoice.id}
-          technicianId={userId}
-          isManager={isManager || false}
         />
       )}
     </Animated.View>
