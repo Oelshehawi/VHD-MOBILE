@@ -1,6 +1,6 @@
 export default {
   expo: {
-    runtimeVersion: "1.0.3",
+    runtimeVersion: '1.0.3',
     name: 'Vancouver Hood Doctors',
     slug: 'VHD-App',
     version: '1.0.0',
@@ -71,6 +71,14 @@ export default {
       'expo-router',
       'expo-sqlite',
       'expo-font',
+      [
+        'react-native-maps',
+        {
+          iosGoogleMapsApiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_IOS_KEY,
+          androidGoogleMapsApiKey:
+            process.env.EXPO_PUBLIC_GOOGLE_MAPS_ANDROID_KEY,
+        },
+      ],
       'expo-web-browser',
       './plugins/withBackgroundActionsService',
       [
