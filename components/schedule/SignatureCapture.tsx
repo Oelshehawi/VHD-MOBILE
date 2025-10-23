@@ -27,9 +27,8 @@ interface ExtendedAttachmentRecord extends AttachmentRecord {
   signerName?: string;
 }
 
-// Define ScheduleType interface to fix TS error
-interface ScheduleType {
-  id: string;
+export interface SignatureSchedule {
+  id?: string;
   jobTitle?: string;
   signature?: PhotoType;
   photos?: string; // JSON string
@@ -38,7 +37,7 @@ interface ScheduleType {
 interface SignatureCaptureProps {
   onSignatureCapture: () => void;
   technicianId: string;
-  schedule: ScheduleType | null;
+  schedule: SignatureSchedule | null;
   visible: boolean;
   onClose: () => void;
   startDate?: string;

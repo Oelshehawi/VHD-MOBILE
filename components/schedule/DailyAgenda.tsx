@@ -1,5 +1,19 @@
-import React, { useState, useCallback, useEffect } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  Image,
+  GestureResponderEvent,
+} from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import { scheduleOnRN } from 'react-native-worklets';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+} from 'react-native-reanimated';
 import { parseISO, format, addDays } from 'date-fns';
 import { Schedule } from '@/types';
 import { formatTimeUTC, formatDateReadable } from '@/utils/date';
@@ -12,7 +26,7 @@ import { GeocodingService } from '@/services/weather/GeocodingService';
 
 interface DailyAgendaProps {
   selectedDate: string; // ISO string in UTC
-  schedules: Schedule[];
+  schedules: ReadonlyArray<Schedule>;
   isManager?: boolean;
   userId: string;
   onDateChange?: (date: string) => void; // For navigation
@@ -29,6 +43,179 @@ const getTechnicianId = (technicians: any): string => {
   }
   return '';
 };
+
+const TIME_SLOTS: Array<'Morning' | 'Afternoon' | 'Evening'> = [
+  'Morning',
+  'Afternoon',
+  'Evening',
+];
+
+interface ScheduleCardProps {
+  schedule: Schedule;
+  weather?: WeatherData;
+  onOpenInvoice: (schedule: Schedule) => void;
+  onOpenPhotos: (schedule: Schedule) => void;
+  onOpenMap: (schedule: Schedule) => void;
+}
+
+const ScheduleCard = React.memo(
+  ({ schedule, weather, onOpenInvoice, onOpenPhotos, onOpenMap }: ScheduleCardProps) => {
+    const startTime = useMemo(() => {
+      try {
+        const parsed = parseISO(schedule.startDateTime);
+        return formatTimeUTC(parsed);
+      } catch (err) {
+        console.error('Error formatting time', schedule.startDateTime, err);
+        return '';
+      }
+    }, [schedule.startDateTime]);
+
+    const { statusColor, statusBorder } = useMemo(() => {
+      if (schedule.confirmed) {
+        return {
+          statusColor: 'bg-green-50 dark:bg-green-900/20',
+          statusBorder: 'border-l-green-500',
+        };
+      }
+
+      return {
+        statusColor: 'bg-gray-100 dark:bg-gray-700',
+        statusBorder: 'border-l-gray-300',
+      };
+    }, [schedule.confirmed]);
+
+    const { hasPhotos, showNotificationBadge } = useMemo(() => {
+      let parsedHasPhotos = false;
+      let hasTechnicianNotes = false;
+
+      try {
+        if ('photos' in schedule && schedule.photos) {
+          const photosData =
+            typeof schedule.photos === 'string'
+              ? JSON.parse(schedule.photos)
+              : schedule.photos;
+
+          if (Array.isArray(photosData)) {
+            parsedHasPhotos = photosData.length > 0;
+          } else {
+            const before = Array.isArray(photosData?.before)
+              ? photosData.before
+              : [];
+            const after = Array.isArray(photosData?.after)
+              ? photosData.after
+              : [];
+
+            parsedHasPhotos = before.length > 0 || after.length > 0;
+          }
+        }
+
+        hasTechnicianNotes =
+          'technicianNotes' in schedule &&
+          typeof schedule.technicianNotes === 'string' &&
+          schedule.technicianNotes.trim().length > 0;
+      } catch (err) {
+        console.error('Error parsing schedule metadata', schedule.id, err);
+      }
+
+      return { hasPhotos: parsedHasPhotos, showNotificationBadge: hasTechnicianNotes };
+    }, [schedule]);
+
+    const handleCardPress = useCallback(() => {
+      if (schedule.invoiceRef) {
+        onOpenInvoice(schedule);
+      }
+    }, [onOpenInvoice, schedule]);
+
+    const handlePhotosPress = useCallback(
+      (event: GestureResponderEvent) => {
+        event.stopPropagation();
+        onOpenPhotos(schedule);
+      },
+      [onOpenPhotos, schedule]
+    );
+
+    const handleMapPress = useCallback(
+      (event: GestureResponderEvent) => {
+        event.stopPropagation();
+        onOpenMap(schedule);
+      },
+      [onOpenMap, schedule]
+    );
+
+    return (
+      <TouchableOpacity
+        onPress={handleCardPress}
+        className={`${statusColor} rounded-lg overflow-hidden border-l-4 ${statusBorder}`}
+        activeOpacity={0.9}
+      >
+        <View className='p-4'>
+          <View className='flex-row justify-between items-start'>
+            <View className='flex-1'>
+              <View className='flex-row items-start gap-2 mb-1'>
+                <Text
+                  className='flex-1 text-lg font-medium text-gray-900 dark:text-white pr-2'
+                  numberOfLines={2}
+                  ellipsizeMode='tail'
+                >
+                  {schedule.jobTitle}
+                </Text>
+                {/* Weather Indicator */}
+                {weather && (
+                  <View className='flex-row items-center gap-1 flex-shrink-0'>
+                    <Image
+                      source={{ uri: WeatherService.getIconUrl(weather.condition.icon) }}
+                      style={{ width: 20, height: 20 }}
+                    />
+                    <Text className='text-sm font-semibold text-gray-700 dark:text-gray-300'>
+                      {Math.round(weather.temp_c)}
+                      {'\u00B0'}
+                    </Text>
+                  </View>
+                )}
+              </View>
+              <Text className='text-gray-500 dark:text-gray-400 mb-2'>
+                {startTime} {'\u2022'}{' '}
+                {schedule.assignedTechnicians ? 'Assigned' : 'Unassigned'}
+              </Text>
+
+              {/* Technician notes indicator */}
+              {showNotificationBadge && (
+                <View className='mb-2 flex-row items-center bg-red-50 px-2 py-1 rounded-md'>
+                  <Ionicons name='document-text' size={14} color='#EF4444' />
+                  <Text className='text-xs text-red-600 font-medium ml-1'>
+                    Technician Notes
+                  </Text>
+                </View>
+              )}
+
+              <View className='flex-row items-center'>
+                <Ionicons name='location-outline' size={16} color='#9CA3AF' />
+                <Text numberOfLines={1} className='text-gray-500 dark:text-gray-400 ml-1'>
+                  {schedule.location}
+                </Text>
+              </View>
+            </View>
+
+            <View className='flex-row'>
+              {/* Camera/Photo Documentation Button */}
+              <TouchableOpacity
+                onPress={handlePhotosPress}
+                className='bg-blue-500 p-2 rounded-full mr-2 relative'
+              >
+                <Ionicons name={hasPhotos ? 'images' : 'camera'} size={20} color='#ffffff' />
+              </TouchableOpacity>
+
+              {/* Map Button */}
+              <TouchableOpacity onPress={handleMapPress} className='bg-darkGreen p-2 rounded-full'>
+                <Ionicons name='navigate' size={20} color='#ffffff' />
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </TouchableOpacity>
+    );
+  }
+);
 
 export function DailyAgenda({
   selectedDate,
@@ -49,112 +236,180 @@ export function DailyAgenda({
     Map<string, WeatherData>
   >(new Map());
 
-  // Load weather for all locations on selected date
-  useEffect(() => {
-    loadWeatherForDate();
-  }, [schedules, selectedDate]);
+  const loadWeatherForDate = useCallback(async () => {
+    const uniqueLocations = Array.from(
+      new Set(
+        schedules
+          .filter((schedule) => Boolean(schedule.location))
+          .map((schedule) => schedule.location as string)
+      )
+    );
 
-  const loadWeatherForDate = async () => {
-    const locationSet = new Set<string>();
+    if (uniqueLocations.length === 0) {
+      return new Map<string, WeatherData>();
+    }
 
-    // Collect unique locations
-    schedules.forEach((schedule) => {
-      if (schedule.location) {
-        locationSet.add(schedule.location);
+    const dateStr = format(parseISO(selectedDate), 'yyyy-MM-dd');
+
+    const weatherEntries = await Promise.all(
+      uniqueLocations.map(async (location) => {
+        try {
+          const coords = await GeocodingService.getCoordinates(location);
+          if (!coords) {
+            return null;
+          }
+
+          const forecast = await WeatherService.getForecast(
+            coords.latitude,
+            coords.longitude
+          );
+
+          const dayWeather = forecast.find((day) => day.date === dateStr);
+          return dayWeather ? ([location, dayWeather] as const) : null;
+        } catch (error) {
+          console.error('Error loading weather for', location, error);
+          return null;
+        }
+      })
+    );
+
+    const weatherMap = new Map<string, WeatherData>();
+
+    weatherEntries.forEach((entry) => {
+      if (entry) {
+        const [location, weather] = entry;
+        weatherMap.set(location, weather);
       }
     });
 
-    const weatherMap = new Map<string, WeatherData>();
-    const dateStr = format(parseISO(selectedDate), 'yyyy-MM-dd');
+    return weatherMap;
+  }, [schedules, selectedDate]);
 
-    // Fetch weather for each location
-    for (const location of locationSet) {
-      const coords = await GeocodingService.getCoordinates(location);
-      if (!coords) continue;
+  // Load weather for all locations on selected date
+  useEffect(() => {
+    let isActive = true;
 
-      const forecast = await WeatherService.getForecast(
-        coords.latitude,
-        coords.longitude
-      );
-      const dayWeather = forecast.find((day) => day.date === dateStr);
-      if (dayWeather) {
-        weatherMap.set(location, dayWeather);
-      }
-    }
+    loadWeatherForDate()
+      .then((weatherMap) => {
+        if (isActive) {
+          setWeatherDataMap(weatherMap);
+        }
+      })
+      .catch((error) => console.error('Error loading weather data', error));
 
-    setWeatherDataMap(weatherMap);
-  };
+    return () => {
+      isActive = false;
+    };
+  }, [loadWeatherForDate]);
 
   // Group schedules by time slot for better visualization
-  const groupedSchedules = schedules.reduce(
-    (acc: Record<string, Schedule[]>, schedule) => {
-      try {
-        const date = parseISO(schedule.startDateTime);
-        const hour = date.getHours();
-        const timeSlot =
-          hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+  const groupedSchedules = useMemo(() => {
+    return schedules.reduce<Record<string, Schedule[]>>(
+      (acc, schedule) => {
+        try {
+          const date = parseISO(schedule.startDateTime);
+          const hour = date.getHours();
+          const timeSlot =
+            hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
 
-        if (!acc[timeSlot]) {
-          acc[timeSlot] = [];
+          if (!acc[timeSlot]) {
+            acc[timeSlot] = [];
+          }
+
+          acc[timeSlot].push(schedule);
+        } catch (err) {
+          console.error('Error parsing date', schedule.startDateTime, err);
         }
+        return acc;
+      },
+      {}
+    );
+  }, [schedules]);
 
-        acc[timeSlot].push(schedule);
-      } catch (err) {
-        console.error('Error parsing date', schedule.startDateTime);
+  const handleMapPress = useCallback(
+    (schedule: Schedule) => {
+      if (schedule.location) {
+        openMaps(schedule.location, schedule.jobTitle);
       }
-      return acc;
     },
-    {}
+    []
   );
 
-  // Define time slots order
-  const timeSlots = ['Morning', 'Afternoon', 'Evening'];
-
-  // Handle map navigation without interfering with schedule press
-  const handleMapPress = (e: any, jobTitle: string, location: string) => {
-    e.stopPropagation(); // Prevent the parent TouchableOpacity from being triggered
-    openMaps(location, jobTitle);
-  };
-
-  // Handle photo documentation access
-  const handlePhotoDocumentationPress = (e: any, schedule: Schedule) => {
-    e.stopPropagation(); // Prevent the schedule card from being triggered
+  const handlePhotoDocumentationPress = useCallback((schedule: Schedule) => {
     setSelectedSchedule(schedule);
     setPhotoModalVisible(true);
-  };
+  }, []);
 
-  // Function to handle invoice press
-  const handleInvoicePress = (e: any, schedule: Schedule) => {
-    e.stopPropagation(); // Prevent the schedule card from being triggered
-    if (schedule.invoiceRef) {
-      setSelectedScheduleForInvoice(schedule);
-      setInvoiceModalVisible(true);
-    } else {
+  const handleInvoicePress = useCallback((schedule: Schedule) => {
+    if (!schedule.invoiceRef) {
+      return;
     }
-  };
 
-  // Check for severe weather conditions
-  const severeWeatherJobs = schedules.filter((schedule) => {
-    const weather = weatherDataMap.get(schedule.location);
-    return weather && WeatherService.isSevereWeather(weather);
+    setSelectedScheduleForInvoice(schedule);
+    setInvoiceModalVisible(true);
+  }, []);
+
+  const severeWeatherJobs = useMemo(
+    () =>
+      schedules.filter((schedule) => {
+        const weather = weatherDataMap.get(schedule.location);
+        return weather && WeatherService.isSevereWeather(weather);
+      }),
+    [schedules, weatherDataMap]
+  );
+
+  const goToPreviousDay = useCallback(() => {
+    if (!onDateChange) {
+      return;
+    }
+
+    const previousDate = addDays(parseISO(selectedDate), -1);
+    onDateChange(previousDate.toISOString());
+  }, [onDateChange, selectedDate]);
+
+  const goToNextDay = useCallback(() => {
+    if (!onDateChange) {
+      return;
+    }
+
+    const followingDate = addDays(parseISO(selectedDate), 1);
+    onDateChange(followingDate.toISOString());
+  }, [onDateChange, selectedDate]);
+
+  // Gesture handling for horizontal swipe navigation (only in day view)
+  const translateX = useSharedValue(0);
+  const SWIPE_THRESHOLD = 50;
+
+  const panGesture = Gesture.Pan()
+    .enabled(!!onDateChange) // Only enable gestures when in day view
+    .onUpdate((event) => {
+      translateX.value = event.translationX;
+    })
+    .onEnd((event) => {
+      const translation = event.translationX;
+      translateX.value = withSpring(0);
+
+      // Bridge from UI thread to JS thread (same pattern as FastImageViewer)
+      if (translation > SWIPE_THRESHOLD) {
+        scheduleOnRN(goToPreviousDay);
+      } else if (translation < -SWIPE_THRESHOLD) {
+        scheduleOnRN(goToNextDay);
+      }
+    });
+
+  const animatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [
+        {
+          translateX: translateX.value * 0.2, // Dampen the swipe for better feel
+        },
+      ],
+      opacity: 1 - Math.abs(translateX.value) / 1000, // Subtle fade during swipe
+    };
   });
 
-  const goToPreviousDay = () => {
-    if (onDateChange) {
-      const previousDate = addDays(parseISO(selectedDate), -1);
-      onDateChange(previousDate.toISOString());
-    }
-  };
-
-  const goToNextDay = () => {
-    if (onDateChange) {
-      const followingDate = addDays(parseISO(selectedDate), 1);
-      onDateChange(followingDate.toISOString());
-    }
-  };
-
-  return (
-    <View className='flex-1 bg-white dark:bg-gray-900 p-4'>
+  const content = (
+    <Animated.View style={[animatedStyle, { flex: 1 }]} className='bg-white dark:bg-gray-900 p-4'>
       {/* Date Navigation Header - only show in day view */}
       {onDateChange && (
         <View className='flex-row items-center justify-between mb-4'>
@@ -232,7 +487,7 @@ export function DailyAgenda({
           </View>
         ) : (
           <View className='flex-col'>
-            {timeSlots.map((timeSlot) => {
+            {TIME_SLOTS.map((timeSlot) => {
               const slotSchedules = groupedSchedules[timeSlot] || [];
               if (slotSchedules.length === 0) return null;
 
@@ -242,176 +497,16 @@ export function DailyAgenda({
                     {timeSlot}
                   </Text>
                   <View className='flex flex-col gap-3'>
-                    {slotSchedules.map((schedule) => {
-                      let startTime = '';
-                      try {
-                        // Ensure we're using UTC time display
-                        const date = parseISO(schedule.startDateTime);
-                        // Use formatTimeUTC to ensure UTC time display
-                        startTime = formatTimeUTC(date);
-                      } catch (err) {
-                        console.error(
-                          'Error formatting time',
-                          schedule.startDateTime
-                        );
-                      }
-
-                      // Determine status color and icon
-                      let statusColor = 'bg-gray-100 dark:bg-gray-700';
-                      let statusBorder = 'border-l-gray-300';
-                      let statusIcon: 'time' | 'checkmark-circle' = 'time';
-
-                      if (schedule.confirmed) {
-                        statusColor = 'bg-green-50 dark:bg-green-900/20';
-                        statusBorder = 'border-l-green-500';
-                        statusIcon = 'checkmark-circle';
-                      }
-
-                      // Check if photos exist
-                      let hasPhotos = false;
-                      let hasTechnicianNotes = false;
-                      try {
-                        if ('photos' in schedule && schedule.photos) {
-                          const photosData =
-                            typeof schedule.photos === 'string'
-                              ? JSON.parse(schedule.photos)
-                              : schedule.photos;
-
-                          hasPhotos =
-                            (photosData.before &&
-                              photosData.before.length > 0) ||
-                            (photosData.after && photosData.after.length > 0);
-                        }
-
-                        // Check if technician notes exist
-                        hasTechnicianNotes =
-                          'technicianNotes' in schedule &&
-                          !!schedule.technicianNotes &&
-                          typeof schedule.technicianNotes === 'string' &&
-                          schedule.technicianNotes.trim() !== '';
-                      } catch (err) {
-                        console.error('Error parsing photos', err);
-                      }
-
-                      // Determine if we should show notification badge
-                      const showNotificationBadge = hasTechnicianNotes;
-
-                      return (
-                        <TouchableOpacity
-                          key={schedule.id}
-                          onPress={(e) => handleInvoicePress(e, schedule)}
-                          className={`${statusColor} rounded-lg overflow-hidden border-l-4 ${statusBorder}`}
-                        >
-                          <View className='p-4'>
-                            <View className='flex-row justify-between items-start'>
-                              <View className='flex-1'>
-                                <View className='flex-row items-start gap-2 mb-1'>
-                                  <Text
-                                    className='flex-1 text-lg font-medium text-gray-900 dark:text-white pr-2'
-                                    numberOfLines={2}
-                                    ellipsizeMode='tail'
-                                  >
-                                    {schedule.jobTitle}
-                                  </Text>
-                                  {/* Weather Indicator */}
-                                  {weatherDataMap.get(schedule.location) && (
-                                    <View className='flex-row items-center gap-1 flex-shrink-0'>
-                                      <Image
-                                        source={{
-                                          uri: WeatherService.getIconUrl(
-                                            weatherDataMap.get(
-                                              schedule.location
-                                            )!.condition.icon
-                                          ),
-                                        }}
-                                        style={{ width: 20, height: 20 }}
-                                      />
-                                      <Text className='text-sm font-semibold text-gray-700 dark:text-gray-300'>
-                                        {Math.round(
-                                          weatherDataMap.get(schedule.location)!
-                                            .temp_c
-                                        )}
-                                        °
-                                      </Text>
-                                    </View>
-                                  )}
-                                </View>
-                                <Text className='text-gray-500 dark:text-gray-400 mb-2'>
-                                  {startTime} •{' '}
-                                  {schedule.assignedTechnicians
-                                    ? 'Assigned'
-                                    : 'Unassigned'}
-                                </Text>
-
-                                {/* Add technician notes indicator below the job info */}
-                                {showNotificationBadge && (
-                                  <View className='mb-2 flex-row items-center bg-red-50 px-2 py-1 rounded-md'>
-                                    <Ionicons
-                                      name='document-text'
-                                      size={14}
-                                      color='#EF4444'
-                                    />
-                                    <Text className='text-xs text-red-600 font-medium ml-1'>
-                                      Technician Notes
-                                    </Text>
-                                  </View>
-                                )}
-
-                                <View className='flex-row items-center'>
-                                  <Ionicons
-                                    name='location-outline'
-                                    size={16}
-                                    color='#9CA3AF'
-                                  />
-                                  <Text
-                                    numberOfLines={1}
-                                    className='text-gray-500 dark:text-gray-400 ml-1'
-                                  >
-                                    {schedule.location}
-                                  </Text>
-                                </View>
-                              </View>
-
-                              <View className='flex-row'>
-                                {/* Camera/Photo Documentation Button */}
-                                <TouchableOpacity
-                                  onPress={(e) =>
-                                    handlePhotoDocumentationPress(e, schedule)
-                                  }
-                                  className='bg-blue-500 p-2 rounded-full mr-2 relative'
-                                >
-                                  <Ionicons
-                                    name={hasPhotos ? 'images' : 'camera'}
-                                    size={20}
-                                    color='#ffffff'
-                                  />
-
-                                  {/* Remove notification badge from here */}
-                                </TouchableOpacity>
-
-                                {/* Map Button */}
-                                <TouchableOpacity
-                                  onPress={(e) =>
-                                    handleMapPress(
-                                      e,
-                                      schedule.jobTitle,
-                                      schedule.location
-                                    )
-                                  }
-                                  className='bg-darkGreen p-2 rounded-full'
-                                >
-                                  <Ionicons
-                                    name='navigate'
-                                    size={20}
-                                    color='#ffffff'
-                                  />
-                                </TouchableOpacity>
-                              </View>
-                            </View>
-                          </View>
-                        </TouchableOpacity>
-                      );
-                    })}
+                    {slotSchedules.map((schedule) => (
+                      <ScheduleCard
+                        key={schedule.id}
+                        schedule={schedule}
+                        weather={weatherDataMap.get(schedule.location)}
+                        onOpenInvoice={handleInvoicePress}
+                        onOpenPhotos={handlePhotoDocumentationPress}
+                        onOpenMap={handleMapPress}
+                      />
+                    ))}
                   </View>
                 </View>
               );
@@ -443,6 +538,13 @@ export function DailyAgenda({
           isManager={isManager || false}
         />
       )}
-    </View>
+    </Animated.View>
+  );
+
+  // Wrap with gesture detector only if onDateChange is provided (day view)
+  return onDateChange ? (
+    <GestureDetector gesture={panGesture}>{content}</GestureDetector>
+  ) : (
+    content
   );
 }

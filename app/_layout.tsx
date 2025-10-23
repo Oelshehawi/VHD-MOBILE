@@ -10,6 +10,7 @@ import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache'
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
@@ -120,7 +121,9 @@ export default function RootLayout() {
           <InitialLayout>
             <ThemeProvider>
               <PowerSyncProvider>
-                <Slot />
+                <BottomSheetModalProvider>
+                  <Slot />
+                </BottomSheetModalProvider>
               </PowerSyncProvider>
             </ThemeProvider>
           </InitialLayout>

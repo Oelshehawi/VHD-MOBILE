@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,8 @@ import {
   Image,
 } from 'react-native';
 import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
-import { AppointmentType } from '@/types';
-import { getMonthDays, getAppointmentsForDay } from '@/utils/calendar';
+import { AppointmentType, Schedule } from '@/types';
+import { getMonthDays } from '@/utils/calendar';
 import { MonthHeader } from './MonthHeader';
 import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
 import { GeocodingService } from '@/services/weather/GeocodingService';
@@ -18,7 +18,7 @@ interface MonthViewProps {
   currentDate: string;
   onDateChange: (date: string) => void;
   appointments: AppointmentType[];
-  schedules?: any[]; // Add Schedule data for weather integration
+  schedules?: ReadonlyArray<Schedule>; // Add Schedule data for weather integration
   onDayPress: (date: string) => void;
 }
 
@@ -36,6 +36,102 @@ const WEEKDAYS = [
   { key: 'sat', label: 'S' },
 ];
 
+interface MonthDayCellProps {
+  date: Date;
+  dayKey: string;
+  isCurrentMonth: boolean;
+  isSelected: boolean;
+  isToday: boolean;
+  appointments: AppointmentType[];
+  dayTextStyle: string;
+  scheduleById: Map<string, Schedule>;
+  weatherData: Map<string, WeatherData>;
+  onPress: (date: Date) => void;
+}
+
+const MonthDayCell = React.memo(
+  ({
+    date,
+    dayKey,
+    isCurrentMonth,
+    isSelected,
+    isToday,
+    appointments,
+    dayTextStyle,
+    scheduleById,
+    weatherData,
+    onPress,
+  }: MonthDayCellProps) => {
+    const handlePress = useCallback(() => {
+      onPress(date);
+    }, [onPress, date]);
+
+    const weatherInfo = useMemo(() => {
+      if (appointments.length === 0) {
+        return null;
+      }
+
+      const firstAppointment = appointments[0];
+      const relatedSchedule = scheduleById.get(firstAppointment.id);
+
+      if (!relatedSchedule?.location) {
+        return null;
+      }
+
+      const weather = weatherData.get(`${relatedSchedule.location}_${dayKey}`);
+      if (!weather) {
+        return null;
+      }
+
+      return {
+        iconUri: WeatherService.getIconUrl(weather.condition.icon),
+        temperature: Math.round(weather.temp_c),
+      };
+    }, [appointments, scheduleById, weatherData, dayKey]);
+
+    return (
+      <TouchableOpacity
+        style={{
+          width: DAY_WIDTH,
+          height: DAY_HEIGHT,
+        }}
+        className={`border-[0.5px] border-gray-200 dark:border-gray-800 p-1 ${
+          isSelected ? 'bg-gray-100 dark:bg-gray-800' : ''
+        } ${isToday ? 'border-blue-500 border-[1.5px]' : ''}`}
+        onPress={handlePress}
+      >
+        <View className='flex-1'>
+          <Text className={dayTextStyle}>{format(date, 'd')}</Text>
+
+          {weatherInfo && (
+            <View className='mt-1 flex-row items-center gap-1'>
+              <Image source={{ uri: weatherInfo.iconUri }} style={{ width: 16, height: 16 }} />
+              <Text className='text-xs font-medium'>
+                {weatherInfo.temperature}
+                {'\u00B0'}
+              </Text>
+            </View>
+          )}
+
+          {appointments.length > 0 && (
+            <View className='mt-1 flex flex-col gap-0.5'>
+              {appointments.map((apt) => (
+                <View key={apt.id} className='mb-0.5'>
+                  <View
+                    className={`h-1 rounded-full ${
+                      apt.status === 'confirmed' ? 'bg-darkGreen' : 'bg-blue-500'
+                    }`}
+                  />
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+      </TouchableOpacity>
+    );
+  }
+);
+
 export function MonthView({
   currentDate,
   onDateChange,
@@ -47,8 +143,15 @@ export function MonthView({
     startOfDay(new Date(currentDate)).toISOString()
   );
   const [weatherData, setWeatherData] = useState<Map<string, WeatherData>>(new Map());
-  const currentDateObj = startOfDay(new Date(currentDate || selectedDate));
-  const allDays = getMonthDays(currentDateObj);
+  const currentDateObj = useMemo(
+    () => startOfDay(new Date(currentDate || selectedDate)),
+    [currentDate, selectedDate]
+  );
+  const selectedDateObj = useMemo(
+    () => startOfDay(new Date(selectedDate)),
+    [selectedDate]
+  );
+  const allDays = useMemo(() => getMonthDays(currentDateObj), [currentDateObj]);
 
   useEffect(() => {
     if (currentDate) {
@@ -57,37 +160,100 @@ export function MonthView({
     }
   }, [currentDate]);
 
-  // Load weather for all scheduled locations
-  useEffect(() => {
-    loadWeatherForSchedules();
+  const scheduleById = useMemo(() => {
+    const map = new Map<string, Schedule>();
+    schedules.forEach((schedule) => {
+      if (schedule?.id) {
+        map.set(schedule.id, schedule);
+      }
+    });
+    return map;
   }, [schedules]);
 
-  const loadWeatherForSchedules = async () => {
-    const locationSet = new Set<string>();
+  const appointmentsByDate = useMemo(() => {
+    const map = new Map<string, AppointmentType[]>();
+    appointments.forEach((appointment) => {
+      try {
+        const dateKey = format(
+          startOfDay(new Date(appointment.startTime)),
+          'yyyy-MM-dd'
+        );
+        if (!map.has(dateKey)) {
+          map.set(dateKey, []);
+        }
+        map.get(dateKey)!.push(appointment);
+      } catch (error) {
+        console.error('Error grouping appointment', appointment.startTime, error);
+      }
+    });
+    return map;
+  }, [appointments]);
 
-    // Collect unique locations from schedules
-    const dataToUse = schedules.length > 0 ? schedules : [];
-    dataToUse.forEach((schedule: any) => {
+  const loadWeatherForSchedules = useCallback(async () => {
+    if (!schedules || schedules.length === 0) {
+      return new Map<string, WeatherData>();
+    }
+
+    const locationSet = new Set<string>();
+    schedules.forEach((schedule) => {
       if (schedule.location) {
         locationSet.add(schedule.location);
       }
     });
 
-    const weatherMap = new Map<string, WeatherData>();
-
-    // Fetch weather for each location
-    for (const location of locationSet) {
-      const coords = await GeocodingService.getCoordinates(location);
-      if (!coords) continue;
-
-      const forecast = await WeatherService.getForecast(coords.latitude, coords.longitude);
-      forecast.forEach((day) => {
-        weatherMap.set(`${location}_${day.date}`, day);
-      });
+    if (locationSet.size === 0) {
+      return new Map<string, WeatherData>();
     }
 
-    setWeatherData(weatherMap);
-  };
+    const weatherEntries = await Promise.all(
+      Array.from(locationSet).map(async (location) => {
+        try {
+          const coords = await GeocodingService.getCoordinates(location);
+          if (!coords) {
+            return null;
+          }
+
+          const forecast = await WeatherService.getForecast(
+            coords.latitude,
+            coords.longitude
+          );
+
+          return forecast.map((day) => [`${location}_${day.date}`, day] as const);
+        } catch (error) {
+          console.error('Error fetching weather for', location, error);
+          return null;
+        }
+      })
+    );
+
+    const weatherMap = new Map<string, WeatherData>();
+    weatherEntries.forEach((entry) => {
+      if (entry) {
+        entry.forEach(([key, weather]) => {
+          weatherMap.set(key, weather);
+        });
+      }
+    });
+
+    return weatherMap;
+  }, [schedules]);
+
+  // Load weather for all scheduled locations
+  useEffect(() => {
+    let isMounted = true;
+
+    loadWeatherForSchedules()
+      .then((weatherMap) => {
+        if (isMounted && weatherMap) {
+          setWeatherData(weatherMap);
+        }
+      })
+      .catch((error) => console.error('Error loading schedule weather', error));
+
+    return () => {
+      isMounted = false;
+    };
+  }, [loadWeatherForSchedules]);
 
   const handleDayPress = useCallback(
     (date: Date) => {
@@ -173,82 +339,31 @@ export function MonthView({
         <View className='flex-row flex-wrap'>
           {allDays.map((date, index) => {
             const isCurrentMonth = isSameMonth(date, currentDateObj);
-            const dayAppointments = getAppointmentsForDay(date, appointments);
-            const isSelected = isSameDay(date, new Date(selectedDate));
+            const isSelected = isSameDay(date, selectedDateObj);
             const isCurrentDay = isToday(date);
-            const dateKey = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}-${index}`;
+            const dayKey = format(date, 'yyyy-MM-dd');
+            const appointmentsForDay = appointmentsByDate.get(dayKey) || [];
+            const dayTextStyle = getDayTextStyle(
+              date,
+              isCurrentMonth,
+              isCurrentDay,
+              isSelected
+            );
 
             return (
-              <TouchableOpacity
-                key={dateKey}
-                style={{
-                  width: DAY_WIDTH,
-                  height: DAY_HEIGHT,
-                }}
-                className={`border-[0.5px] border-gray-200 dark:border-gray-800 p-1 ${
-                  isSelected ? 'bg-gray-100 dark:bg-gray-800' : ''
-                } ${isCurrentDay ? 'border-blue-500 border-[1.5px]' : ''}`}
-                onPress={() => handleDayPress(date)}
-              >
-                <View className='flex-1'>
-                  <Text
-                    className={getDayTextStyle(
-                      date,
-                      isCurrentMonth,
-                      isCurrentDay,
-                      isSelected
-                    )}
-                  >
-                    {format(date, 'd')}
-                  </Text>
-
-                  {/* Weather Indicator */}
-                  {dayAppointments.length > 0 && schedules.length > 0 && (
-                    <View className='mt-1'>
-                      {dayAppointments.slice(0, 1).map((apt) => {
-                        // Find corresponding schedule to get location
-                        const schedule = schedules.find((s: any) => s.id === apt.id);
-                        if (!schedule?.location) return null;
-
-                        const dateStr = format(date, 'yyyy-MM-dd');
-                        const weather = weatherData.get(`${schedule.location}_${dateStr}`);
-                        return (
-                          <View key={`weather-${apt.id}`} className='flex-row items-center gap-1'>
-                            {weather && (
-                              <>
-                                <Image
-                                  source={{ uri: WeatherService.getIconUrl(weather.condition.icon) }}
-                                  style={{ width: 16, height: 16 }}
-                                />
-                                <Text className='text-xs font-medium'>
-                                  {Math.round(weather.temp_c)}°
-                                </Text>
-                              </>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-
-                  {/* Appointment Indicators */}
-                  {dayAppointments.length > 0 && (
-                    <View className='mt-1 flex flex-col gap-0.5'>
-                      {dayAppointments.map((apt) => (
-                        <View key={apt.id} className='mb-0.5'>
-                          <View
-                            className={`h-1 rounded-full ${
-                              apt.status === 'confirmed'
-                                ? 'bg-darkGreen'
-                                : 'bg-blue-500'
-                            }`}
-                          />
-                        </View>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              </TouchableOpacity>
+              <MonthDayCell
+                key={`${dayKey}-${index}`}
+                date={date}
+                dayKey={dayKey}
+                isCurrentMonth={isCurrentMonth}
+                isSelected={isSelected}
+                isToday={isCurrentDay}
+                appointments={appointmentsForDay}
+                dayTextStyle={dayTextStyle}
+                scheduleById={scheduleById}
+                weatherData={weatherData}
+                onPress={handleDayPress}
+              />
             );
           })}
         </View>

@@ -1,7 +1,7 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { StatusBar, View, Text, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useQuery } from '@powersync/react-native';
+import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import { Schedule, AppointmentType } from '@/types';
 import { MonthView } from './MonthView';
 import { DailyAgenda } from './DailyAgenda';
@@ -37,26 +37,36 @@ export function ScheduleView({
     setSelectedDate(normalized);
   }, [currentDate]);
 
-  // Get schedules for the selected date - adjust query based on role
-  const { data: schedules = [] } = useQuery<Schedule>(
-    isManager
-      ? `SELECT * FROM schedules WHERE DATE(startDateTime) = DATE(?) ORDER BY startDateTime`
-      : `SELECT * FROM schedules WHERE DATE(startDateTime) = DATE(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
-    isManager ? [selectedDate] : [selectedDate, `%${userId}%`]
+  const selectedDateParam = useMemo(
+    () => selectedDate.slice(0, 10),
+    [selectedDate]
   );
 
   // Get all schedules for the month view
-  const { data: monthSchedules = [] } = useQuery<Schedule>(
+  const monthQuery = useQuery<Schedule>(
     isManager
-      ? `SELECT * FROM schedules WHERE datetime(startDateTime) BETWEEN datetime('now', 'start of month', '-67 days') AND datetime('now', 'start of month', '+67 days') ORDER BY startDateTime`
-      : `SELECT * FROM schedules WHERE datetime(startDateTime) BETWEEN datetime('now', 'start of month', '-67 days') AND datetime('now', 'start of month', '+67 days') AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
-    isManager ? [] : [`%${userId}%`]
+      ? `SELECT * FROM schedules 
+         WHERE datetime(startDateTime) 
+         BETWEEN datetime(?, 'start of month', '-67 days') 
+           AND datetime(?, 'start of month', '+67 days') 
+         ORDER BY startDateTime`
+      : `SELECT * FROM schedules 
+         WHERE datetime(startDateTime) 
+         BETWEEN datetime(?, 'start of month', '-67 days') 
+           AND datetime(?, 'start of month', '+67 days') 
+           AND assignedTechnicians LIKE ? 
+         ORDER BY startDateTime`,
+    isManager
+      ? [selectedDateParam, selectedDateParam]
+      : [selectedDateParam, selectedDateParam, `%${userId}%`],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
+  const monthSchedules: ReadonlyArray<Schedule> = monthQuery.data ?? [];
 
   // Get schedules for the week view (current week +/- 1 week for smooth navigation)
   const weekStart = startOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
   const weekEnd = endOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
-  const { data: weekSchedules = [] } = useQuery<Schedule>(
+  const weekQuery = useQuery<Schedule>(
     isManager
       ? `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) ORDER BY startDateTime`
       : `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
@@ -66,16 +76,43 @@ export function ScheduleView({
           format(weekStart, 'yyyy-MM-dd'),
           format(weekEnd, 'yyyy-MM-dd'),
           `%${userId}%`,
-        ]
+        ],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
+  const weekSchedules: ReadonlyArray<Schedule> = weekQuery.data ?? [];
 
   // Convert schedules to appointments format for MonthView
-  const appointments: AppointmentType[] = monthSchedules.map((schedule) => ({
-    id: schedule.id,
-    startTime: schedule.startDateTime,
-    clientName: schedule.jobTitle,
-    status: schedule.confirmed ? 'confirmed' : 'pending',
-  }));
+  const appointments: AppointmentType[] = useMemo(
+    () =>
+      monthSchedules.map((schedule) => ({
+        id: schedule.id,
+        startTime: schedule.startDateTime,
+        clientName: schedule.jobTitle,
+        status: schedule.confirmed ? 'confirmed' : 'pending',
+      })),
+    [monthSchedules]
+  );
+
+  const schedulesForSelectedDate = useMemo(() => {
+    if (!selectedDateParam) {
+      return [];
+    }
+
+    return monthSchedules.filter((schedule) => {
+      if (typeof schedule.startDateTime === 'string') {
+        return schedule.startDateTime.slice(0, 10) === selectedDateParam;
+      }
+
+      try {
+        return (
+          format(new Date(schedule.startDateTime), 'yyyy-MM-dd') ===
+          selectedDateParam
+        );
+      } catch {
+        return false;
+      }
+    });
+  }, [monthSchedules, selectedDateParam]);
 
   // Function to handle day press in the MonthView
   const handleDateSelection = useCallback(
@@ -90,17 +127,6 @@ export function ScheduleView({
   const handleDayPress = useCallback(
     (date: string) => {
       handleDateSelection(date);
-
-      // NOTE: Performance optimization possibility:
-      // Instead of triggering a new query when a day is selected,
-      // we could filter the already-fetched monthSchedules data
-      // for the selected date. This would eliminate the query overhead.
-      //
-      // Example implementation:
-      // const filteredSchedules = monthSchedules.filter(schedule =>
-      //   new Date(schedule.startDateTime).toDateString() === new Date(date).toDateString()
-      // );
-      // And then use this filtered list instead of making a new query
     },
     [handleDateSelection]
   );
@@ -204,7 +230,7 @@ export function ScheduleView({
           {/* Daily Schedule - now without severe weather alert */}
           <DailyAgenda
             selectedDate={selectedDate}
-            schedules={schedules}
+            schedules={schedulesForSelectedDate}
             isManager={isManager}
             userId={userId}
             showSevereWeatherAlert={false} // Hide weather alert in month view
@@ -224,7 +250,7 @@ export function ScheduleView({
       {viewMode === 'day' && (
         <DailyAgenda
           selectedDate={selectedDate}
-          schedules={schedules}
+          schedules={schedulesForSelectedDate}
           isManager={isManager}
           userId={userId}
           onDateChange={handleDateSelection} // Enable navigation in day view

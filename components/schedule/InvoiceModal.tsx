@@ -1,17 +1,17 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import {
   View,
   Text,
-  Modal,
   TouchableOpacity,
-  ScrollView,
-  TextInput,
   ActivityIndicator,
+  useColorScheme,
 } from 'react-native';
-import { InvoiceType } from '@/types';
+import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
+import { InvoiceType, Schedule } from '@/types';
 import { formatDateReadable } from '@/utils/date';
 import { SignatureCapture } from './SignatureCapture';
-import { useQuery } from '@powersync/react-native';
+import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
@@ -39,6 +39,8 @@ export function InvoiceModal({
   technicianId,
   isManager,
 }: InvoiceModalProps) {
+  const bottomSheetRef = useRef<BottomSheet>(null);
+  const colorScheme = useColorScheme();
   const [showSignatureModal, setShowSignatureModal] = useState(false);
 
   // Send invoice state management
@@ -47,107 +49,129 @@ export function InvoiceModal({
   const [invoiceSent, setInvoiceSent] = useState(false);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
 
+  // Control bottom sheet based on visible prop
+  useEffect(() => {
+    if (visible) {
+      bottomSheetRef.current?.snapToIndex(0);
+    } else {
+      bottomSheetRef.current?.close();
+    }
+  }, [visible]);
+
+  // Reset sheet when schedule changes (but only if already visible)
+  const prevScheduleIdRef = useRef(scheduleId);
+  useEffect(() => {
+    // Only reset if scheduleId changed AND modal is currently visible
+    if (visible && prevScheduleIdRef.current !== scheduleId && bottomSheetRef.current) {
+      bottomSheetRef.current.close();
+      setTimeout(() => {
+        bottomSheetRef.current?.snapToIndex(0);
+      }, 100);
+    }
+    prevScheduleIdRef.current = scheduleId;
+  }, [scheduleId, visible]);
+
   // First fetch the schedule using the scheduleId
-  const { data: scheduleData = [] } = useQuery<any>(
+  const scheduleQuery = useQuery<Schedule>(
     scheduleId
       ? `SELECT * FROM schedules WHERE id = ?`
       : `SELECT * FROM schedules WHERE 0`,
-    [scheduleId || '']
+    [scheduleId || ''],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
-  const schedule = scheduleData[0] || null;
+  const schedule: Schedule | null =
+    (scheduleQuery.data?.[0] as Schedule | undefined) ?? null;
   const invoiceRef = schedule?.invoiceRef;
 
   // Then fetch the invoice using the invoiceRef from the schedule
-  const { data: invoiceData = [] } = useQuery<InvoiceType>(
+  const invoiceQuery = useQuery<InvoiceType>(
     invoiceRef
       ? `SELECT * FROM invoices WHERE id = ?`
       : `SELECT * FROM invoices WHERE 0`,
-    [invoiceRef || '']
+    [invoiceRef || ''],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
-  const invoice = invoiceData[0] || null;
+  const invoice = invoiceQuery.data?.[0] || null;
+
+  // Check if queries are still loading
+  const isLoading = !schedule || !invoice;
 
   const { data: signatureAttachmentData = [] } = useQuery<any>(
     scheduleId
       ? `SELECT id, state, timestamp FROM ${ATTACHMENT_TABLE} WHERE scheduleId = ? AND type = 'signature' ORDER BY timestamp DESC LIMIT 1`
       : `SELECT id FROM ${ATTACHMENT_TABLE} WHERE 0`,
-    [scheduleId || '']
+    [scheduleId || ''],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
   const latestSignatureAttachment = signatureAttachmentData[0] || null;
 
-  if (!visible || !invoice) return null;
+  // If we have no invoice data, don't render content (but keep sheet for animation)
+  const shouldShowContent = !isLoading && invoice;
 
-  // Parse photos and signature from schedule JSON strings
-  const photos = (() => {
+  // Optimized: Only check if photos exist, don't parse/map entire arrays
+  const { hasBeforePhotos, hasAfterPhotos } = useMemo(() => {
     try {
-      if (!schedule?.photos) {
-        return { before: [], after: [] };
+      const photos = (schedule as any)?.photos;
+      if (!photos) {
+        return { hasBeforePhotos: false, hasAfterPhotos: false };
       }
 
       const parsedPhotos =
-        typeof schedule.photos === 'string'
-          ? JSON.parse(schedule.photos)
-          : schedule.photos;
+        typeof photos === 'string'
+          ? JSON.parse(photos)
+          : photos;
 
-      // We're using the new schema - an array with photo objects that have a type property
-      const photoArray = Array.isArray(parsedPhotos) ? parsedPhotos : [];
-
-      // Filter by type
-      const beforePhotos = photoArray
-        .filter((photo) => photo.type === 'before')
-        .map((photo) => ({
-          ...photo,
-          id: photo._id || photo.id,
-          _id: photo._id || photo.id, // Keep _id for backward compatibility
-          type: 'before' as const,
-          status: photo.status || 'uploaded',
-        }));
-
-      const afterPhotos = photoArray
-        .filter((photo) => photo.type === 'after')
-        .map((photo) => ({
-          ...photo,
-          id: photo._id || photo.id,
-          _id: photo._id || photo.id, // Keep _id for backward compatibility
-          type: 'after' as const,
-          status: photo.status || 'uploaded',
-        }));
-
-      return {
-        before: beforePhotos,
-        after: afterPhotos,
-      };
-    } catch (error) {
-      console.error('Error parsing photos:', error, schedule?.photos);
-      return { before: [], after: [] };
-    }
-  })();
-
-  const signature = (() => {
-    try {
-      if (!schedule?.signature) {
-        return undefined;
+      if (!Array.isArray(parsedPhotos) || parsedPhotos.length === 0) {
+        return { hasBeforePhotos: false, hasAfterPhotos: false };
       }
 
-      return typeof schedule.signature === 'string'
-        ? JSON.parse(schedule.signature)
-        : schedule.signature;
+      // Use .some() to short-circuit as soon as we find a match
+      const hasBeforePhotos = parsedPhotos.some((photo: any) => photo.type === 'before');
+      const hasAfterPhotos = parsedPhotos.some((photo: any) => photo.type === 'after');
+
+      return { hasBeforePhotos, hasAfterPhotos };
     } catch (error) {
-      console.error('Error parsing signature:', error, schedule?.signature);
-      return undefined;
+      console.error('Error parsing photos:', error);
+      return { hasBeforePhotos: false, hasAfterPhotos: false };
     }
-  })();
+  }, [(schedule as any)?.photos]);
 
-  const items: InvoiceItem[] = invoice.items ? JSON.parse(invoice.items) : [];
+  // Optimized: Just check if signature exists, don't parse if unnecessary
+  const hasSignatureData = useMemo(() => {
+    try {
+      const signature = (schedule as any)?.signature;
+      if (!signature) {
+        return false;
+      }
 
-  const subtotal = items.reduce((sum, item) => sum + (item.price || 0), 0);
+      const parsed =
+        typeof signature === 'string'
+          ? JSON.parse(signature)
+          : signature;
+
+      return !!parsed;
+    } catch (error) {
+      console.error('Error parsing signature:', error);
+      return false;
+    }
+  }, [(schedule as any)?.signature]);
+
+  const items: InvoiceItem[] = useMemo(() => {
+    if (!invoice?.items) return [];
+    try {
+      return JSON.parse(invoice.items) as InvoiceItem[];
+    } catch (error) {
+      console.error('Error parsing invoice items:', error);
+      return [];
+    }
+  }, [invoice?.items]);
+
+  const subtotal = items.reduce((sum: number, item: InvoiceItem) => sum + (item.price || 0), 0);
   const gst = subtotal * 0.05;
   const total = subtotal + gst;
-
-  const hasBeforePhotos = photos.before?.length > 0;
-  const hasAfterPhotos = photos.after?.length > 0;
 
   const attachmentStateValue =
     latestSignatureAttachment?.state === undefined ||
@@ -160,9 +184,9 @@ export function InvoiceModal({
     !Number.isNaN(attachmentStateValue) &&
     attachmentStateValue === AttachmentState.SYNCED;
 
-  const hasSignature = !!signature || (hasPendingAttachment && !attachmentSynced);
-  const isSignatureUploading =
-  hasPendingAttachment && !attachmentSynced
+  const hasSignature =
+    hasSignatureData || (hasPendingAttachment && !attachmentSynced);
+  const isSignatureUploading = hasPendingAttachment && !attachmentSynced;
 
   // Send invoice function
   const sendInvoice = async () => {
@@ -199,7 +223,9 @@ export function InvoiceModal({
     } catch (error) {
       console.error('Error sending invoice:', error);
       setSendInvoiceError(
-        error instanceof Error ? error.message : 'Failed to send invoice. Please try again.'
+        error instanceof Error
+          ? error.message
+          : 'Failed to send invoice. Please try again.'
       );
     } finally {
       setIsSendingInvoice(false);
@@ -209,6 +235,25 @@ export function InvoiceModal({
   const handleSendInvoiceClick = () => {
     setShowConfirmationModal(true);
   };
+
+  // Render backdrop with proper dismiss behavior
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.5}
+        pressBehavior='close'
+      />
+    ),
+    []
+  );
+
+  // Handle bottom sheet close
+  const handleSheetClose = useCallback(() => {
+    onClose();
+  }, [onClose]);
 
   const renderWorkCompletionSection = () => {
     return (
@@ -363,7 +408,7 @@ export function InvoiceModal({
             >
               {isSendingInvoice ? (
                 <View className='flex-row items-center gap-2'>
-                  <ActivityIndicator size="small" color="#ffffff" />
+                  <ActivityIndicator size='small' color='#ffffff' />
                   <Text className='text-white font-medium text-lg'>
                     Sending Invoice...
                   </Text>
@@ -375,7 +420,6 @@ export function InvoiceModal({
               )}
             </TouchableOpacity>
           )}
-
 
           {sendInvoiceError && (
             <View className='bg-red-50 dark:bg-red-900/20 p-4 rounded-lg'>
@@ -424,7 +468,7 @@ export function InvoiceModal({
             </Text>
           ) : (
             <View className='flex flex-col gap-4'>
-              {items.map((item, index) => (
+              {items.map((item: InvoiceItem, index: number) => (
                 <View
                   key={index}
                   className='flex-row justify-between items-center p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg'
@@ -469,15 +513,26 @@ export function InvoiceModal({
   };
 
   return (
-    <Modal
-      animationType='slide'
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <View className='flex-1 justify-end bg-black/50'>
-        <View className='bg-white dark:bg-gray-800 rounded-t-3xl min-h-[75%] max-h-[90%]'>
-          {/* Header */}
+    <>
+      <BottomSheet
+        ref={bottomSheetRef}
+        index={-1}
+        snapPoints={['75%', '90%']}
+        enablePanDownToClose={true}
+        enableDynamicSizing={false}
+        onClose={handleSheetClose}
+        backdropComponent={renderBackdrop}
+        backgroundStyle={{ backgroundColor: colorScheme === 'dark' ? '#1F2937' : '#ffffff' }}
+        handleIndicatorStyle={{ backgroundColor: colorScheme === 'dark' ? '#6B7280' : '#D1D5DB' }}
+      >
+        {isLoading ? (
+          <View className='flex-1 items-center justify-center px-6 py-8'>
+            <ActivityIndicator size='large' color='#22543D' />
+            <Text className='text-gray-600 dark:text-gray-300 mt-4'>Loading invoice...</Text>
+          </View>
+        ) : shouldShowContent ? (
+          <>
+            {/* Header */}
           <View className='flex flex-col gap-1 px-6 py-4 border-b border-gray-200 dark:border-gray-700'>
             <View className='flex-row justify-between items-center'>
               <View className='flex flex-col gap-1'>
@@ -499,7 +554,7 @@ export function InvoiceModal({
             </View>
           </View>
 
-          <ScrollView className='flex-1 px-6 py-4'>
+          <BottomSheetScrollView className='flex-1 px-6 py-4'>
             <View className='flex flex-col gap-6 pb-6'>
               {/* Dates Section - Show only for managers */}
               {isManager && (
@@ -549,21 +604,24 @@ export function InvoiceModal({
               {/* Invoice Details Section - Only for managers */}
               {renderPricingSection()}
             </View>
-          </ScrollView>
-        </View>
-      </View>
+          </BottomSheetScrollView>
+          </>
+        ) : null}
+      </BottomSheet>
 
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        visible={showConfirmationModal}
-        onClose={() => setShowConfirmationModal(false)}
-        onConfirm={sendInvoice}
-        title="Send Invoice"
-        message={`Are you sure you want to send the invoice for "${invoice.jobTitle}" to the client?`}
-        confirmText="Send Invoice"
-        cancelText="Cancel"
-        isLoading={isSendingInvoice}
-      />
-    </Modal>
+      {/* Confirmation Modal - outside BottomSheet */}
+      {invoice && (
+        <ConfirmationModal
+          visible={showConfirmationModal}
+          onClose={() => setShowConfirmationModal(false)}
+          onConfirm={sendInvoice}
+          title='Send Invoice'
+          message={`Are you sure you want to send the invoice for "${invoice.jobTitle}" to the client?`}
+          confirmText='Send Invoice'
+          cancelText='Cancel'
+          isLoading={isSendingInvoice}
+        />
+      )}
+    </>
   );
 }

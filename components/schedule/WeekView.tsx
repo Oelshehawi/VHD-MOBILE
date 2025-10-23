@@ -21,7 +21,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { formatTimeUTC } from '@/utils/date';
 
 interface WeekViewProps {
-  schedules: Schedule[];
+  schedules: ReadonlyArray<Schedule>;
   selectedDate: string;
   onDateSelect: (date: string) => void;
   onSchedulePress: (schedule: Schedule) => void;
@@ -31,6 +31,82 @@ const TIME_SLOTS = Array.from({ length: 24 }, (_, i) => i); // 12 AM (0) to 11 P
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const TIME_COLUMN_WIDTH = 60;
 const DAY_COLUMN_WIDTH = (SCREEN_WIDTH - TIME_COLUMN_WIDTH) / 7;
+
+interface TimeSlotRowProps {
+  hour: number;
+  weekDays: Date[];
+  getSchedulesForSlot: (day: Date, hour: number) => Schedule[];
+  onSchedulePress: (schedule: Schedule) => void;
+  getScheduleColor: (schedule: Schedule) => string;
+}
+
+const TimeSlotRow = React.memo(
+  ({
+    hour,
+    weekDays,
+    getSchedulesForSlot,
+    onSchedulePress,
+    getScheduleColor,
+  }: TimeSlotRowProps) => {
+    const timeLabel = useMemo(() => {
+      const utcDate = new Date();
+      utcDate.setUTCHours(hour, 0, 0, 0);
+      return formatTimeUTC(utcDate);
+    }, [hour]);
+
+    return (
+      <View
+        className="flex-row border-b border-gray-100 dark:border-gray-800"
+        style={{ minHeight: 80 }}
+      >
+        {/* Time Label Column */}
+        <View
+          style={{ width: TIME_COLUMN_WIDTH }}
+          className="items-center justify-start pt-2 border-r border-gray-200 dark:border-gray-800"
+        >
+          <Text className="text-xs text-gray-500 dark:text-gray-400">
+            {timeLabel}
+          </Text>
+        </View>
+
+        {/* Day Columns */}
+        {weekDays.map((day, dayIndex) => {
+          const slotSchedules = getSchedulesForSlot(day, hour);
+
+          return (
+            <View
+              key={dayIndex}
+              style={{ width: DAY_COLUMN_WIDTH }}
+              className="border-r border-gray-100 dark:border-gray-800 p-1"
+            >
+              {slotSchedules.map((schedule) => (
+                <TouchableOpacity
+                  key={schedule.id}
+                  className={`${getScheduleColor(schedule)} rounded-md p-2 mb-1`}
+                  onPress={() => onSchedulePress(schedule)}
+                  activeOpacity={0.7}
+                >
+                  <Text
+                    className="text-xs font-semibold text-white"
+                    numberOfLines={2}
+                  >
+                    {schedule.jobTitle}
+                  </Text>
+                  <Text
+                    className="text-[10px] text-white opacity-90 mt-1"
+                    numberOfLines={1}
+                  >
+                    {schedule.location}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          );
+        })}
+      </View>
+    );
+  }
+);
 
 export function WeekView({
   schedules,
@@ -66,11 +142,11 @@ export function WeekView({
   }, [onDateSelect]);
 
   // Get color based on schedule status
-  const getScheduleColor = (schedule: Schedule): string => {
+  const getScheduleColor = useCallback((schedule: Schedule): string => {
     if (schedule.confirmed) return 'bg-green-500';
     if (schedule.deadRun) return 'bg-red-500';
     return 'bg-blue-500';
-  };
+  }, []);
 
   // Get schedules for a specific day and hour
   const getSchedulesForSlot = useCallback(
@@ -185,65 +261,16 @@ export function WeekView({
 
       {/* Scrollable Time Grid */}
       <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
-        {TIME_SLOTS.map((hour) => {
-          // Create a UTC time for display
-          const utcDate = new Date();
-          utcDate.setUTCHours(hour, 0, 0, 0);
-          const timeLabel = formatTimeUTC(utcDate);
-
-          return (
-            <View
-              key={hour}
-              className="flex-row border-b border-gray-100 dark:border-gray-800"
-              style={{ minHeight: 80 }}
-            >
-              {/* Time Label Column */}
-              <View
-                style={{ width: TIME_COLUMN_WIDTH }}
-                className="items-center justify-start pt-2 border-r border-gray-200 dark:border-gray-800"
-              >
-                <Text className="text-xs text-gray-500 dark:text-gray-400">
-                  {timeLabel}
-                </Text>
-              </View>
-
-              {/* Day Columns */}
-              {weekDays.map((day, dayIndex) => {
-                const slotSchedules = getSchedulesForSlot(day, hour);
-
-                return (
-                  <View
-                    key={dayIndex}
-                    style={{ width: DAY_COLUMN_WIDTH }}
-                    className="border-r border-gray-100 dark:border-gray-800 p-1"
-                  >
-                    {slotSchedules.map((schedule) => (
-                      <TouchableOpacity
-                        key={schedule.id}
-                        className={`${getScheduleColor(schedule)} rounded-md p-2 mb-1`}
-                        onPress={() => onSchedulePress(schedule)}
-                        activeOpacity={0.7}
-                      >
-                        <Text
-                          className="text-xs font-semibold text-white"
-                          numberOfLines={2}
-                        >
-                          {schedule.jobTitle}
-                        </Text>
-                        <Text
-                          className="text-[10px] text-white opacity-90 mt-1"
-                          numberOfLines={1}
-                        >
-                          {schedule.location}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                );
-              })}
-            </View>
-          );
-        })}
+        {TIME_SLOTS.map((hour) => (
+          <TimeSlotRow
+            key={hour}
+            hour={hour}
+            weekDays={weekDays}
+            getSchedulesForSlot={getSchedulesForSlot}
+            onSchedulePress={onSchedulePress}
+            getScheduleColor={getScheduleColor}
+          />
+        ))}
       </ScrollView>
     </View>
   );
