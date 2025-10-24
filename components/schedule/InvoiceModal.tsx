@@ -8,6 +8,7 @@ import {
 } from 'react-native';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
 import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InvoiceType, Schedule } from '@/types';
 import { formatDateReadable } from '@/utils/date';
 import { SignatureCapture } from './SignatureCapture';
@@ -41,6 +42,7 @@ export function InvoiceModal({
 }: InvoiceModalProps) {
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
+  const insets = useSafeAreaInsets();
   const [showSignatureModal, setShowSignatureModal] = useState(false);
 
   // Send invoice state management
@@ -235,6 +237,12 @@ export function InvoiceModal({
   const handleSheetClose = useCallback(() => {
     onClose();
   }, [onClose]);
+
+  // Handle X button press - close the sheet directly
+const handleClosePress = useCallback(() => {
+  bottomSheetRef.current?.close();
+  onClose();
+}, [onClose]);
 
   const renderWorkCompletionSection = () => {
     return (
@@ -526,7 +534,7 @@ export function InvoiceModal({
                 </Text>
               </View>
               <TouchableOpacity
-                onPress={onClose}
+                onPress={handleClosePress}
                 className='w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full items-center justify-center'
                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
               >
@@ -537,8 +545,11 @@ export function InvoiceModal({
             </View>
           </View>
 
-          <BottomSheetScrollView className='flex-1 px-6 py-4'>
-            <View className='flex flex-col gap-6 pb-6'>
+          <BottomSheetScrollView
+            className='flex-1 px-6 py-4'
+            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) }}
+          >
+            <View className='flex flex-col gap-6'>
               {/* Dates Section - Show only for managers */}
               {isManager && (
                 <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>

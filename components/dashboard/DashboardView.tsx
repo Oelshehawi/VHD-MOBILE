@@ -13,7 +13,7 @@ import {
   usePayrollSchedules,
   useTodaySchedules,
 } from '@/services/data/dashboard';
-import { formatTimeUTC, formatDateReadable } from '@/utils/date';
+import { formatTimeUTC, formatDateReadable, formatDateShort } from '@/utils/date';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
 import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
@@ -229,8 +229,8 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                       Period
                     </Text>
                     <Text className='text-gray-900 dark:text-gray-200 font-medium'>
-                      {formatDateReadable(currentPayroll[0].startDate)} -{' '}
-                      {formatDateReadable(currentPayroll[0].endDate)}
+                      {formatDateShort(currentPayroll[0].startDate)} -{' '}
+                      {formatDateShort(currentPayroll[0].endDate)}
                     </Text>
                   </View>
                   <View className='items-end'>
@@ -240,7 +240,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                           Pay Day
                         </Text>
                         <Text className='text-gray-900 dark:text-gray-200 font-medium'>
-                          {formatDateReadable(currentPayroll[0].payDay)}
+                          {formatDateShort(currentPayroll[0].payDay)}
                         </Text>
                       </>
                     ) : (
