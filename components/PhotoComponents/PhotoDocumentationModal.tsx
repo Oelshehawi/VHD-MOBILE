@@ -1,12 +1,14 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
   Modal,
   TouchableOpacity,
   ScrollView,
+  Platform,
+  Pressable,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
 import { parsePhotosData } from '@/utils/photos';
@@ -35,6 +37,8 @@ export function PhotoDocumentationModal({
   startDate,
 }: PhotoDocumentationModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('before');
+  const insets = useSafeAreaInsets();
+
 
   // Query photos directly from the schedules table
   const { data, isLoading: isQueryLoading } = useQuery(
@@ -141,77 +145,128 @@ export function PhotoDocumentationModal({
     return processedPhotos.filter((photo) => photo.type === 'after');
   }, [processedPhotos]);
 
+
+  // Handle close with logging
+  const handleClose = () => {
+    onClose();
+  };
+
+  // Handle tab change with logging
+  const handleTabChange = (tab: TabType) => {
+    setActiveTab(tab);
+  };
+
   if (!visible) return null;
 
+  // Rebuilt with inline styles and Pressable (iOS-compatible)
   return (
     <Modal
-      animationType='slide'
-      transparent={true}
       visible={visible}
       onRequestClose={onClose}
+      presentationStyle='fullScreen'
+      animationType='slide'
     >
-      <SafeAreaView className='flex-1 bg-gray-50'>
-        <View className='flex-1'>
-          {/* Header */}
-          <View className='bg-darkGreen p-4 shadow-md flex-row justify-between items-center'>
-            <Text className='text-white text-xl font-bold'>{jobTitle}</Text>
-            <TouchableOpacity
-              onPress={onClose}
-              className='w-8 h-8 bg-white/20 rounded-full items-center justify-center'
-            >
-              <Text className='text-white font-bold text-lg'>✕</Text>
-            </TouchableOpacity>
-          </View>
+      <View style={{
+        flex: 1,
+        backgroundColor: '#f9fafb',
+        paddingTop: insets.top,
+      }}>
+        {/* Header */}
+        <View style={{
+          backgroundColor: '#064e3b', // darkGreen equivalent
+          padding: 16,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: 2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 3,
+          elevation: 3,
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+        }}>
+          <Text style={{
+            color: 'white',
+            fontSize: 20,
+            fontWeight: 'bold',
+            flex: 1,
+          }}>
+            {jobTitle}
+          </Text>
 
-          {/* Tabs */}
-          <View className='flex-row border-b border-gray-200 bg-white'>
-            {['before', 'after', 'history'].map((tab) => (
-              <TouchableOpacity
-                key={tab}
-                onPress={() => setActiveTab(tab as TabType)}
-                className={`flex-1 py-4 px-4 ${
-                  activeTab === tab ? 'border-b-2 border-darkGreen' : ''
-                }`}
-              >
-                <Text
-                  className={`text-center font-semibold ${
-                    activeTab === tab ? 'text-darkGreen' : 'text-gray-500'
-                  }`}
-                >
-                  {tab === 'before'
-                    ? `Before Photos${
-                        beforePhotos.length ? ` (${beforePhotos.length})` : ''
-                      }`
-                    : tab === 'after'
-                    ? `After Photos${
-                        afterPhotos.length ? ` (${afterPhotos.length})` : ''
-                      }`
-                    : 'Job History'}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          {/* Content */}
-          {activeTab === 'before' || activeTab === 'after' ? (
-            <ScrollView className='flex-1 px-4 py-4'>
-              <PhotoCapture
-                technicianId={technicianId}
-                photos={activeTab === 'before' ? beforePhotos : afterPhotos}
-                type={activeTab}
-                jobTitle={jobTitle}
-                scheduleId={scheduleId}
-                isLoading={isQueryLoading || isAttachmentsLoading}
-                startDate={startDate}
-              />
-            </ScrollView>
-          ) : (
-            <View className='flex-1 px-4 py-4'>
-              <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />
-            </View>
-          )}
+          <Pressable
+            onPress={handleClose}
+            style={({ pressed }) => ({
+              width: 32,
+              height: 32,
+              backgroundColor: pressed ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.2)',
+              borderRadius: 16,
+              alignItems: 'center',
+              justifyContent: 'center',
+            })}
+          >
+            <Text style={{
+              color: 'white',
+              fontWeight: 'bold',
+              fontSize: 18,
+            }}>
+              ✕
+            </Text>
+          </Pressable>
         </View>
-      </SafeAreaView>
+
+        {/* Tabs */}
+        <View style={{
+          flexDirection: 'row',
+          borderBottomWidth: 1,
+          borderBottomColor: '#e5e7eb',
+          backgroundColor: 'white',
+        }}>
+          {['before', 'after', 'history'].map((tab) => (
+            <Pressable
+              key={tab}
+              onPress={() => handleTabChange(tab as TabType)}
+              style={{
+                flex: 1,
+                paddingVertical: 16,
+                paddingHorizontal: 16,
+                borderBottomWidth: activeTab === tab ? 2 : 0,
+                borderBottomColor: '#064e3b', // darkGreen
+              }}
+            >
+              <Text style={{
+                textAlign: 'center',
+                fontWeight: '600',
+                color: activeTab === tab ? '#064e3b' : '#6b7280',
+              }}>
+                {tab === 'before'
+                  ? `Before Photos${beforePhotos.length ? ` (${beforePhotos.length})` : ''}`
+                  : tab === 'after'
+                  ? `After Photos${afterPhotos.length ? ` (${afterPhotos.length})` : ''}`
+                  : 'Job History'}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+
+        {/* Content */}
+        {activeTab === 'before' || activeTab === 'after' ? (
+          <ScrollView style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }}>
+            <PhotoCapture
+              technicianId={technicianId}
+              photos={activeTab === 'before' ? beforePhotos : afterPhotos}
+              type={activeTab}
+              jobTitle={jobTitle}
+              scheduleId={scheduleId}
+              isLoading={isQueryLoading || isAttachmentsLoading}
+              startDate={startDate}
+            />
+          </ScrollView>
+        ) : (
+          <View style={{ flex: 1, paddingHorizontal: 16, paddingVertical: 16 }}>
+            <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />
+          </View>
+        )}
+      </View>
     </Modal>
   );
 }
