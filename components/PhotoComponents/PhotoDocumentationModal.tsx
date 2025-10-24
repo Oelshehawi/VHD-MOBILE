@@ -3,7 +3,6 @@ import {
   View,
   Text,
   Modal,
-  TouchableOpacity,
   ScrollView,
   Platform,
   Pressable,
@@ -14,6 +13,7 @@ import { JobPhotoHistory } from './JobPhotoHistory';
 import { parsePhotosData } from '@/utils/photos';
 import { useQuery } from '@powersync/react-native';
 import { ATTACHMENT_TABLE, AttachmentState } from '@powersync/attachments';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 interface PhotoDocumentationModalProps {
   visible: boolean;
@@ -195,22 +195,17 @@ export function PhotoDocumentationModal({
 
           <Pressable
             onPress={handleClose}
+            hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
             style={({ pressed }) => ({
-              width: 32,
-              height: 32,
+              width: 44,
+              height: 44,
               backgroundColor: pressed ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.2)',
               borderRadius: 16,
               alignItems: 'center',
               justifyContent: 'center',
             })}
           >
-            <Text style={{
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: 18,
-            }}>
-              ✕
-            </Text>
+            <Ionicons name='close' size={24} color='white' />
           </Pressable>
         </View>
 

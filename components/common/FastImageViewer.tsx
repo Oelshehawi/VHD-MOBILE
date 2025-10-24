@@ -26,6 +26,10 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { scheduleOnRN } from 'react-native-worklets';
 import { FastImageViewerHeader } from './FastImageViewerHeader';
 import {
+  SafeAreaProvider,
+  initialWindowMetrics,
+} from 'react-native-safe-area-context';
+import {
   buildCloudinaryUrlMobile,
   pickCloudinaryWidth,
   getCloudinaryCacheKey,
@@ -251,8 +255,9 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
       presentationStyle='overFullScreen'
       transparent={true}
     >
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View className='flex-1 bg-black'>
+      <SafeAreaProvider initialMetrics={initialWindowMetrics}>
+        <GestureHandlerRootView style={{ flex: 1 }}>
+          <View className='flex-1 bg-black'>
           {/* Header */}
           <FastImageViewerHeader
             title={title}
@@ -332,7 +337,8 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
             </>
           )}
         </View>
-      </GestureHandlerRootView>
+        </GestureHandlerRootView>
+      </SafeAreaProvider>
     </Modal>
   );
 };
