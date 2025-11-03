@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StatusBar,
+  Modal,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -18,6 +19,8 @@ import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
 import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
 import { useTheme } from '@/providers/ThemeProvider';
+import { AvailabilityManager } from '@/components/schedule/AvailabilityManager';
+import { TimeOffManager } from '@/components/schedule/TimeOffManager';
 
 interface DashboardViewProps {
   userId: string;
@@ -27,6 +30,8 @@ interface DashboardViewProps {
 export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const [showSchedules, setShowSchedules] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [showTimeOffModal, setShowTimeOffModal] = useState(false);
   const { colorScheme } = useTheme();
   const { data: todaySchedules = [] } = useTodaySchedules();
   const { data: currentPayroll = [] } = useCurrentPayrollPeriod();
@@ -174,12 +179,35 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
 
       <ScrollView className='flex-1'>
         <View className='p-4 flex flex-col gap-4'>
-          {/* Welcome Section */}
-          <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
-            <Text className='text-2xl font-bold text-gray-900 dark:text-gray-100'>
-              Welcome back, {isManager ? 'Manager' : 'Technician'}!
-            </Text>
-          </View>
+
+          {/* Quick Actions for Technicians */}
+          {!isManager && (
+            <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
+              <Text className='text-lg font-bold text-gray-900 dark:text-gray-100 mb-4'>
+                Quick Actions
+              </Text>
+              <View className='flex-row gap-3'>
+                <TouchableOpacity
+                  onPress={() => setShowAvailabilityModal(true)}
+                  className='flex-1 bg-blue-50 dark:bg-blue-900 p-4 rounded-lg border border-blue-200 dark:border-blue-700'
+                >
+                  <Ionicons name='calendar' size={24} color='#3b82f6' />
+                  <Text className='text-gray-900 dark:text-white font-semibold mt-2'>
+                    Availability
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setShowTimeOffModal(true)}
+                  className='flex-1 bg-purple-50 dark:bg-purple-900 p-4 rounded-lg border border-purple-200 dark:border-purple-700'
+                >
+                  <Ionicons name='time' size={24} color='#a855f7' />
+                  <Text className='text-gray-900 dark:text-white font-semibold mt-2'>
+                    Time Off
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
 
           {/* Today's Schedule */}
           <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
@@ -290,6 +318,28 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
         visible={showThemeModal}
         onClose={() => setShowThemeModal(false)}
       />
+
+      {/* Availability Manager Modal */}
+      <Modal
+        visible={showAvailabilityModal}
+        animationType='slide'
+        onRequestClose={() => setShowAvailabilityModal(false)}
+      >
+        <AvailabilityManager
+          onNavigateBack={() => setShowAvailabilityModal(false)}
+        />
+      </Modal>
+
+      {/* Time Off Manager Modal */}
+      <Modal
+        visible={showTimeOffModal}
+        animationType='slide'
+        onRequestClose={() => setShowTimeOffModal(false)}
+      >
+        <TimeOffManager
+          onNavigateBack={() => setShowTimeOffModal(false)}
+        />
+      </Modal>
     </SafeAreaView>
   );
 }

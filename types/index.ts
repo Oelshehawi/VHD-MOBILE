@@ -57,7 +57,7 @@ export interface PhotoType {
 
 export interface PhotosData {
   photos: PhotoType[];
-  pendingOps: PendingOp[];
+  pendingOps: any[];
 }
 
 export interface PhotoQueryResult {

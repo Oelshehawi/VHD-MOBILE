@@ -93,6 +93,38 @@ const payrollperiods = new Table(
   { indexes: {} }
 );
 
+const availability = new Table(
+  {
+    // id column (text) is automatically included
+    technicianId: column.text,      // Clerk user ID
+    dayOfWeek: column.integer,      // 0-6 for recurring patterns (nullable)
+    startTime: column.text,         // HH:mm format
+    endTime: column.text,           // HH:mm format
+    isFullDay: column.integer,      // Boolean as 0/1
+    isRecurring: column.integer,    // Boolean as 0/1
+    specificDate: column.text,      // ISO date string (nullable)
+    createdAt: column.text,
+    updatedAt: column.text,
+  },
+  { indexes: { technicians: ['technicianId'] } }
+);
+
+const timeoffRequests = new Table(
+  {
+    // id column (text) is automatically included
+    technicianId: column.text,      // Clerk user ID
+    startDate: column.text,         // ISO date string
+    endDate: column.text,           // ISO date string
+    reason: column.text,
+    status: column.text,            // "pending" | "approved" | "rejected"
+    requestedAt: column.text,       // ISO datetime
+    reviewedAt: column.text,        // ISO datetime (nullable)
+    reviewedBy: column.text,        // Admin Clerk ID (nullable)
+    notes: column.text,             // Admin notes (nullable)
+  },
+  { indexes: { technicians: ['technicianId'] } }
+);
+
 // Add the attachments table from PowerSync
 export const AppSchema = new Schema({
   invoices,
@@ -100,6 +132,8 @@ export const AppSchema = new Schema({
   payrollperiods,
   delete_photo_operations,
   add_photo_operations,
+  availability,
+  timeoffRequests,
   attachments: new AttachmentTable({
     name: 'attachments',
     additionalColumns: [
@@ -133,3 +167,5 @@ export const AppSchema = new Schema({
 
 export type Database = (typeof AppSchema)['types'];
 export type Schedule = Database['schedules'];
+export type Availability = Database['availability'];
+export type TimeOffRequest = Database['timeoffRequests'];

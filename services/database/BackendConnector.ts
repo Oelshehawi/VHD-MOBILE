@@ -118,8 +118,10 @@ export class BackendConnector implements PowerSyncBackendConnector {
           continue;
         }
 
-        const table = this.apiClient.from(op.table);
         let result: any = null;
+
+        // Use ApiClient.from() for all tables - special handling is done in ApiClient
+        const table = this.apiClient.from(op.table);
         switch (op.op) {
           case UpdateType.PUT:
             // eslint-disable-next-line no-case-declarations
@@ -134,20 +136,31 @@ export class BackendConnector implements PowerSyncBackendConnector {
             break;
         }
 
+        console.log(`Synced ${op.table} record:`, op.id, result);
+
         if (result.error) {
           console.error(`${op.op} operation failed for ${op.table}:${op.id}`, result.error);
 
           // Handle 404 errors specifically - record doesn't exist on server
-          if (result.error.code === 'PGRST116' || result.error.message?.includes('404')) {
+          const isError404 =
+            (typeof result.error === 'object' && result.error.code === 'PGRST116') ||
+            (typeof result.error === 'object' && result.error.message?.includes('404')) ||
+            (typeof result.error === 'string' && result.error.includes('404'));
+
+          if (isError404) {
             console.warn(`Record ${op.id} not found on server, marking operation as complete to prevent retry loops`);
             // Don't throw error for 404s - this allows the transaction to complete
             // and prevents infinite retry loops for orphaned records
             continue;
           }
 
-          // For other errors, add context and throw
-          result.error.message = `Could not ${op.op} data to backend: ${result.error.message || JSON.stringify(result.error)}`;
-          throw result.error;
+          // For other errors, create a proper error object if needed and add context
+          const errorMessage = typeof result.error === 'string'
+            ? result.error
+            : (result.error.message || JSON.stringify(result.error));
+
+          const errorObj = new Error(`Could not ${op.op} data to backend: ${errorMessage}`);
+          throw errorObj;
         }
       }
 

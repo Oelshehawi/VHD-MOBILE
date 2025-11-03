@@ -227,6 +227,32 @@ export class ApiClient {
             return await this.processPhotoDeleteOperation(record);
           }
 
+          // Special handling for availability table
+          if (table === 'availability') {
+            return await this.updateAvailability(
+              record.technicianId || '',
+              {
+                availabilityId: record.id,
+                startTime: record.startTime || '',
+                endTime: record.endTime || '',
+                isFullDay: record.isFullDay ? true : false,
+                isRecurring: record.isRecurring ? true : false,
+                dayOfWeek: record.dayOfWeek,
+                specificDate: record.specificDate,
+              }
+            );
+          }
+
+          // Special handling for timeoffRequests table
+          if (table === 'timeoffRequests') {
+            return await this.requestTimeOff(
+              record.technicianId || '',
+              record.startDate || '',
+              record.endDate || '',
+              record.reason || ''
+            );
+          }
+
           // Default handling for other tables
           const response = await fetch(`${this.baseUrl}/api/${table}`, {
             method: 'POST',
@@ -257,6 +283,36 @@ export class ApiClient {
                 );
               }
 
+              // Special handling for availability updates - use unified endpoint
+              if (table === 'availability') {
+                const response = await fetch(`${this.baseUrl}/api/availability`, {
+                  method: 'PATCH',
+                  headers: this.headers,
+                  body: JSON.stringify({ ...data, id: value }),
+                });
+
+                if (!response.ok) {
+                  return { error: `HTTP error: ${response.status}` };
+                }
+
+                return await response.json();
+              }
+
+              // Special handling for timeoffRequests updates - use unified endpoint
+              if (table === 'timeoffRequests') {
+                const response = await fetch(`${this.baseUrl}/api/timeoff`, {
+                  method: 'PATCH',
+                  headers: this.headers,
+                  body: JSON.stringify({ ...data, id: value }),
+                });
+
+                if (!response.ok) {
+                  return { error: `HTTP error: ${response.status}` };
+                }
+
+                return await response.json();
+              }
+
               // Default handling for other updates
               const response = await fetch(
                 `${this.baseUrl}/api/${table}?${field}=${value}`,
@@ -284,6 +340,37 @@ export class ApiClient {
         return {
           eq: async (field: string, value: string) => {
             try {
+              // Special handling for availability deletes - use unified endpoint
+              if (table === 'availability') {
+                const response = await fetch(`${this.baseUrl}/api/availability`, {
+                  method: 'DELETE',
+                  headers: this.headers,
+                  body: JSON.stringify({ id: value }),
+                });
+
+                if (!response.ok) {
+                  return { error: `HTTP error: ${response.status}` };
+                }
+
+                return await response.json();
+              }
+
+              // Special handling for timeoffRequests deletes - use unified endpoint
+              if (table === 'timeoffRequests') {
+                const response = await fetch(`${this.baseUrl}/api/timeoff`, {
+                  method: 'DELETE',
+                  headers: this.headers,
+                  body: JSON.stringify({ id: value }),
+                });
+
+                if (!response.ok) {
+                  return { error: `HTTP error: ${response.status}` };
+                }
+
+                return await response.json();
+              }
+
+              // Default handling for other deletes
               const response = await fetch(
                 `${this.baseUrl}/api/${table}?${field}=${value}`,
                 {
@@ -651,6 +738,152 @@ export class ApiClient {
 
       const result = await response.json();
       return result;
+    } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Update technician availability
+   * @param technicianId ID of the technician
+   * @param availabilityData Availability data including times and recurrence pattern
+   * @returns Result of the update operation
+   */
+  async updateAvailability(
+    technicianId: string,
+    availabilityData: {
+      availabilityId?: string;
+      startTime: string;
+      endTime: string;
+      isFullDay: boolean;
+      isRecurring: boolean;
+      dayOfWeek?: number;
+      specificDate?: string;
+    }
+  ) {
+    try {
+      if (!technicianId || !availabilityData.startTime || !availabilityData.endTime) {
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      const requestBody = {
+        technicianId,
+        ...availabilityData,
+      };
+
+      // Make API call to update availability
+      const response = await fetch(`${this.baseUrl}/api/availability`, {
+        method: 'POST',
+        headers: {
+          ...this.headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
+        throw new Error(
+          errorData.details ||
+            errorData.error ||
+            errorData.message ||
+            `Update failed with status ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      return { success: true, ...result };
+    } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * Request time off
+   * @param technicianId ID of the technician
+   * @param startDate Start date in ISO format
+   * @param endDate End date in ISO format
+   * @param reason Reason for time off request
+   * @returns Result of the request operation
+   */
+  async requestTimeOff(
+    technicianId: string,
+    startDate: string,
+    endDate: string,
+    reason: string
+  ) {
+    try {
+      if (!technicianId || !startDate || !endDate || !reason) {
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      const requestBody = {
+        technicianId,
+        startDate,
+        endDate,
+        reason,
+      };
+
+      // Make API call to request time off
+      const response = await fetch(`${this.baseUrl}/api/timeoff`, {
+        method: 'POST',
+        headers: {
+          ...this.headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
+        throw new Error(
+          errorData.details ||
+            errorData.error ||
+            errorData.message ||
+            `Request failed with status ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      return { success: true, ...result };
     } catch (error) {
       // For network errors, indicate that the operation should be retried
       if (
