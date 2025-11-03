@@ -62,7 +62,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
   // Fetch availability from PowerSync
   const { data: availabilityData } = useQuery(
-    `SELECT * FROM availability WHERE technicianId = ? ORDER BY createdAt DESC`,
+    `SELECT * FROM availabilities WHERE technicianId = ? ORDER BY createdAt DESC`,
     [user?.id || '']
   );
   const availability = (availabilityData as Availability[]) || [];
@@ -139,7 +139,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
       // Insert or update in PowerSync
       await powerSync.execute(
-        `INSERT INTO availability (id, technicianId, dayOfWeek, startTime, endTime, isFullDay, isRecurring, specificDate, createdAt, updatedAt)
+        `INSERT INTO availabilities (id, technicianId, dayOfWeek, startTime, endTime, isFullDay, isRecurring, specificDate, createdAt, updatedAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           availabilityId,
@@ -180,7 +180,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     setConfirmationAction(() => async () => {
       try {
         setIsSaving(true);
-        await powerSync.execute(`DELETE FROM availability WHERE id = ?`, [
+        await powerSync.execute(`DELETE FROM availabilities WHERE id = ?`, [
           availabilityId,
         ]);
         Alert.alert('Success', 'Availability deleted successfully');
@@ -383,13 +383,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
                   </Text>
                 </View>
                 <View className='flex-row gap-2'>
-                  <TouchableOpacity
-                    onPress={() => handleEdit(av)}
-                    className='p-2 bg-blue-100 dark:bg-blue-900 rounded-lg'
-                    disabled={isSaving}
-                  >
-                    <Ionicons name='pencil' size={16} color='#3b82f6' />
-                  </TouchableOpacity>
+          
                   <TouchableOpacity
                     onPress={() => handleDelete(av.id!)}
                     className='p-2 bg-red-100 dark:bg-red-900 rounded-lg'

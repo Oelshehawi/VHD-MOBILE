@@ -49,7 +49,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
   // Fetch time-off requests from PowerSync
   const { data: requestsData } = useQuery(
-    `SELECT * FROM timeoffRequests WHERE technicianId = ? ORDER BY startDate DESC`,
+    `SELECT * FROM timeoffrequests WHERE technicianId = ? ORDER BY startDate DESC`,
     [user?.id || '']
   );
   const requests = (requestsData as TimeOffRequest[]) || [];
@@ -110,7 +110,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
       // Insert only to PowerSync - BackendConnector will handle the API sync
       await powerSync.execute(
-        `INSERT INTO timeoffRequests (id, technicianId, startDate, endDate, reason, status, requestedAt, reviewedAt, reviewedBy, notes)
+        `INSERT INTO timeoffrequests (id, technicianId, startDate, endDate, reason, status, requestedAt, reviewedAt, reviewedBy, notes)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
           requestId,
@@ -150,7 +150,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
     setConfirmationAction(() => async () => {
       try {
         setIsSaving(true);
-        await powerSync.execute(`DELETE FROM timeoffRequests WHERE id = ?`, [requestId]);
+        await powerSync.execute(`DELETE FROM timeoffrequests WHERE id = ?`, [requestId]);
         Alert.alert('Success', 'Request cancelled');
       } catch (error) {
         showError(error instanceof Error ? error.message : 'Failed to cancel request');

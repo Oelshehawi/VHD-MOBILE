@@ -268,6 +268,25 @@ export function calculateDateDifference(date1: string, date2: string): number {
 }
 
 /**
+ * Parse an ISO date string and return a Date in the local timezone
+ * This fixes the issue where UTC dates at midnight are interpreted in local timezone
+ * @param isoDateString ISO date string like "2025-11-17T00:00:00.000Z"
+ * @returns Date object adjusted for local timezone
+ */
+export function parseISODateToLocalDate(isoDateString: string): Date {
+  // Extract just the date part (YYYY-MM-DD)
+  const dateMatch = isoDateString.match(/(\d{4})-(\d{2})-(\d{2})/);
+  if (!dateMatch) {
+    throw new Error('Invalid date format');
+  }
+
+  const [, year, month, day] = dateMatch;
+  // Create a date in local timezone using these components
+  // This ensures we get the date as intended, not shifted by timezone
+  return new Date(parseInt(year), parseInt(month) - 1, parseInt(day));
+}
+
+/**
  * Format date range for display
  * @param startDate Start date in ISO format (can be null/undefined)
  * @param endDate End date in ISO format (can be null/undefined)
@@ -279,8 +298,8 @@ export function formatDateRange(startDate: string | null | undefined, endDate: s
       return 'Invalid dates';
     }
 
-    const start = parseISO(startDate);
-    const end = parseISO(endDate);
+    const start = parseISODateToLocalDate(startDate);
+    const end = parseISODateToLocalDate(endDate);
 
     const startFormatted = format(start, 'MMM d');
     const endFormatted = format(end, 'MMM d, yyyy');

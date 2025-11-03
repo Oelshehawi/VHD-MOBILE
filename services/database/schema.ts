@@ -93,7 +93,7 @@ const payrollperiods = new Table(
   { indexes: {} }
 );
 
-const availability = new Table(
+const availabilities = new Table(
   {
     // id column (text) is automatically included
     technicianId: column.text,      // Clerk user ID
@@ -109,7 +109,7 @@ const availability = new Table(
   { indexes: { technicians: ['technicianId'] } }
 );
 
-const timeoffRequests = new Table(
+const timeoffrequests = new Table(
   {
     // id column (text) is automatically included
     technicianId: column.text,      // Clerk user ID
@@ -132,8 +132,8 @@ export const AppSchema = new Schema({
   payrollperiods,
   delete_photo_operations,
   add_photo_operations,
-  availability,
-  timeoffRequests,
+  availabilities,
+  timeoffrequests,
   attachments: new AttachmentTable({
     name: 'attachments',
     additionalColumns: [
@@ -167,5 +167,5 @@ export const AppSchema = new Schema({
 
 export type Database = (typeof AppSchema)['types'];
 export type Schedule = Database['schedules'];
-export type Availability = Database['availability'];
-export type TimeOffRequest = Database['timeoffRequests'];
+export type Availability = Database['availabilities'];
+export type TimeOffRequest = Database['timeoffrequests'];

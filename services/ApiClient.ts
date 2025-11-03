@@ -34,7 +34,7 @@ const ENV = {
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
   DEVELOPMENT: {
-    apiUrl: PROD_URL,
+    apiUrl: LOCAL_URL,
     powerSyncUrl: process.env.EXPO_PUBLIC_POWERSYNC_URL,
   },
 };
@@ -228,7 +228,7 @@ export class ApiClient {
           }
 
           // Special handling for availability table
-          if (table === 'availability') {
+          if (table === 'availabilities') {
             return await this.updateAvailability(
               record.technicianId || '',
               {
@@ -244,7 +244,7 @@ export class ApiClient {
           }
 
           // Special handling for timeoffRequests table
-          if (table === 'timeoffRequests') {
+          if (table === 'timeoffrequests') {
             return await this.requestTimeOff(
               record.technicianId || '',
               record.startDate || '',
@@ -284,7 +284,7 @@ export class ApiClient {
               }
 
               // Special handling for availability updates - use unified endpoint
-              if (table === 'availability') {
+              if (table === 'availabilities') {
                 const response = await fetch(`${this.baseUrl}/api/availability`, {
                   method: 'PATCH',
                   headers: this.headers,
@@ -299,7 +299,7 @@ export class ApiClient {
               }
 
               // Special handling for timeoffRequests updates - use unified endpoint
-              if (table === 'timeoffRequests') {
+              if (table === 'timeoffrequests') {
                 const response = await fetch(`${this.baseUrl}/api/timeoff`, {
                   method: 'PATCH',
                   headers: this.headers,
@@ -341,7 +341,7 @@ export class ApiClient {
           eq: async (field: string, value: string) => {
             try {
               // Special handling for availability deletes - use unified endpoint
-              if (table === 'availability') {
+              if (table === 'availabilities') {
                 const response = await fetch(`${this.baseUrl}/api/availability`, {
                   method: 'DELETE',
                   headers: this.headers,
@@ -356,7 +356,7 @@ export class ApiClient {
               }
 
               // Special handling for timeoffRequests deletes - use unified endpoint
-              if (table === 'timeoffRequests') {
+              if (table === 'timeoffrequests') {
                 const response = await fetch(`${this.baseUrl}/api/timeoff`, {
                   method: 'DELETE',
                   headers: this.headers,

@@ -1,8 +1,8 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { formatDateRange } from '../../utils/availabilityValidation';
-import { format, parseISO } from 'date-fns';
+import { formatDateRange, parseISODateToLocalDate } from '../../utils/availabilityValidation';
+import { format } from 'date-fns';
 import type { TimeOffRequest } from '../../services/database/schema';
 
 interface TimeOffRequestItemProps {
@@ -89,7 +89,7 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
 
       {/* Request date */}
       <Text className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-        Requested on {format(parseISO(request.requestedAt || ''), 'MMM d, yyyy')}
+        Requested on {request.requestedAt ? format(parseISODateToLocalDate(request.requestedAt), 'MMM d, yyyy') : 'Unknown'}
       </Text>
 
       {/* Admin notes if available */}
@@ -103,7 +103,7 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
       {/* Action buttons for pending requests */}
       {isPending && (onEdit || onCancel) && (
         <View className="flex-row gap-2">
-          {onEdit && (
+          {/* {onEdit && (
             <TouchableOpacity
               onPress={() => onEdit(request)}
               className="flex-1 bg-blue-500 p-3 rounded flex-row items-center justify-center"
@@ -111,7 +111,7 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
               <Ionicons name="pencil" size={16} color="white" />
               <Text className="text-white font-semibold ml-2">Edit</Text>
             </TouchableOpacity>
-          )}
+          )} */}
           {onCancel && (
             <TouchableOpacity
               onPress={() => onCancel(request.id!)}
