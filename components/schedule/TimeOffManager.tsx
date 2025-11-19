@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   TextInput,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, usePowerSync } from '@powersync/react-native';
 import { useUser } from '@clerk/clerk-expo';
@@ -32,6 +32,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
   onNavigateBack,
 }) => {
   const { user } = useUser();
+  const insets = useSafeAreaInsets();
   const powerSync = usePowerSync();
   const [isEditing, setIsEditing] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
@@ -183,7 +184,10 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
   const rejectedRequests = requests.filter((r) => r.status === 'rejected');
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50 dark:bg-gray-900">
+    <View 
+      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+      className="flex-1 bg-gray-50 dark:bg-gray-900"
+    >
       <ScrollView className="flex-1">
         <View className="p-4">
         {/* Header */}
@@ -334,6 +338,6 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
         />
       </View>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };

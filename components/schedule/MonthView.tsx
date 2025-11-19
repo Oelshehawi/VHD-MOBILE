@@ -105,7 +105,10 @@ const MonthDayCell = React.memo(
 
           {weatherInfo && (
             <View className='mt-1 flex-row items-center gap-1'>
-              <Image source={{ uri: weatherInfo.iconUri }} style={{ width: 16, height: 16 }} />
+              <Image
+                source={{ uri: weatherInfo.iconUri }}
+                style={{ width: 16, height: 16 }}
+              />
               <Text className='text-xs font-medium'>
                 {weatherInfo.temperature}
                 {'\u00B0'}
@@ -119,7 +122,9 @@ const MonthDayCell = React.memo(
                 <View key={apt.id} className='mb-0.5'>
                   <View
                     className={`h-1 rounded-full ${
-                      apt.status === 'confirmed' ? 'bg-darkGreen' : 'bg-blue-500'
+                      apt.status === 'confirmed'
+                        ? 'bg-darkGreen'
+                        : 'bg-blue-500'
                     }`}
                   />
                 </View>
@@ -142,7 +147,9 @@ export function MonthView({
   const [selectedDate, setSelectedDate] = useState(() =>
     startOfDay(new Date(currentDate)).toISOString()
   );
-  const [weatherData, setWeatherData] = useState<Map<string, WeatherData>>(new Map());
+  const [weatherData, setWeatherData] = useState<Map<string, WeatherData>>(
+    new Map()
+  );
   const currentDateObj = useMemo(
     () => startOfDay(new Date(currentDate || selectedDate)),
     [currentDate, selectedDate]
@@ -172,18 +179,33 @@ export function MonthView({
 
   const appointmentsByDate = useMemo(() => {
     const map = new Map<string, AppointmentType[]>();
-    appointments.forEach((appointment) => {
+    const uniqueAppointments = new Map<string, AppointmentType>();
+
+    // Deduplicate appointments by ID
+    appointments.forEach((apt) => {
+      if (apt.id && !uniqueAppointments.has(apt.id)) {
+        uniqueAppointments.set(apt.id, apt);
+      }
+    });
+
+    uniqueAppointments.forEach((appointment) => {
       try {
-        const dateKey = format(
-          startOfDay(new Date(appointment.startTime)),
-          'yyyy-MM-dd'
-        );
+        // Use string slicing to get the date, matching ScheduleView logic
+        // This prevents timezone conversion issues where the bar shows up on the wrong day
+        const dateKey =
+          typeof appointment.startTime === 'string'
+            ? appointment.startTime.slice(0, 10)
+            : format(new Date(appointment.startTime), 'yyyy-MM-dd');
         if (!map.has(dateKey)) {
           map.set(dateKey, []);
         }
         map.get(dateKey)!.push(appointment);
       } catch (error) {
-        console.error('Error grouping appointment', appointment.startTime, error);
+        console.error(
+          'Error grouping appointment',
+          appointment.startTime,
+          error
+        );
       }
     });
     return map;
@@ -218,7 +240,9 @@ export function MonthView({
             coords.longitude
           );
 
-          return forecast.map((day) => [`${location}_${day.date}`, day] as const);
+          return forecast.map(
+            (day) => [`${location}_${day.date}`, day] as const
+          );
         } catch (error) {
           console.error('Error fetching weather for', location, error);
           return null;

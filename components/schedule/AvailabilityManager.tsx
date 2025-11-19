@@ -8,7 +8,7 @@ import {
   ActivityIndicator,
   Switch,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, usePowerSync } from '@powersync/react-native';
 import { useUser } from '@clerk/clerk-expo';
@@ -41,6 +41,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   onNavigateBack,
 }) => {
   const { user } = useUser();
+  const insets = useSafeAreaInsets();
   const powerSync = usePowerSync();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -213,7 +214,10 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   };
 
   return (
-    <SafeAreaView className='flex-1 bg-gray-50 dark:bg-gray-900'>
+    <View 
+      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+      className='flex-1 bg-gray-50 dark:bg-gray-900'
+    >
       <ScrollView className='flex-1 bg-gray-50 dark:bg-gray-900'>
       <View className='p-4'>
         {/* Header */}
@@ -407,6 +411,6 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
         onClose={() => setShowConfirmation(false)}
       />
     </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
