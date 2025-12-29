@@ -165,6 +165,21 @@ export function InvoiceModal({
     }
   }, [(schedule as any)?.signature]);
 
+  // Parse onSiteContact from JSON string if needed
+  const onSiteContact = useMemo(() => {
+    try {
+      const contact = (schedule as any)?.onSiteContact;
+      if (!contact) {
+        return null;
+      }
+
+      return typeof contact === 'string' ? JSON.parse(contact) : contact;
+    } catch (error) {
+      console.error('Error parsing onSiteContact:', error);
+      return null;
+    }
+  }, [(schedule as any)?.onSiteContact]);
+
   const items: InvoiceItem[] = useMemo(() => {
     if (!invoice?.items) return [];
     try {
@@ -697,20 +712,20 @@ export function InvoiceModal({
               <View className='flex flex-col gap-6'>
                 {/* Dates Section - Show only for managers */}
                 {isManager && (
-                  <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                    <View className='flex flex-col gap-1'>
+                  <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg gap-4'>
+                    <View className='flex flex-col gap-1 flex-1'>
                       <Text className='text-sm text-gray-500 dark:text-gray-400'>
                         Date Issued
                       </Text>
-                      <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                      <Text className='text-sm font-medium text-gray-900 dark:text-white'>
                         {formatDateReadable(invoice.dateIssued)}
                       </Text>
                     </View>
-                    <View className='flex flex-col gap-1'>
+                    <View className='flex flex-col gap-1 flex-1'>
                       <Text className='text-sm text-gray-500 dark:text-gray-400'>
                         Due Date
                       </Text>
-                      <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                      <Text className='text-sm font-medium text-gray-900 dark:text-white'>
                         {formatDateReadable(invoice.dateDue)}
                       </Text>
                     </View>
@@ -738,6 +753,59 @@ export function InvoiceModal({
                     </TouchableOpacity>
                   </View>
                 </View>
+
+                {/* On-Site Contact Section */}
+                {onSiteContact &&
+                  (onSiteContact.name ||
+                    onSiteContact.phone ||
+                    onSiteContact.email) && (
+                    <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                      <Text className='text-sm text-gray-500 dark:text-gray-400 mb-2'>
+                        On-Site Contact
+                      </Text>
+                      {onSiteContact.name && (
+                        <Text className='text-base font-medium text-gray-900 dark:text-white mb-1'>
+                          {onSiteContact.name}
+                        </Text>
+                      )}
+                      {onSiteContact.phone && (
+                        <View className='flex-row items-center mt-1'>
+                          <Ionicons
+                            name='call-outline'
+                            size={16}
+                            color='#6B7280'
+                          />
+                          <Text className='text-base text-gray-700 dark:text-gray-300 ml-2'>
+                            {onSiteContact.phone}
+                          </Text>
+                        </View>
+                      )}
+                      {onSiteContact.email && (
+                        <View className='flex-row items-center mt-1'>
+                          <Ionicons
+                            name='mail-outline'
+                            size={16}
+                            color='#6B7280'
+                          />
+                          <Text className='text-base text-gray-700 dark:text-gray-300 ml-2'>
+                            {onSiteContact.email}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  )}
+
+                {/* Access Instructions Section */}
+                {schedule?.accessInstructions && (
+                  <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                    <Text className='text-sm text-gray-500 dark:text-gray-400 mb-1'>
+                      Access Instructions
+                    </Text>
+                    <Text className='text-base text-gray-900 dark:text-white'>
+                      {schedule.accessInstructions}
+                    </Text>
+                  </View>
+                )}
 
                 {/* Work Documentation Section */}
                 {renderWorkCompletionSection()}
