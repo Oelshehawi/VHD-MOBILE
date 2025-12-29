@@ -8,7 +8,7 @@ export interface PhotoType {
   _id: string;
   id: string;
   url: string;
-  type: 'before' | 'after' | 'signature';
+  type: 'before' | 'after' | 'signature' | 'estimate';
   timestamp: string;
   status?: 'pending' | 'uploaded' | 'failed';
   technicianId: string;
@@ -116,7 +116,7 @@ export const recordPhotoDeleteOperation = async (
   scheduleId: string,
   photoId: string,
   technicianId: string,
-  photoType: 'before' | 'after' | 'signature'
+  photoType: 'before' | 'after' | 'signature' | 'estimate'
 ) => {
   await tx.execute(
     `INSERT INTO delete_photo_operations 

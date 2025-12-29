@@ -58,7 +58,7 @@ export interface PhotoType {
   url: string;
   timestamp: string;
   technicianId: string;
-  type: 'before' | 'after';
+  type: 'before' | 'after' | 'estimate';
   status: 'pending' | 'uploaded';
 }
 

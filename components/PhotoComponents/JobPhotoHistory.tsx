@@ -29,7 +29,7 @@ interface EnhancedPhotoType extends PhotoType {
 interface GalleryImage {
   uri: string;
   title?: string;
-  type?: 'before' | 'after' | 'signature';
+  type?: 'before' | 'after' | 'signature' | 'estimate';
 }
 
 // Job section with photos by type
@@ -73,6 +73,42 @@ export function JobPhotoHistory({
         : `SELECT id FROM schedules WHERE 0`,
       [jobTitle?.trim(), scheduleId]
     );
+
+  // Fetch current schedule's photos to get estimate photos (for when no history exists)
+  const {
+    data: currentScheduleData = [],
+    isLoading: isCurrentScheduleLoading,
+  } = useQuery<any>(
+    scheduleId
+      ? `SELECT photos FROM schedules WHERE id = ?`
+      : `SELECT id FROM schedules WHERE 0`,
+    [scheduleId]
+  );
+
+  // Extract estimate photos from current schedule
+  const estimatePhotos = useMemo(() => {
+    if (!currentScheduleData.length) return [];
+
+    try {
+      const photosJson = currentScheduleData[0]?.photos;
+      if (!photosJson || typeof photosJson !== 'string') return [];
+
+      const photosObj = JSON.parse(photosJson);
+      let photosArray: EnhancedPhotoType[] = [];
+
+      if (Array.isArray(photosObj)) {
+        photosArray = photosObj;
+      } else if (Array.isArray(photosObj.photos)) {
+        photosArray = photosObj.photos;
+      }
+
+      // Filter only estimate type photos
+      return photosArray.filter((p) => p.type === 'estimate');
+    } catch (err) {
+      console.error('Error parsing current schedule photos:', err);
+      return [];
+    }
+  }, [currentScheduleData]);
 
   // Process jobs data into sections
   const jobSections = useMemo(() => {
@@ -372,7 +408,7 @@ export function JobPhotoHistory({
   );
 
   // Show loading indicator
-  if (isQueryLoading || isLoading) {
+  if (isQueryLoading || isCurrentScheduleLoading || isLoading) {
     return (
       <View className='flex-1 justify-center items-center'>
         <ActivityIndicator size='large' color='#0891b2' />
@@ -383,7 +419,93 @@ export function JobPhotoHistory({
     );
   }
 
-  // Show empty state
+  // Show estimate photos when no previous job history exists
+  if (jobSections.length === 0 && estimatePhotos.length > 0) {
+    return (
+      <View className='flex-1 p-2'>
+        <View className='bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4'>
+          <View className='flex-row items-center mb-1'>
+            <Ionicons name='information-circle' size={18} color='#d97706' />
+            <Text className='text-amber-800 font-semibold ml-2'>
+              First Time Job
+            </Text>
+          </View>
+          <Text className='text-amber-700 text-sm'>
+            No previous job history. Showing reference photos from the estimate.
+          </Text>
+        </View>
+
+        {/* Estimate Photos Section */}
+        <View className='bg-white rounded-xl p-4 shadow-sm border border-gray-100'>
+          <View className='flex-row items-center mb-3'>
+            <Ionicons name='images-outline' size={20} color='#8b5cf6' />
+            <Text className='text-base font-semibold text-gray-800 ml-2'>
+              Estimate Reference Photos ({estimatePhotos.length})
+            </Text>
+          </View>
+
+          <View className='flex-row flex-wrap'>
+            {estimatePhotos.map((photo, index) => {
+              const thumbnailUrl = buildCloudinaryUrlMobile({
+                urlOrPublicId: photo.url,
+                cloudName: CLOUD_NAME,
+                width: THUMBNAIL_WIDTH,
+              });
+
+              return (
+                <Pressable
+                  key={photo.id || photo._id || `estimate-${index}`}
+                  onPress={() => {
+                    const images = estimatePhotos.map((p) => ({
+                      uri: p.url,
+                      title: 'Estimate Reference Photo',
+                      type: 'estimate' as const,
+                    }));
+                    setGalleryImages(images);
+                    setGalleryIndex(index);
+                    setGalleryJobDate('Estimate');
+                    setGalleryVisible(true);
+                  }}
+                  style={{
+                    width: thumbnailSize,
+                    height: thumbnailSize,
+                    marginRight: 8,
+                    marginBottom: 8,
+                  }}
+                  className='rounded-lg overflow-hidden'
+                >
+                  <FastImageWrapper
+                    uri={thumbnailUrl}
+                    style={{ width: '100%', height: '100%', borderRadius: 8 }}
+                    showLoader={true}
+                  />
+                  <View className='absolute bottom-0 left-0 right-0 py-1 items-center bg-purple-500/80'>
+                    <Text className='text-white text-xs font-medium'>
+                      Estimate
+                    </Text>
+                  </View>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+
+        {/* Image Gallery Viewer */}
+        <FastImageViewer
+          images={galleryImages}
+          imageIndex={galleryIndex}
+          visible={galleryVisible}
+          onRequestClose={() => setGalleryVisible(false)}
+          swipeToCloseEnabled={true}
+          doubleTapToZoomEnabled={true}
+          title={jobTitle}
+          getSubtitle={(index, image) => `Estimate - Reference Photo`}
+        />
+      </View>
+    );
+  }
+
+  // Show empty state when no history AND no estimate photos
   if (jobSections.length === 0) {
     return (
       <View className='flex-1 justify-center items-center px-6'>
