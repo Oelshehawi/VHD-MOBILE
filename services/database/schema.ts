@@ -36,7 +36,7 @@ const schedules = new Table(
     assignedTechnicians: column.text,
     confirmed: column.integer,
     deadRun: column.integer,
-    hours: column.integer,
+    hours: column.real,
     invoiceRef: column.text,
     jobTitle: column.text,
     location: column.text,

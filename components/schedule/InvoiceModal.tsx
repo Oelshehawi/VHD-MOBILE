@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import {
   View,
-  Text,
   TouchableOpacity,
   ActivityIndicator,
   useColorScheme,
@@ -34,7 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { Text as UIText } from '@/components/ui/text';
+import { Text } from '@/components/ui/text';
 import { ATTACHMENT_TABLE, AttachmentState } from '@powersync/attachments';
 
 interface InvoiceModalProps {
@@ -494,7 +493,7 @@ export function InvoiceModal({
         </View>
 
         {/* Mark Cheque Received Section - Show for non-managers when invoice is pending */}
-        {!isManager && invoice?.status !== 'paid' && (
+        {invoice?.status !== 'paid' && (
           <View className='flex flex-col gap-4'>
             <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
               Payment Received
@@ -743,26 +742,26 @@ export function InvoiceModal({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              <UIText className='text-lg font-semibold'>Send Invoice</UIText>
+              <Text className='text-lg font-semibold'>Send Invoice</Text>
             </AlertDialogTitle>
             <AlertDialogDescription>
-              <UIText className='text-muted-foreground'>
+              <Text className='text-muted-foreground'>
                 Are you sure you want to send the invoice for "
                 {invoice?.jobTitle || ''}" to the client?
-              </UIText>
+              </Text>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isSendingInvoice}>
-              <UIText>Cancel</UIText>
+              <Text>Cancel</Text>
             </AlertDialogCancel>
             <AlertDialogAction
               onPress={sendInvoice}
               disabled={isSendingInvoice}
             >
-              <UIText>
+              <Text>
                 {isSendingInvoice ? 'Sending...' : 'Send Invoice'}
-              </UIText>
+              </Text>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -776,28 +775,28 @@ export function InvoiceModal({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              <UIText className='text-lg font-semibold'>
+              <Text className='text-lg font-semibold'>
                 Confirm Cheque Received
-              </UIText>
+              </Text>
             </AlertDialogTitle>
             <AlertDialogDescription>
-              <UIText className='text-muted-foreground'>
+              <Text className='text-muted-foreground'>
                 Are you sure you received a cheque payment for "
                 {invoice?.jobTitle || ''}"? This will mark the invoice as paid.
-              </UIText>
+              </Text>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isMarkingCheque}>
-              <UIText>Cancel</UIText>
+              <Text>Cancel</Text>
             </AlertDialogCancel>
             <AlertDialogAction
               onPress={markChequeAsPaid}
               disabled={isMarkingCheque}
             >
-              <UIText>
+              <Text>
                 {isMarkingCheque ? 'Updating...' : 'Confirm Payment'}
-              </UIText>
+              </Text>
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
