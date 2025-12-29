@@ -4,6 +4,8 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   useColorScheme,
+  Linking,
+  Alert,
 } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -318,6 +320,23 @@ export function InvoiceModal({
     bottomSheetRef.current?.close();
     onClose();
   }, [onClose]);
+
+  // Handle phone call
+  const handlePhoneCall = useCallback((phoneNumber: string) => {
+    const phoneUrl = `tel:${phoneNumber.replace(/[^\d+]/g, '')}`;
+    Linking.canOpenURL(phoneUrl)
+      .then((supported) => {
+        if (supported) {
+          Linking.openURL(phoneUrl);
+        } else {
+          Alert.alert('Error', 'Phone calls are not supported on this device.');
+        }
+      })
+      .catch((error) => {
+        console.error('Error opening phone dialer:', error);
+        Alert.alert('Error', 'Unable to make phone call.');
+      });
+  }, []);
 
   const renderWorkCompletionSection = () => {
     return (
@@ -769,16 +788,20 @@ export function InvoiceModal({
                         </Text>
                       )}
                       {onSiteContact.phone && (
-                        <View className='flex-row items-center mt-1'>
+                        <TouchableOpacity
+                          onPress={() => handlePhoneCall(onSiteContact.phone!)}
+                          className='flex-row items-center mt-1'
+                          activeOpacity={0.7}
+                        >
                           <Ionicons
                             name='call-outline'
                             size={16}
                             color='#6B7280'
                           />
-                          <Text className='text-base text-gray-700 dark:text-gray-300 ml-2'>
+                          <Text className='text-base text-blue-600 dark:text-blue-400 ml-2 underline'>
                             {onSiteContact.phone}
                           </Text>
-                        </View>
+                        </TouchableOpacity>
                       )}
                       {onSiteContact.email && (
                         <View className='flex-row items-center mt-1'>
