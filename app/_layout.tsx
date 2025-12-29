@@ -19,6 +19,7 @@ import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
+import { PortalHost } from '@rn-primitives/portal';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -211,6 +212,7 @@ export default function RootLayout() {
               <PowerSyncProvider>
                 <BottomSheetModalProvider>
                   <Slot />
+                  <PortalHost />
                 </BottomSheetModalProvider>
               </PowerSyncProvider>
             </ThemeProvider>
