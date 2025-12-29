@@ -6,6 +6,7 @@ import {
   useColorScheme,
   Linking,
   Alert,
+  Platform,
 } from 'react-native';
 import BottomSheet, {
   BottomSheetBackdrop,
@@ -323,19 +324,20 @@ export function InvoiceModal({
 
   // Handle phone call
   const handlePhoneCall = useCallback((phoneNumber: string) => {
-    const phoneUrl = `tel:${phoneNumber.replace(/[^\d+]/g, '')}`;
-    Linking.canOpenURL(phoneUrl)
-      .then((supported) => {
-        if (supported) {
-          Linking.openURL(phoneUrl);
-        } else {
-          Alert.alert('Error', 'Phone calls are not supported on this device.');
-        }
-      })
-      .catch((error) => {
-        console.error('Error opening phone dialer:', error);
-        Alert.alert('Error', 'Unable to make phone call.');
-      });
+    const cleanedNumber = phoneNumber.replace(/[^\d+]/g, '');
+    // Use tel: for Android, telprompt: for iOS (shows confirmation prompt)
+    const phoneUrl =
+      Platform.OS === 'ios'
+        ? `telprompt:${cleanedNumber}`
+        : `tel:${cleanedNumber}`;
+
+    Linking.openURL(phoneUrl).catch((error) => {
+      console.error('Error opening phone dialer:', error);
+      Alert.alert(
+        'Error',
+        'Unable to make phone call. Please try calling manually.'
+      );
+    });
   }, []);
 
   const renderWorkCompletionSection = () => {
@@ -788,20 +790,26 @@ export function InvoiceModal({
                         </Text>
                       )}
                       {onSiteContact.phone && (
-                        <TouchableOpacity
-                          onPress={() => handlePhoneCall(onSiteContact.phone!)}
-                          className='flex-row items-center mt-1'
-                          activeOpacity={0.7}
-                        >
-                          <Ionicons
-                            name='call-outline'
-                            size={16}
-                            color='#6B7280'
-                          />
-                          <Text className='text-base text-blue-600 dark:text-blue-400 ml-2 underline'>
-                            {onSiteContact.phone}
-                          </Text>
-                        </TouchableOpacity>
+                        <View className='flex-row justify-between items-center mt-1'>
+                          <View className='flex-row items-center flex-1'>
+                            <Ionicons
+                              name='call-outline'
+                              size={16}
+                              color='#6B7280'
+                            />
+                            <Text className='text-base text-gray-700 dark:text-gray-300 ml-2'>
+                              {onSiteContact.phone}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            onPress={() =>
+                              handlePhoneCall(onSiteContact.phone!)
+                            }
+                            className='bg-darkGreen p-2 rounded-full ml-2'
+                          >
+                            <Ionicons name='call' size={20} color='#ffffff' />
+                          </TouchableOpacity>
+                        </View>
                       )}
                       {onSiteContact.email && (
                         <View className='flex-row items-center mt-1'>

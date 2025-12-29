@@ -90,9 +90,10 @@ const ScheduleCard = React.memo(
       };
     }, [schedule.confirmed]);
 
-    const { hasPhotos, showNotificationBadge } = useMemo(() => {
+    const { hasPhotos, showNotificationBadge, photoIcon } = useMemo(() => {
       let parsedHasPhotos = false;
       let hasTechnicianNotes = false;
+      let iconName: 'camera' | 'images' = 'camera'; // Default to camera
 
       try {
         if ('photos' in schedule && schedule.photos) {
@@ -101,17 +102,38 @@ const ScheduleCard = React.memo(
               ? JSON.parse(schedule.photos)
               : schedule.photos;
 
+          let photosArray: any[] = [];
+
           if (Array.isArray(photosData)) {
-            parsedHasPhotos = photosData.length > 0;
+            photosArray = photosData;
+          } else if (photosData?.photos && Array.isArray(photosData.photos)) {
+            photosArray = photosData.photos;
           } else {
+            // Legacy structure with before/after arrays
             const before = Array.isArray(photosData?.before)
               ? photosData.before
               : [];
             const after = Array.isArray(photosData?.after)
               ? photosData.after
               : [];
+            photosArray = [...before, ...after];
+          }
 
-            parsedHasPhotos = before.length > 0 || after.length > 0;
+          parsedHasPhotos = photosArray.length > 0;
+
+          if (parsedHasPhotos) {
+            // Check if there are any before/after photos
+            const hasBeforeAfter = photosArray.some(
+              (photo) => photo.type === 'before' || photo.type === 'after'
+            );
+            // Check if there are any estimate photos
+            const hasEstimate = photosArray.some(
+              (photo) => photo.type === 'estimate'
+            );
+
+            // Show images icon if there are before/after photos
+            // Show camera icon if there are only estimate photos or no photos
+            iconName = hasBeforeAfter ? 'images' : 'camera';
           }
         }
 
@@ -126,6 +148,7 @@ const ScheduleCard = React.memo(
       return {
         hasPhotos: parsedHasPhotos,
         showNotificationBadge: hasTechnicianNotes,
+        photoIcon: iconName,
       };
     }, [schedule]);
 
@@ -217,7 +240,7 @@ const ScheduleCard = React.memo(
                 className='bg-blue-500 p-2 rounded-full mr-2 relative'
               >
                 <Ionicons
-                  name={hasPhotos ? 'images' : 'camera'}
+                  name={photoIcon}
                   size={20}
                   color='#ffffff'
                 />
