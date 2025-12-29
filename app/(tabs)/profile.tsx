@@ -1,4 +1,4 @@
-import { View, Alert, ScrollView } from 'react-native';
+import { View, Alert, ScrollView, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../components/ui/button';
 import { Text } from '../../components/ui/text';
@@ -187,7 +187,7 @@ export default function ProfileScreen() {
           <Button
             onPress={handleSignOut}
             disabled={isOffline}
-            className={`mt-auto py-4 ${
+            className={` ${
               isOffline ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'
             }`}
           >
