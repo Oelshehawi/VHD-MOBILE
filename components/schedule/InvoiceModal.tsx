@@ -507,82 +507,82 @@ export function InvoiceModal({
           )}
         </View>
 
-        {/* Mark Cheque Received Section - Show for non-managers */}
-        <View className='flex flex-col gap-4'>
-          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
-            Payment Received
-          </Text>
+        {/* Mark Cheque Received Section - Only show if invoice is not paid */}
+        {invoice?.status !== 'paid' && (
+          <View className='flex flex-col gap-4'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+              Payment Received
+            </Text>
 
-          {chequeMarked ||
-          (invoice?.status === 'paid' &&
-            invoice?.paymentMethod === 'cheque') ? (
-            <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800'>
-              <View className='flex-row items-center gap-2 mb-2'>
-                <Text className='text-green-600 dark:text-green-400 text-xl'>
-                  ✓
-                </Text>
-                <Text className='text-green-800 dark:text-green-200 font-semibold text-base'>
-                  Cheque Marked as Received
-                </Text>
-              </View>
-              {invoice?.paymentDatePaid && (
-                <Text className='text-green-700 dark:text-green-300 text-sm mt-1'>
-                  Payment received on:{' '}
-                  {formatDateReadable(invoice.paymentDatePaid)}
-                </Text>
-              )}
-              <Text className='text-green-700 dark:text-green-300 text-sm mt-1'>
-                Invoice status has been updated to paid.
-              </Text>
-            </View>
-          ) : invoice?.status !== 'paid' ? (
-            <>
-              <TouchableOpacity
-                onPress={handleMarkChequeClick}
-                disabled={isMarkingCheque}
-                className={`p-4 rounded-lg flex-row justify-center items-center ${
-                  isMarkingCheque
-                    ? 'bg-gray-400 dark:bg-gray-600'
-                    : 'bg-blue-600'
-                }`}
-              >
-                {isMarkingCheque ? (
-                  <View className='flex-row items-center gap-2'>
-                    <ActivityIndicator size='small' color='#ffffff' />
-                    <Text className='text-white font-medium text-lg'>
-                      Updating...
-                    </Text>
-                  </View>
-                ) : (
-                  <Text className='text-white font-medium text-lg'>
-                    💵 Mark Cheque Received
+            {chequeMarked ? (
+              <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg border border-green-200 dark:border-green-800'>
+                <View className='flex-row items-center gap-2 mb-2'>
+                  <Text className='text-green-600 dark:text-green-400 text-xl'>
+                    ✓
+                  </Text>
+                  <Text className='text-green-800 dark:text-green-200 font-semibold text-base'>
+                    Cheque Marked as Received
+                  </Text>
+                </View>
+                {invoice?.paymentDatePaid && (
+                  <Text className='text-green-700 dark:text-green-300 text-sm mt-1'>
+                    Payment received on:{' '}
+                    {formatDateReadable(invoice.paymentDatePaid)}
                   </Text>
                 )}
-              </TouchableOpacity>
-
-              {chequeError && (
-                <View className='bg-red-50 dark:bg-red-900/20 p-4 rounded-lg'>
-                  <Text className='text-red-800 dark:text-red-200 text-center font-medium'>
-                    ⚠️ {chequeError}
-                  </Text>
-                  {!isMarkingCheque && (
-                    <TouchableOpacity
-                      onPress={() => {
-                        setChequeError(null);
-                        markChequeAsPaid();
-                      }}
-                      className='mt-2 p-2 bg-red-600 rounded-lg'
-                    >
-                      <Text className='text-white text-center font-medium'>
-                        Try Again
+                <Text className='text-green-700 dark:text-green-300 text-sm mt-1'>
+                  Invoice status has been updated to paid.
+                </Text>
+              </View>
+            ) : (
+              <>
+                <TouchableOpacity
+                  onPress={handleMarkChequeClick}
+                  disabled={isMarkingCheque}
+                  className={`p-4 rounded-lg flex-row justify-center items-center ${
+                    isMarkingCheque
+                      ? 'bg-gray-400 dark:bg-gray-600'
+                      : 'bg-blue-600'
+                  }`}
+                >
+                  {isMarkingCheque ? (
+                    <View className='flex-row items-center gap-2'>
+                      <ActivityIndicator size='small' color='#ffffff' />
+                      <Text className='text-white font-medium text-lg'>
+                        Updating...
                       </Text>
-                    </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <Text className='text-white font-medium text-lg'>
+                      💵 Mark Cheque Received
+                    </Text>
                   )}
-                </View>
-              )}
-            </>
-          ) : null}
-        </View>
+                </TouchableOpacity>
+
+                {chequeError && (
+                  <View className='bg-red-50 dark:bg-red-900/20 p-4 rounded-lg'>
+                    <Text className='text-red-800 dark:text-red-200 text-center font-medium'>
+                      ⚠️ {chequeError}
+                    </Text>
+                    {!isMarkingCheque && (
+                      <TouchableOpacity
+                        onPress={() => {
+                          setChequeError(null);
+                          markChequeAsPaid();
+                        }}
+                        className='mt-2 p-2 bg-red-600 rounded-lg'
+                      >
+                        <Text className='text-white text-center font-medium'>
+                          Try Again
+                        </Text>
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                )}
+              </>
+            )}
+          </View>
+        )}
       </View>
     );
   };

@@ -5,20 +5,16 @@ import {
   TouchableOpacity,
   ScrollView,
   Dimensions,
-  Image,
 } from 'react-native';
 import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
-import { AppointmentType, Schedule } from '@/types';
+import { AppointmentType } from '@/types';
 import { getMonthDays } from '@/utils/calendar';
 import { MonthHeader } from './MonthHeader';
-import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
-import { GeocodingService } from '@/services/weather/GeocodingService';
 
 interface MonthViewProps {
   currentDate: string;
   onDateChange: (date: string) => void;
   appointments: AppointmentType[];
-  schedules?: ReadonlyArray<Schedule>; // Add Schedule data for weather integration
   onDayPress: (date: string) => void;
 }
 
@@ -44,8 +40,6 @@ interface MonthDayCellProps {
   isToday: boolean;
   appointments: AppointmentType[];
   dayTextStyle: string;
-  scheduleById: Map<string, Schedule>;
-  weatherData: Map<string, WeatherData>;
   onPress: (date: Date) => void;
 }
 
@@ -58,36 +52,11 @@ const MonthDayCell = React.memo(
     isToday,
     appointments,
     dayTextStyle,
-    scheduleById,
-    weatherData,
     onPress,
   }: MonthDayCellProps) => {
     const handlePress = useCallback(() => {
       onPress(date);
     }, [onPress, date]);
-
-    const weatherInfo = useMemo(() => {
-      if (appointments.length === 0) {
-        return null;
-      }
-
-      const firstAppointment = appointments[0];
-      const relatedSchedule = scheduleById.get(firstAppointment.id);
-
-      if (!relatedSchedule?.location) {
-        return null;
-      }
-
-      const weather = weatherData.get(`${relatedSchedule.location}_${dayKey}`);
-      if (!weather) {
-        return null;
-      }
-
-      return {
-        iconUri: WeatherService.getIconUrl(weather.condition.icon),
-        temperature: Math.round(weather.temp_c),
-      };
-    }, [appointments, scheduleById, weatherData, dayKey]);
 
     return (
       <TouchableOpacity
@@ -102,19 +71,6 @@ const MonthDayCell = React.memo(
       >
         <View className='flex-1'>
           <Text className={dayTextStyle}>{format(date, 'd')}</Text>
-
-          {weatherInfo && (
-            <View className='mt-1 flex-row items-center gap-1'>
-              <Image
-                source={{ uri: weatherInfo.iconUri }}
-                style={{ width: 16, height: 16 }}
-              />
-              <Text className='text-xs font-medium'>
-                {weatherInfo.temperature}
-                {'\u00B0'}
-              </Text>
-            </View>
-          )}
 
           {appointments.length > 0 && (
             <View className='mt-1 flex flex-col gap-0.5'>
@@ -141,14 +97,10 @@ export function MonthView({
   currentDate,
   onDateChange,
   appointments,
-  schedules = [],
   onDayPress,
 }: MonthViewProps) {
   const [selectedDate, setSelectedDate] = useState(() =>
     startOfDay(new Date(currentDate)).toISOString()
-  );
-  const [weatherData, setWeatherData] = useState<Map<string, WeatherData>>(
-    new Map()
   );
   const currentDateObj = useMemo(
     () => startOfDay(new Date(currentDate || selectedDate)),
@@ -166,16 +118,6 @@ export function MonthView({
       setSelectedDate(newDate.toISOString());
     }
   }, [currentDate]);
-
-  const scheduleById = useMemo(() => {
-    const map = new Map<string, Schedule>();
-    schedules.forEach((schedule) => {
-      if (schedule?.id) {
-        map.set(schedule.id, schedule);
-      }
-    });
-    return map;
-  }, [schedules]);
 
   const appointmentsByDate = useMemo(() => {
     const map = new Map<string, AppointmentType[]>();
@@ -210,74 +152,6 @@ export function MonthView({
     });
     return map;
   }, [appointments]);
-
-  const loadWeatherForSchedules = useCallback(async () => {
-    if (!schedules || schedules.length === 0) {
-      return new Map<string, WeatherData>();
-    }
-
-    const locationSet = new Set<string>();
-    schedules.forEach((schedule) => {
-      if (schedule.location) {
-        locationSet.add(schedule.location);
-      }
-    });
-
-    if (locationSet.size === 0) {
-      return new Map<string, WeatherData>();
-    }
-
-    const weatherEntries = await Promise.all(
-      Array.from(locationSet).map(async (location) => {
-        try {
-          const coords = await GeocodingService.getCoordinates(location);
-          if (!coords) {
-            return null;
-          }
-
-          const forecast = await WeatherService.getForecast(
-            coords.latitude,
-            coords.longitude
-          );
-
-          return forecast.map(
-            (day) => [`${location}_${day.date}`, day] as const
-          );
-        } catch (error) {
-          console.error('Error fetching weather for', location, error);
-          return null;
-        }
-      })
-    );
-
-    const weatherMap = new Map<string, WeatherData>();
-    weatherEntries.forEach((entry) => {
-      if (entry) {
-        entry.forEach(([key, weather]) => {
-          weatherMap.set(key, weather);
-        });
-      }
-    });
-
-    return weatherMap;
-  }, [schedules]);
-
-  // Load weather for all scheduled locations
-  useEffect(() => {
-    let isMounted = true;
-
-    loadWeatherForSchedules()
-      .then((weatherMap) => {
-        if (isMounted && weatherMap) {
-          setWeatherData(weatherMap);
-        }
-      })
-      .catch((error) => console.error('Error loading schedule weather', error));
-
-    return () => {
-      isMounted = false;
-    };
-  }, [loadWeatherForSchedules]);
 
   const handleDayPress = useCallback(
     (date: Date) => {
@@ -384,8 +258,6 @@ export function MonthView({
                 isToday={isCurrentDay}
                 appointments={appointmentsForDay}
                 dayTextStyle={dayTextStyle}
-                scheduleById={scheduleById}
-                weatherData={weatherData}
                 onPress={handleDayPress}
               />
             );

@@ -223,7 +223,6 @@ export function ScheduleView({
             currentDate={currentDate}
             onDateChange={handleDateSelection}
             appointments={appointments}
-            schedules={monthSchedules}
             onDayPress={handleDayPress}
           />
 
