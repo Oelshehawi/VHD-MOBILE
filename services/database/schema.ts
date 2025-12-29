@@ -22,7 +22,10 @@ const invoices = new Table(
     location: column.text,
     notes: column.text,
     status: column.text,
-    // photos and signature are now in schedules table
+    // Payment info fields
+    paymentMethod: column.text, // 'eft' | 'e-transfer' | 'cheque' | 'credit-card' | 'other'
+    paymentDatePaid: column.text, // ISO date string
+    paymentNotes: column.text, // Optional payment notes
   },
   { indexes: {} }
 );
@@ -43,6 +46,9 @@ const schedules = new Table(
     photos: column.text, // JSON string containing photo data
     signature: column.text, // JSON string of SignatureType
     technicianNotes: column.text, // Notes from technicians
+    // Site access info
+    onSiteContact: column.text, // JSON: { name, phone, email }
+    accessInstructions: column.text, // Free text
   },
   { indexes: { invoices: ['invoiceRef'] } }
 );
@@ -96,13 +102,13 @@ const payrollperiods = new Table(
 const availabilities = new Table(
   {
     // id column (text) is automatically included
-    technicianId: column.text,      // Clerk user ID
-    dayOfWeek: column.integer,      // 0-6 for recurring patterns (nullable)
-    startTime: column.text,         // HH:mm format
-    endTime: column.text,           // HH:mm format
-    isFullDay: column.integer,      // Boolean as 0/1
-    isRecurring: column.integer,    // Boolean as 0/1
-    specificDate: column.text,      // ISO date string (nullable)
+    technicianId: column.text, // Clerk user ID
+    dayOfWeek: column.integer, // 0-6 for recurring patterns (nullable)
+    startTime: column.text, // HH:mm format
+    endTime: column.text, // HH:mm format
+    isFullDay: column.integer, // Boolean as 0/1
+    isRecurring: column.integer, // Boolean as 0/1
+    specificDate: column.text, // ISO date string (nullable)
     createdAt: column.text,
     updatedAt: column.text,
   },
@@ -112,15 +118,15 @@ const availabilities = new Table(
 const timeoffrequests = new Table(
   {
     // id column (text) is automatically included
-    technicianId: column.text,      // Clerk user ID
-    startDate: column.text,         // ISO date string
-    endDate: column.text,           // ISO date string
+    technicianId: column.text, // Clerk user ID
+    startDate: column.text, // ISO date string
+    endDate: column.text, // ISO date string
     reason: column.text,
-    status: column.text,            // "pending" | "approved" | "rejected"
-    requestedAt: column.text,       // ISO datetime
-    reviewedAt: column.text,        // ISO datetime (nullable)
-    reviewedBy: column.text,        // Admin Clerk ID (nullable)
-    notes: column.text,             // Admin notes (nullable)
+    status: column.text, // "pending" | "approved" | "rejected"
+    requestedAt: column.text, // ISO datetime
+    reviewedAt: column.text, // ISO datetime (nullable)
+    reviewedBy: column.text, // Admin Clerk ID (nullable)
+    notes: column.text, // Admin notes (nullable)
   },
   { indexes: { technicians: ['technicianId'] } }
 );

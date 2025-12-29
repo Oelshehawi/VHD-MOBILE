@@ -59,7 +59,13 @@ interface ScheduleCardProps {
 }
 
 const ScheduleCard = React.memo(
-  ({ schedule, weather, onOpenInvoice, onOpenPhotos, onOpenMap }: ScheduleCardProps) => {
+  ({
+    schedule,
+    weather,
+    onOpenInvoice,
+    onOpenPhotos,
+    onOpenMap,
+  }: ScheduleCardProps) => {
     const startTime = useMemo(() => {
       try {
         const parsed = parseISO(schedule.startDateTime);
@@ -117,7 +123,10 @@ const ScheduleCard = React.memo(
         console.error('Error parsing schedule metadata', schedule.id, err);
       }
 
-      return { hasPhotos: parsedHasPhotos, showNotificationBadge: hasTechnicianNotes };
+      return {
+        hasPhotos: parsedHasPhotos,
+        showNotificationBadge: hasTechnicianNotes,
+      };
     }, [schedule]);
 
     const handleCardPress = useCallback(() => {
@@ -163,7 +172,9 @@ const ScheduleCard = React.memo(
                 {weather && (
                   <View className='flex-row items-center gap-1 flex-shrink-0'>
                     <Image
-                      source={{ uri: WeatherService.getIconUrl(weather.condition.icon) }}
+                      source={{
+                        uri: WeatherService.getIconUrl(weather.condition.icon),
+                      }}
                       style={{ width: 20, height: 20 }}
                     />
                     <Text className='text-sm font-semibold text-gray-700 dark:text-gray-300'>
@@ -190,7 +201,10 @@ const ScheduleCard = React.memo(
 
               <View className='flex-row items-center'>
                 <Ionicons name='location-outline' size={16} color='#9CA3AF' />
-                <Text numberOfLines={1} className='text-gray-500 dark:text-gray-400 ml-1'>
+                <Text
+                  numberOfLines={1}
+                  className='text-gray-500 dark:text-gray-400 ml-1'
+                >
                   {schedule.location}
                 </Text>
               </View>
@@ -202,11 +216,18 @@ const ScheduleCard = React.memo(
                 onPress={handlePhotosPress}
                 className='bg-blue-500 p-2 rounded-full mr-2 relative'
               >
-                <Ionicons name={hasPhotos ? 'images' : 'camera'} size={20} color='#ffffff' />
+                <Ionicons
+                  name={hasPhotos ? 'images' : 'camera'}
+                  size={20}
+                  color='#ffffff'
+                />
               </TouchableOpacity>
 
               {/* Map Button */}
-              <TouchableOpacity onPress={handleMapPress} className='bg-darkGreen p-2 rounded-full'>
+              <TouchableOpacity
+                onPress={handleMapPress}
+                className='bg-darkGreen p-2 rounded-full'
+              >
                 <Ionicons name='navigate' size={20} color='#ffffff' />
               </TouchableOpacity>
             </View>
@@ -302,52 +323,50 @@ export function DailyAgenda({
 
   // Group schedules by time slot for better visualization
   const groupedSchedules = useMemo(() => {
-    return schedules.reduce<Record<string, Schedule[]>>(
-      (acc, schedule) => {
-        try {
-          const date = parseISO(schedule.startDateTime);
-          const hour = date.getHours();
-          const timeSlot =
-            hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+    return schedules.reduce<Record<string, Schedule[]>>((acc, schedule) => {
+      try {
+        const date = parseISO(schedule.startDateTime);
+        // Use getUTCHours() since dates are stored in UTC
+        const hour = date.getUTCHours();
+        const timeSlot =
+          hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
 
-          if (!acc[timeSlot]) {
-            acc[timeSlot] = [];
-          }
-
-          acc[timeSlot].push(schedule);
-        } catch (err) {
-          console.error('Error parsing date', schedule.startDateTime, err);
+        if (!acc[timeSlot]) {
+          acc[timeSlot] = [];
         }
-        return acc;
-      },
-      {}
-    );
+
+        acc[timeSlot].push(schedule);
+      } catch (err) {
+        console.error('Error parsing date', schedule.startDateTime, err);
+      }
+      return acc;
+    }, {});
   }, [schedules]);
 
-  const handleMapPress = useCallback(
-    (schedule: Schedule) => {
-      if (schedule.location) {
-        openMaps(schedule.location, schedule.jobTitle);
-      }
-    },
-    []
-  );
+  const handleMapPress = useCallback((schedule: Schedule) => {
+    if (schedule.location) {
+      openMaps(schedule.location, schedule.jobTitle);
+    }
+  }, []);
 
   const handlePhotoDocumentationPress = useCallback((schedule: Schedule) => {
     setSelectedSchedule(schedule);
     setPhotoModalVisible(true);
   }, []);
 
-  const handleInvoicePress = useCallback((schedule: Schedule) => {
-    if (!schedule.invoiceRef) {
-      return;
-    }
+  const handleInvoicePress = useCallback(
+    (schedule: Schedule) => {
+      if (!schedule.invoiceRef) {
+        return;
+      }
 
-    // Use parent callback if provided
-    if (onInvoicePress) {
-      onInvoicePress(schedule);
-    }
-  }, [onInvoicePress]);
+      // Use parent callback if provided
+      if (onInvoicePress) {
+        onInvoicePress(schedule);
+      }
+    },
+    [onInvoicePress]
+  );
 
   const severeWeatherJobs = useMemo(
     () =>
@@ -409,7 +428,10 @@ export function DailyAgenda({
   });
 
   const content = (
-    <Animated.View style={[animatedStyle, { flex: 1 }]} className='bg-white dark:bg-gray-900 p-4'>
+    <Animated.View
+      style={[animatedStyle, { flex: 1 }]}
+      className='bg-white dark:bg-gray-900 p-4'
+    >
       {/* Date Navigation Header - only show in day view */}
       {onDateChange && (
         <View className='flex-row items-center justify-between mb-4'>

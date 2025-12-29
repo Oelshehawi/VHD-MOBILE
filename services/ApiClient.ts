@@ -229,18 +229,15 @@ export class ApiClient {
 
           // Special handling for availability table
           if (table === 'availabilities') {
-            return await this.updateAvailability(
-              record.technicianId || '',
-              {
-                availabilityId: record.id,
-                startTime: record.startTime || '',
-                endTime: record.endTime || '',
-                isFullDay: record.isFullDay ? true : false,
-                isRecurring: record.isRecurring ? true : false,
-                dayOfWeek: record.dayOfWeek,
-                specificDate: record.specificDate,
-              }
-            );
+            return await this.updateAvailability(record.technicianId || '', {
+              availabilityId: record.id,
+              startTime: record.startTime || '',
+              endTime: record.endTime || '',
+              isFullDay: record.isFullDay ? true : false,
+              isRecurring: record.isRecurring ? true : false,
+              dayOfWeek: record.dayOfWeek,
+              specificDate: record.specificDate,
+            });
           }
 
           // Special handling for timeoffRequests table
@@ -283,13 +280,25 @@ export class ApiClient {
                 );
               }
 
+              // Special handling for invoices table with cheque payment updates
+              if (table === 'invoices' && data.paymentMethod === 'cheque') {
+                return await this.markChequeAsPaid(
+                  value,
+                  data.paymentDatePaid,
+                  data.paymentNotes
+                );
+              }
+
               // Special handling for availability updates - use unified endpoint
               if (table === 'availabilities') {
-                const response = await fetch(`${this.baseUrl}/api/availability`, {
-                  method: 'PATCH',
-                  headers: this.headers,
-                  body: JSON.stringify({ ...data, id: value }),
-                });
+                const response = await fetch(
+                  `${this.baseUrl}/api/availability`,
+                  {
+                    method: 'PATCH',
+                    headers: this.headers,
+                    body: JSON.stringify({ ...data, id: value }),
+                  }
+                );
 
                 if (!response.ok) {
                   return { error: `HTTP error: ${response.status}` };
@@ -342,11 +351,14 @@ export class ApiClient {
             try {
               // Special handling for availability deletes - use unified endpoint
               if (table === 'availabilities') {
-                const response = await fetch(`${this.baseUrl}/api/availability`, {
-                  method: 'DELETE',
-                  headers: this.headers,
-                  body: JSON.stringify({ id: value }),
-                });
+                const response = await fetch(
+                  `${this.baseUrl}/api/availability`,
+                  {
+                    method: 'DELETE',
+                    headers: this.headers,
+                    body: JSON.stringify({ id: value }),
+                  }
+                );
 
                 if (!response.ok) {
                   return { error: `HTTP error: ${response.status}` };
@@ -756,6 +768,71 @@ export class ApiClient {
   }
 
   /**
+   * Mark an invoice as paid by cheque
+   * @param invoiceId ID of the invoice to update
+   * @param datePaid Date the cheque was received (ISO string)
+   * @param notes Optional notes about the payment
+   * @returns Result of the update operation
+   */
+  async markChequeAsPaid(invoiceId: string, datePaid?: string, notes?: string) {
+    try {
+      if (!invoiceId) {
+        return { success: false, error: 'Missing required fields' };
+      }
+
+      const requestBody = {
+        invoiceId,
+        datePaid: datePaid || new Date().toISOString(),
+        notes,
+      };
+
+      // Make API call to mark cheque as paid
+      const response = await fetch(`${this.baseUrl}/api/markChequeAsPaid`, {
+        method: 'POST',
+        headers: {
+          ...this.headers,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        let errorData;
+        try {
+          errorData = JSON.parse(errorText);
+        } catch (e) {
+          errorData = { error: errorText || `HTTP status ${response.status}` };
+        }
+
+        throw new Error(
+          errorData.details ||
+            errorData.error ||
+            errorData.message ||
+            `Update failed with status ${response.status}`
+        );
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      // For network errors, indicate that the operation should be retried
+      if (
+        error instanceof TypeError &&
+        error.message.includes('Network request failed')
+      ) {
+        return {
+          success: false,
+          error: 'Network error, will retry later',
+          shouldRetry: true,
+        };
+      }
+
+      throw error;
+    }
+  }
+
+  /**
    * Update technician availability
    * @param technicianId ID of the technician
    * @param availabilityData Availability data including times and recurrence pattern
@@ -774,7 +851,11 @@ export class ApiClient {
     }
   ) {
     try {
-      if (!technicianId || !availabilityData.startTime || !availabilityData.endTime) {
+      if (
+        !technicianId ||
+        !availabilityData.startTime ||
+        !availabilityData.endTime
+      ) {
         return { success: false, error: 'Missing required fields' };
       }
 

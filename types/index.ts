@@ -11,6 +11,13 @@ export interface Schedule {
   payrollPeriod?: string;
   deadRun: boolean;
   canManage?: boolean;
+  // Site access info
+  onSiteContact?: {
+    name?: string;
+    phone?: string;
+    email?: string;
+  };
+  accessInstructions?: string;
 }
 
 export interface PayrollPeriod {
@@ -87,6 +94,10 @@ export interface InvoiceType {
   frequency?: number;
   status?: 'pending' | 'overdue' | 'paid';
   clientId?: string;
+  // Payment info
+  paymentMethod?: 'eft' | 'e-transfer' | 'cheque' | 'credit-card' | 'other';
+  paymentDatePaid?: string;
+  paymentNotes?: string;
 }
 
 export interface ShiftType {

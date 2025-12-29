@@ -6,18 +6,35 @@ import {
   ActivityIndicator,
   useColorScheme,
 } from 'react-native';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetScrollView } from '@gorhom/bottom-sheet';
+import BottomSheet, {
+  BottomSheetBackdrop,
+  BottomSheetScrollView,
+} from '@gorhom/bottom-sheet';
 import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { InvoiceType, Schedule } from '@/types';
 import { formatDateReadable } from '@/utils/date';
 import { SignatureCapture } from './SignatureCapture';
-import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
+import {
+  useQuery,
+  usePowerSync,
+  DEFAULT_ROW_COMPARATOR,
+} from '@powersync/react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
 import { ApiClient } from '@/services/ApiClient';
-import { ConfirmationModal } from '../common/ConfirmationModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Text as UIText } from '@/components/ui/text';
 import { ATTACHMENT_TABLE, AttachmentState } from '@powersync/attachments';
 
 interface InvoiceModalProps {
@@ -43,6 +60,7 @@ export function InvoiceModal({
   const bottomSheetRef = useRef<BottomSheet>(null);
   const colorScheme = useColorScheme();
   const insets = useSafeAreaInsets();
+  const powerSync = usePowerSync();
   const [showSignatureModal, setShowSignatureModal] = useState(false);
 
   // Send invoice state management
@@ -50,6 +68,12 @@ export function InvoiceModal({
   const [sendInvoiceError, setSendInvoiceError] = useState<string | null>(null);
   const [invoiceSent, setInvoiceSent] = useState(false);
   const [showConfirmationModal, setShowConfirmationModal] = useState(false);
+
+  // Cheque payment state management
+  const [isMarkingCheque, setIsMarkingCheque] = useState(false);
+  const [chequeMarked, setChequeMarked] = useState(false);
+  const [chequeError, setChequeError] = useState<string | null>(null);
+  const [showChequeConfirmModal, setShowChequeConfirmModal] = useState(false);
 
   // Control bottom sheet index directly based on visible prop
   const sheetIndex = visible ? 0 : -1;
@@ -103,17 +127,19 @@ export function InvoiceModal({
       }
 
       const parsedPhotos =
-        typeof photos === 'string'
-          ? JSON.parse(photos)
-          : photos;
+        typeof photos === 'string' ? JSON.parse(photos) : photos;
 
       if (!Array.isArray(parsedPhotos) || parsedPhotos.length === 0) {
         return { hasBeforePhotos: false, hasAfterPhotos: false };
       }
 
       // Use .some() to short-circuit as soon as we find a match
-      const hasBeforePhotos = parsedPhotos.some((photo: any) => photo.type === 'before');
-      const hasAfterPhotos = parsedPhotos.some((photo: any) => photo.type === 'after');
+      const hasBeforePhotos = parsedPhotos.some(
+        (photo: any) => photo.type === 'before'
+      );
+      const hasAfterPhotos = parsedPhotos.some(
+        (photo: any) => photo.type === 'after'
+      );
 
       return { hasBeforePhotos, hasAfterPhotos };
     } catch (error) {
@@ -131,9 +157,7 @@ export function InvoiceModal({
       }
 
       const parsed =
-        typeof signature === 'string'
-          ? JSON.parse(signature)
-          : signature;
+        typeof signature === 'string' ? JSON.parse(signature) : signature;
 
       return !!parsed;
     } catch (error) {
@@ -152,7 +176,10 @@ export function InvoiceModal({
     }
   }, [invoice?.items]);
 
-  const subtotal = items.reduce((sum: number, item: InvoiceItem) => sum + (item.price || 0), 0);
+  const subtotal = items.reduce(
+    (sum: number, item: InvoiceItem) => sum + (item.price || 0),
+    0
+  );
   const gst = subtotal * 0.05;
   const total = subtotal + gst;
 
@@ -219,6 +246,40 @@ export function InvoiceModal({
     setShowConfirmationModal(true);
   };
 
+  // Mark cheque as paid function
+  const markChequeAsPaid = async () => {
+    if (!invoice?.id) return;
+
+    try {
+      setIsMarkingCheque(true);
+      setChequeError(null);
+      setShowChequeConfirmModal(false);
+
+      const datePaid = new Date().toISOString();
+
+      // Update local PowerSync database
+      await powerSync.execute(
+        `UPDATE invoices SET status = ?, paymentMethod = ?, paymentDatePaid = ? WHERE id = ?`,
+        ['paid', 'cheque', datePaid, invoice.id]
+      );
+
+      setChequeMarked(true);
+    } catch (error) {
+      console.error('Error marking cheque as paid:', error);
+      setChequeError(
+        error instanceof Error
+          ? error.message
+          : 'Failed to mark cheque as paid. Please try again.'
+      );
+    } finally {
+      setIsMarkingCheque(false);
+    }
+  };
+
+  const handleMarkChequeClick = () => {
+    setShowChequeConfirmModal(true);
+  };
+
   // Render backdrop with proper dismiss behavior
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -239,10 +300,10 @@ export function InvoiceModal({
   }, [onClose]);
 
   // Handle X button press - close the sheet directly
-const handleClosePress = useCallback(() => {
-  bottomSheetRef.current?.close();
-  onClose();
-}, [onClose]);
+  const handleClosePress = useCallback(() => {
+    bottomSheetRef.current?.close();
+    onClose();
+  }, [onClose]);
 
   const renderWorkCompletionSection = () => {
     return (
@@ -431,6 +492,67 @@ const handleClosePress = useCallback(() => {
             </View>
           )}
         </View>
+
+        {/* Mark Cheque Received Section - Show for non-managers when invoice is pending */}
+        {!isManager && invoice?.status !== 'paid' && (
+          <View className='flex flex-col gap-4'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
+              Payment Received
+            </Text>
+
+            {chequeMarked ? (
+              <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
+                <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+                  ✓ Cheque Marked as Received
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleMarkChequeClick}
+                disabled={isMarkingCheque}
+                className={`p-4 rounded-lg flex-row justify-center items-center ${
+                  isMarkingCheque
+                    ? 'bg-gray-400 dark:bg-gray-600'
+                    : 'bg-blue-600'
+                }`}
+              >
+                {isMarkingCheque ? (
+                  <View className='flex-row items-center gap-2'>
+                    <ActivityIndicator size='small' color='#ffffff' />
+                    <Text className='text-white font-medium text-lg'>
+                      Updating...
+                    </Text>
+                  </View>
+                ) : (
+                  <Text className='text-white font-medium text-lg'>
+                    💵 Mark Cheque Received
+                  </Text>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {chequeError && (
+              <View className='bg-red-50 dark:bg-red-900/20 p-4 rounded-lg'>
+                <Text className='text-red-800 dark:text-red-200 text-center font-medium'>
+                  ⚠️ {chequeError}
+                </Text>
+                {!isMarkingCheque && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setChequeError(null);
+                      markChequeAsPaid();
+                    }}
+                    className='mt-2 p-2 bg-red-600 rounded-lg'
+                  >
+                    <Text className='text-white text-center font-medium'>
+                      Try Again
+                    </Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        )}
       </View>
     );
   };
@@ -512,110 +634,174 @@ const handleClosePress = useCallback(() => {
         enableDynamicSizing={false}
         onClose={handleSheetClose}
         backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: colorScheme === 'dark' ? '#1F2937' : '#ffffff' }}
-        handleIndicatorStyle={{ backgroundColor: colorScheme === 'dark' ? '#6B7280' : '#D1D5DB' }}
+        backgroundStyle={{
+          backgroundColor: colorScheme === 'dark' ? '#1F2937' : '#ffffff',
+        }}
+        handleIndicatorStyle={{
+          backgroundColor: colorScheme === 'dark' ? '#6B7280' : '#D1D5DB',
+        }}
       >
         {isLoading ? (
           <View className='flex-1 items-center justify-center px-6 py-8'>
             <ActivityIndicator size='large' color='#22543D' />
-            <Text className='text-gray-600 dark:text-gray-300 mt-4'>Loading invoice...</Text>
+            <Text className='text-gray-600 dark:text-gray-300 mt-4'>
+              Loading invoice...
+            </Text>
           </View>
         ) : shouldShowContent ? (
           <>
             {/* Header */}
-          <View className='flex flex-col gap-1 px-6 py-4 border-b border-gray-200 dark:border-gray-700'>
-            <View className='flex-row justify-between items-center'>
-              <View className='flex flex-col gap-1'>
-                <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
-                  {invoice.jobTitle}
-                </Text>
-                <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                  {isManager ? `Invoice #${invoice.invoiceId}` : ''}
-                </Text>
+            <View className='flex flex-col gap-1 px-6 py-4 border-b border-gray-200 dark:border-gray-700'>
+              <View className='flex-row justify-between items-center'>
+                <View className='flex flex-col gap-1'>
+                  <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
+                    {invoice.jobTitle}
+                  </Text>
+                  <Text className='text-sm text-gray-500 dark:text-gray-400'>
+                    {isManager ? `Invoice #${invoice.invoiceId}` : ''}
+                  </Text>
+                </View>
+                <TouchableOpacity
+                  onPress={handleClosePress}
+                  className='w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full items-center justify-center'
+                  hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                >
+                  <Text className='text-gray-600 dark:text-gray-300 text-lg font-bold'>
+                    ✕
+                  </Text>
+                </TouchableOpacity>
               </View>
-              <TouchableOpacity
-                onPress={handleClosePress}
-                className='w-8 h-8 bg-gray-100 dark:bg-gray-700 rounded-full items-center justify-center'
-                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-              >
-                <Text className='text-gray-600 dark:text-gray-300 text-lg font-bold'>
-                  ✕
-                </Text>
-              </TouchableOpacity>
             </View>
-          </View>
 
-          <BottomSheetScrollView
-            className='flex-1 px-6 py-4'
-            contentContainerStyle={{ paddingBottom: Math.max(insets.bottom, 24) }}
-          >
-            <View className='flex flex-col gap-6'>
-              {/* Dates Section - Show only for managers */}
-              {isManager && (
-                <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                  <View className='flex flex-col gap-1'>
-                    <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                      Date Issued
-                    </Text>
-                    <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                      {formatDateReadable(invoice.dateIssued)}
-                    </Text>
+            <BottomSheetScrollView
+              className='flex-1 px-6 py-4'
+              contentContainerStyle={{
+                paddingBottom: Math.max(insets.bottom, 24),
+              }}
+            >
+              <View className='flex flex-col gap-6'>
+                {/* Dates Section - Show only for managers */}
+                {isManager && (
+                  <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                    <View className='flex flex-col gap-1'>
+                      <Text className='text-sm text-gray-500 dark:text-gray-400'>
+                        Date Issued
+                      </Text>
+                      <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                        {formatDateReadable(invoice.dateIssued)}
+                      </Text>
+                    </View>
+                    <View className='flex flex-col gap-1'>
+                      <Text className='text-sm text-gray-500 dark:text-gray-400'>
+                        Due Date
+                      </Text>
+                      <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                        {formatDateReadable(invoice.dateDue)}
+                      </Text>
+                    </View>
                   </View>
-                  <View className='flex flex-col gap-1'>
-                    <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                      Due Date
-                    </Text>
-                    <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                      {formatDateReadable(invoice.dateDue)}
-                    </Text>
+                )}
+
+                {/* Location Section */}
+                <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+                  <View className='flex-row justify-between items-center'>
+                    <View className='flex-1'>
+                      <Text className='text-sm text-gray-500 dark:text-gray-400 mb-1'>
+                        Location
+                      </Text>
+                      <Text className='text-base font-medium text-gray-900 dark:text-white'>
+                        {invoice.location}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() =>
+                        openMaps(invoice.jobTitle, invoice.location)
+                      }
+                      className='bg-darkGreen p-2 rounded-full ml-2'
+                    >
+                      <Ionicons name='navigate' size={20} color='#ffffff' />
+                    </TouchableOpacity>
                   </View>
                 </View>
-              )}
 
-              {/* Location Section */}
-              <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
-                <View className='flex-row justify-between items-center'>
-                  <View className='flex-1'>
-                    <Text className='text-sm text-gray-500 dark:text-gray-400 mb-1'>
-                      Location
-                    </Text>
-                    <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                      {invoice.location}
-                    </Text>
-                  </View>
-                  <TouchableOpacity
-                    onPress={() => openMaps(invoice.jobTitle, invoice.location)}
-                    className='bg-darkGreen p-2 rounded-full ml-2'
-                  >
-                    <Ionicons name='navigate' size={20} color='#ffffff' />
-                  </TouchableOpacity>
-                </View>
+                {/* Work Documentation Section */}
+                {renderWorkCompletionSection()}
+
+                {/* Invoice Details Section - Only for managers */}
+                {renderPricingSection()}
               </View>
-
-              {/* Work Documentation Section */}
-              {renderWorkCompletionSection()}
-
-              {/* Invoice Details Section - Only for managers */}
-              {renderPricingSection()}
-            </View>
-          </BottomSheetScrollView>
+            </BottomSheetScrollView>
           </>
         ) : null}
       </BottomSheet>
 
-      {/* Confirmation Modal - outside BottomSheet */}
-      {invoice && (
-        <ConfirmationModal
-          visible={showConfirmationModal}
-          onClose={() => setShowConfirmationModal(false)}
-          onConfirm={sendInvoice}
-          title='Send Invoice'
-          message={`Are you sure you want to send the invoice for "${invoice.jobTitle}" to the client?`}
-          confirmText='Send Invoice'
-          cancelText='Cancel'
-          isLoading={isSendingInvoice}
-        />
-      )}
+      {/* Send Invoice AlertDialog - outside BottomSheet */}
+      <AlertDialog
+        open={showConfirmationModal}
+        onOpenChange={setShowConfirmationModal}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <UIText className='text-lg font-semibold'>Send Invoice</UIText>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <UIText className='text-muted-foreground'>
+                Are you sure you want to send the invoice for "
+                {invoice?.jobTitle || ''}" to the client?
+              </UIText>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSendingInvoice}>
+              <UIText>Cancel</UIText>
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onPress={sendInvoice}
+              disabled={isSendingInvoice}
+            >
+              <UIText>
+                {isSendingInvoice ? 'Sending...' : 'Send Invoice'}
+              </UIText>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cheque Payment AlertDialog */}
+      <AlertDialog
+        open={showChequeConfirmModal}
+        onOpenChange={setShowChequeConfirmModal}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              <UIText className='text-lg font-semibold'>
+                Confirm Cheque Received
+              </UIText>
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <UIText className='text-muted-foreground'>
+                Are you sure you received a cheque payment for "
+                {invoice?.jobTitle || ''}"? This will mark the invoice as paid.
+              </UIText>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isMarkingCheque}>
+              <UIText>Cancel</UIText>
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onPress={markChequeAsPaid}
+              disabled={isMarkingCheque}
+            >
+              <UIText>
+                {isMarkingCheque ? 'Updating...' : 'Confirm Payment'}
+              </UIText>
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

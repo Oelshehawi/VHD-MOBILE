@@ -14,7 +14,15 @@ import {
   usePayrollSchedules,
   useTodaySchedules,
 } from '@/services/data/dashboard';
-import { formatTimeUTC, formatDateReadable, formatDateShort } from '@/utils/date';
+import {
+  formatTimeUTC,
+  formatDateReadable,
+  formatDateShort,
+} from '@/utils/date';
+import {
+  roundHoursToBucket,
+  formatHoursDisplay,
+} from '@/utils/hoursFormatting';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
 import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
@@ -43,7 +51,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
 
   const sortedTodaySchedules = sortSchedulesByTime(todaySchedules);
   const totalHours = payrollSchedules.reduce(
-    (acc, schedule) => acc + (schedule.hours || 0),
+    (acc, schedule) => acc + roundHoursToBucket(schedule.hours || 0),
     0
   );
 
@@ -126,7 +134,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
           {formatDateReadable(schedule.date)}
         </Text>
         <Text className='text-gray-600 dark:text-gray-400'>
-          {schedule.hours}h
+          {formatHoursDisplay(schedule.hours)}
         </Text>
       </View>
       <Text className='text-gray-500 dark:text-gray-500 text-sm mt-1'>
@@ -156,7 +164,10 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   );
 
   return (
-    <SafeAreaView edges={["top"]}  className='flex-1 bg-gray-100 dark:bg-gray-900'>
+    <SafeAreaView
+      edges={['top']}
+      className='flex-1 bg-gray-100 dark:bg-gray-900'
+    >
       <StatusBar
         barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={colorScheme === 'dark' ? '#111827' : '#FFFFFF'}
@@ -179,7 +190,6 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
 
       <ScrollView className='flex-1'>
         <View className='p-4 flex flex-col gap-4'>
-
           {/* Quick Actions for Technicians */}
           {!isManager && (
             <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
@@ -292,7 +302,6 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                     View {isManager ? 'All' : 'My'} Schedules (
                     {payrollSchedules.length})
                   </Text>
-        
                 </TouchableOpacity>
 
                 {showSchedules && (
@@ -336,9 +345,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
         animationType='slide'
         onRequestClose={() => setShowTimeOffModal(false)}
       >
-        <TimeOffManager
-          onNavigateBack={() => setShowTimeOffModal(false)}
-        />
+        <TimeOffManager onNavigateBack={() => setShowTimeOffModal(false)} />
       </Modal>
     </SafeAreaView>
   );
