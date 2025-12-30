@@ -15,12 +15,14 @@ interface PhotoCaptureModalProps {
   visible: boolean;
   onClose: () => void;
   onPhotoSelected: (result: ImagePicker.ImagePickerResult) => void;
+  onOpenCamera: () => void;
 }
 
 export function PhotoCaptureModal({
   visible,
   onClose,
   onPhotoSelected,
+  onOpenCamera,
 }: PhotoCaptureModalProps) {
   const insets = useSafeAreaInsets();
 
@@ -29,7 +31,14 @@ export function PhotoCaptureModal({
    */
   const handleImageSelection = async (source: 'camera' | 'gallery') => {
     try {
-      // Request permissions using our utility function
+      // If camera, open custom camera modal instead
+      if (source === 'camera') {
+        onClose();
+        onOpenCamera();
+        return;
+      }
+
+      // Gallery logic unchanged
       const hasPermission = await requestMediaPermission(source);
       if (!hasPermission) return;
 
@@ -38,12 +47,10 @@ export function PhotoCaptureModal({
         quality: 1,
         allowsEditing: false,
         exif: false,
-        allowsMultipleSelection: source === 'gallery',
+        allowsMultipleSelection: true,
       };
 
-      const result = await (source === 'camera'
-        ? ImagePicker.launchCameraAsync(options)
-        : ImagePicker.launchImageLibraryAsync(options));
+      const result = await ImagePicker.launchImageLibraryAsync(options);
 
       console.log(
         'PhotoCaptureModal - Selection result:',
@@ -102,7 +109,7 @@ export function PhotoCaptureModal({
           </Text>
 
           <View className='mb-6'>
-            {/* <TouchableOpacity
+            <TouchableOpacity
               onPress={() => handleImageSelection('camera')}
               className='bg-gray-50 rounded-xl p-4 mb-3 flex-row items-center border border-gray-200'
               activeOpacity={0.8}
@@ -118,7 +125,7 @@ export function PhotoCaptureModal({
                   Use your camera to take new photos
                 </Text>
               </View>
-            </TouchableOpacity> */}
+            </TouchableOpacity>
 
             <TouchableOpacity
               onPress={() => handleImageSelection('gallery')}

@@ -1,8 +1,10 @@
 import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
+import { CameraCaptureModal } from './CameraCaptureModal';
 import { AttachmentRecord } from '@powersync/attachments';
 import { PhotoType, showToast } from '@/utils/photos';
 import { usePowerSync } from '@powersync/react-native';
@@ -48,6 +50,7 @@ export function PhotoCapture({
   isLoading: externalLoading = false,
 }: PhotoCaptureProps) {
   const [showModal, setShowModal] = useState(false);
+  const [showCameraModal, setShowCameraModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [photoToDelete, setPhotoToDelete] = useState<{
     id: string;
@@ -383,6 +386,55 @@ export function PhotoCapture({
   };
 
   /**
+   * Handle camera photos confirmed - format and pass to existing upload flow
+   */
+  const handleCameraPhotosConfirmed = async (photoUris: string[]) => {
+    setShowCameraModal(false);
+    if (photoUris.length === 0) return;
+
+    try {
+      // Transform camera URIs into ImagePicker.ImagePickerResult format
+      const assets = await Promise.all(
+        photoUris.map(async (uri) => {
+          const file = new File(uri);
+
+          // Get dimensions using expo-image-manipulator
+          // manipulateAsync returns the image with dimensions
+          const manipulated = await manipulateAsync(uri, [], {
+            compress: 1,
+            format: SaveFormat.JPEG,
+          });
+
+          return {
+            uri,
+            width: manipulated.width,
+            height: manipulated.height,
+            fileSize: file.size ?? 0,
+            assetId: null,
+            fileName: uri.split('/').pop() || 'photo.jpg',
+            type: 'image' as const,
+            exif: null,
+            base64: null,
+            duration: null,
+            mimeType: 'image/jpeg',
+          } as ImagePicker.ImagePickerAsset;
+        })
+      );
+
+      const cameraResult: ImagePicker.ImagePickerResult = {
+        canceled: false,
+        assets,
+      };
+
+      // REUSE existing batch upload logic - NO DUPLICATION
+      await handlePhotoSelected(cameraResult);
+    } catch (error) {
+      console.error('Error processing camera photos:', error);
+      Alert.alert('Error', 'Failed to process photos. Please try again.');
+    }
+  };
+
+  /**
    * Confirm and handle photo deletion
    */
   const handleDeleteConfirm = async () => {
@@ -556,6 +608,16 @@ export function PhotoCapture({
             setShowModal(false);
           }}
           onPhotoSelected={handlePhotoSelected}
+          onOpenCamera={() => setShowCameraModal(true)}
+        />
+      )}
+
+      {showCameraModal && (
+        <CameraCaptureModal
+          visible={showCameraModal}
+          onClose={() => setShowCameraModal(false)}
+          onPhotosConfirmed={handleCameraPhotosConfirmed}
+          type={type}
         />
       )}
 
