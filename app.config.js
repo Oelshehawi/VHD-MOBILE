@@ -38,6 +38,10 @@ export default {
           'processing',
           'location',
         ],
+        BGTaskSchedulerPermittedIdentifiers: [
+          'com.braille71.vhdapp.background-sync',
+          'com.braille71.vhdapp.background-fetch',
+        ],
         ITSAppUsesNonExemptEncryption: false,
       },
       config: {
@@ -50,6 +54,7 @@ export default {
         backgroundColor: '#FFFFFF',
       },
       package: 'com.braille71.VHDApp',
+      versionCode: 2,
       permissions: [
         'android.permission.WAKE_LOCK',
         'android.permission.FOREGROUND_SERVICE',
@@ -118,7 +123,8 @@ export default {
       [
         'expo-camera',
         {
-          cameraPermission: 'This app uses the camera to capture photos of work completed.',
+          cameraPermission:
+            'This app uses the camera to capture photos of work completed.',
         },
       ],
     ],

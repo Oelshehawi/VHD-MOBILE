@@ -23,6 +23,28 @@
         "distribution": "internal"
       },
       "channel": "preview"
+    },
+    "production": {
+      "distribution": "store",
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "ios": {
+        "buildConfiguration": "Release"
+      },
+      "channel": "production"
+    }
+  },
+  "submit": {
+    "production": {
+      "ios": {
+        "appleId": "oelshehawi@gmail.com",
+        "ascAppId": "6757776446",
+        "appleTeamId": "6XF59VVRR3"
+      },
+      "android": {
+        "track": "internal"
+      }
     }
   }
 }
