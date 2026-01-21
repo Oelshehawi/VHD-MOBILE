@@ -10,6 +10,12 @@ import { getClerkInstance } from '@clerk/clerk-expo';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import { System } from './System';
 import { AppConfig } from './AppConfig';
+import { debugLogger } from '@/utils/DebugLogger';
+
+// Token cache to avoid excessive API calls
+let cachedToken: string | null = null;
+let tokenExpiresAt: number = 0;
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // Refresh 5 min before expiry
 
 /// Postgres Response codes that we cannot recover from by retrying.
 const FATAL_RESPONSE_CODES = [
@@ -47,42 +53,86 @@ export class BackendConnector implements PowerSyncBackendConnector {
     this.endpoint = endpoint;
   }
 
-  async fetchCredentials() {
+  async fetchCredentials(retryCount = 0): Promise<{ endpoint: string; token: string } | null> {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 1000;
+
+    debugLogger.debug('AUTH', `fetchCredentials started (attempt ${retryCount + 1}/${MAX_RETRIES + 1})`);
+
     try {
       const clerk = getClerkInstance({
         publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
       });
+
       if (!clerk?.session) {
+        debugLogger.warn('AUTH', 'No Clerk session available');
+        // Retry if we have retries left - session might still be initializing
+        if (retryCount < MAX_RETRIES) {
+          debugLogger.debug('AUTH', `Retrying in ${RETRY_DELAY_MS}ms...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          return this.fetchCredentials(retryCount + 1);
+        }
+        debugLogger.error('AUTH', 'No Clerk session after max retries');
         return null;
       }
 
+      // Check if we have a valid cached token
+      const now = Date.now();
+      if (cachedToken && tokenExpiresAt > now + TOKEN_REFRESH_BUFFER_MS) {
+        debugLogger.debug('AUTH', 'Using cached token');
+        return {
+          endpoint: this.endpoint,
+          token: cachedToken,
+        };
+      }
+
+      // Fetch fresh token (only when cache expired or missing)
+      debugLogger.debug('AUTH', 'Fetching fresh token from Clerk');
       const token = await clerk.session?.getToken({
         template: 'Powersync',
-        skipCache: true,
+        skipCache: false, // Use Clerk's cache when possible
       });
 
       if (!token) {
+        debugLogger.warn('AUTH', 'No token received from Clerk');
+        if (retryCount < MAX_RETRIES) {
+          debugLogger.debug('AUTH', `Retrying in ${RETRY_DELAY_MS}ms...`);
+          await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+          return this.fetchCredentials(retryCount + 1);
+        }
+        debugLogger.error('AUTH', 'No token after max retries');
         return null;
       }
+
+      // Cache the token (PowerSync tokens typically expire in 60 min)
+      cachedToken = token;
+      tokenExpiresAt = now + 55 * 60 * 1000; // Assume 55 min expiry to be safe
 
       if (!this.endpoint) {
+        debugLogger.error('AUTH', 'No endpoint configured');
         return null;
       }
 
-      // Update the token in the existing ApiClient instead of creating a new one
+      // Update the token in the existing ApiClient
       if (this.apiClient) {
         this.apiClient.setToken(token);
       } else {
-        // Create a new ApiClient only if one doesn't exist
         this.apiClient = new ApiClient(token);
         this.storage = new CloudinaryStorageAdapter(this.apiClient);
       }
 
+      debugLogger.info('AUTH', 'fetchCredentials success');
       return {
         endpoint: this.endpoint,
         token,
       };
     } catch (error) {
+      debugLogger.error('AUTH', 'fetchCredentials error', { error: error instanceof Error ? error.message : String(error) });
+      if (retryCount < MAX_RETRIES) {
+        debugLogger.debug('AUTH', `Retrying after error in ${RETRY_DELAY_MS}ms...`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAY_MS));
+        return this.fetchCredentials(retryCount + 1);
+      }
       return null;
     }
   }
@@ -114,7 +164,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
           op.opData &&
           ('photos' in op.opData || 'signature' in op.opData)
         ) {
-          console.log('Skipping photo/signature update sync for schedules table:', op.id);
+          debugLogger.debug('SYNC', 'Skipping photo/signature update sync', { table: op.table, id: op.id });
           continue;
         }
 
@@ -136,10 +186,10 @@ export class BackendConnector implements PowerSyncBackendConnector {
             break;
         }
 
-        console.log(`Synced ${op.table} record:`, op.id, result);
+        debugLogger.info('SYNC', `Synced ${op.table} record`, { id: op.id });
 
         if (result.error) {
-          console.error(`${op.op} operation failed for ${op.table}:${op.id}`, result.error);
+          debugLogger.error('SYNC', `${op.op} operation failed`, { table: op.table, id: op.id, error: result.error });
 
           // Handle 404 errors specifically - record doesn't exist on server
           const isError404 =
@@ -148,7 +198,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
             (typeof result.error === 'string' && result.error.includes('404'));
 
           if (isError404) {
-            console.warn(`Record ${op.id} not found on server, marking operation as complete to prevent retry loops`);
+            debugLogger.warn('SYNC', 'Record not found on server, marking complete', { id: op.id });
             // Don't throw error for 404s - this allows the transaction to complete
             // and prevents infinite retry loops for orphaned records
             continue;
@@ -166,7 +216,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
       await transaction.complete();
     } catch (ex: any) {
-      console.debug(ex);
+      debugLogger.debug('SYNC', 'Upload error caught', { error: ex?.message || String(ex) });
       if (
         typeof ex.code == 'string' &&
         FATAL_RESPONSE_CODES.some((regex) => regex.test(ex.code))
@@ -179,7 +229,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
          * If protecting against data loss is important, save the failing records
          * elsewhere instead of discarding, and/or notify the user.
          */
-        console.error('Data upload error - discarding:', lastOp, ex);
+        debugLogger.error('SYNC', 'Fatal upload error - discarding transaction', { op: lastOp, error: ex?.message });
         await transaction.complete();
       } else {
         // Error may be retryable - e.g. network error or temporary server error.

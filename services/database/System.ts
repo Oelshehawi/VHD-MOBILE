@@ -9,10 +9,12 @@ import { PhotoAttachmentQueue } from './PhotoAttachmentQueue';
 import Logger from 'js-logger';
 import { KVStorage } from '../storage/KVStorage';
 import { OPSqliteOpenFactory } from '@powersync/op-sqlite';
+import { debugLogger } from '@/utils/DebugLogger';
 
 Logger.useDefaults();
-
 Logger.setLevel(Logger.DEBUG);
+
+const CONNECTION_TIMEOUT_MS = 30000; // 30 second timeout for connection
 
 // Check if running in Expo Go
 
@@ -50,24 +52,44 @@ export class System {
   }
 
   async init() {
+    debugLogger.info('SYNC', 'Initializing PowerSync system');
     await this.powersync.init();
 
     const powerSyncUrl = getPowerSyncUrl();
+    debugLogger.debug('SYNC', 'PowerSync URL configured', { url: powerSyncUrl });
 
     this.backendConnector.setEndpoint(powerSyncUrl as string);
 
     // Set the PowerSync instance in the CloudinaryStorageAdapter
     this.backendConnector.setDatabase(this.powersync);
 
-    await this.powersync.connect(this.backendConnector);
+    // Connect with timeout to prevent hanging
+    debugLogger.debug('SYNC', 'Connecting to PowerSync...');
+    const connectPromise = this.powersync.connect(this.backendConnector);
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('PowerSync connection timeout')), CONNECTION_TIMEOUT_MS)
+    );
+
+    try {
+      await Promise.race([connectPromise, timeoutPromise]);
+      debugLogger.info('SYNC', 'PowerSync connected successfully');
+    } catch (error) {
+      debugLogger.error('SYNC', 'PowerSync connection failed', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+      throw error;
+    }
 
     if (this.attachmentQueue) {
       await this.attachmentQueue.init();
+      debugLogger.debug('SYNC', 'Attachment queue initialized');
     }
   }
 
   async disconnect() {
+    debugLogger.info('SYNC', 'Disconnecting PowerSync');
     await this.powersync.disconnect();
+    debugLogger.debug('SYNC', 'PowerSync disconnected');
   }
 }
 

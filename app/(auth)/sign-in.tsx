@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { useSignIn, isClerkRuntimeError } from '@clerk/clerk-expo';
 import { useLocalCredentials } from '@clerk/clerk-expo/local-credentials';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { debugLogger } from '@/utils/DebugLogger';
 
 export default function Page() {
   const router = useRouter();
@@ -26,7 +27,6 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-
   const handleBiometricSignIn = async () => {
     if (!isLoaded) return;
     setIsLoading(true);
@@ -35,9 +35,11 @@ export default function Page() {
     try {
       await onSignInPress(true);
     } catch (err) {
-      console.error('Biometric authentication failed:', err);
+      debugLogger.error('AUTH', 'Biometric authentication failed', {
+        error: err instanceof Error ? err.message : String(err)
+      });
       setError(
-        'Biometric authentication failed. Please try again or use email/password.'
+        'Biometric authentication failed. Please try again or use email/password.',
       );
     } finally {
       setIsLoading(false);
@@ -56,7 +58,10 @@ export default function Page() {
       return;
     }
 
+    debugLogger.debug('AUTH', 'Sign-in started', { useLocal, hasCredentials });
+
     try {
+      debugLogger.info('AUTH', 'Attempting sign-in');
       const signInAttempt =
         hasCredentials && useLocal
           ? await authenticate()
@@ -64,11 +69,11 @@ export default function Page() {
               identifier: emailAddress,
               password,
             });
+      debugLogger.info('AUTH', 'Sign-in attempt result', { status: signInAttempt?.status });
 
       // If sign-in process is complete,
       // set the created session as active and redirect the user
       if (signInAttempt.status === 'complete') {
-
         if (!useLocal) {
           await setCredentials({
             identifier: emailAddress,
@@ -80,24 +85,29 @@ export default function Page() {
         router.replace('/');
       } else {
         // If the status is not complete, check why.
-        console.error(JSON.stringify(signInAttempt, null, 2));
+        debugLogger.warn('AUTH', 'Sign-in incomplete', { status: signInAttempt?.status });
         setError('Sign-in incomplete. Please try again.');
       }
     } catch (err: any) {
       // Better error handling with specific messages for different error types
       if (isClerkRuntimeError(err)) {
         if (err.code === 'network_error') {
-          console.error('Network error occurred!');
+          debugLogger.error('AUTH', 'Network error during sign-in');
           setError(
-            'Network error occurred. Please check your connection and try again.'
+            'Network error occurred. Please check your connection and try again.',
           );
         } else {
+          debugLogger.error('AUTH', 'Clerk runtime error', { code: err.code, message: err.message });
           setError(err.message || 'An error occurred during sign in');
         }
       } else {
-        console.error('Sign-in error:', JSON.stringify(err, null, 2));
+        debugLogger.error('AUTH', 'Sign-in error', {
+          message: err?.message,
+          code: err?.code,
+          errors: err?.errors
+        });
         setError(
-          err.errors?.[0]?.message || 'Sign-in failed. Please try again.'
+          err.errors?.[0]?.message || 'Sign-in failed. Please try again.',
         );
       }
     } finally {

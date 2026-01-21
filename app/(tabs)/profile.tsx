@@ -1,4 +1,9 @@
-import { View, Alert, ScrollView, StyleSheet } from 'react-native';
+import {
+  View,
+  Alert,
+  ScrollView,
+  TouchableOpacity,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../components/ui/button';
 import { Text } from '../../components/ui/text';
@@ -14,15 +19,15 @@ import { InfoRow } from '../../components/profile/InfoRow';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
 import { formatDateReadable } from '../../utils/date';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
+import { router } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import * as Updates from 'expo-updates';
 // Import functions to get URLs
 import {
   getPowerSyncUrl,
   getApiUrl,
-  setEnvironment,
 } from '../../services/ApiClient';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
@@ -32,9 +37,34 @@ export default function ProfileScreen() {
   const { user } = useUser();
   const [isOffline, setIsOffline] = useState(false);
   const [cachedUser, setCachedUser] = useState<any>(null);
+
+  // Secret gesture state for debug logs
+  const tapCountRef = useRef(0);
+  const lastTapTimeRef = useRef(0);
+  const SECRET_TAP_COUNT = 7;
+  const TAP_TIMEOUT = 2000; // Reset after 2 seconds of no taps
+
   // Get URLs for display
   const powerSyncUrl = getPowerSyncUrl();
   const apiUrl = getApiUrl();
+
+  // Handle secret tap gesture on Version
+  const handleVersionTap = useCallback(() => {
+    const now = Date.now();
+
+    // Reset counter if too much time passed
+    if (now - lastTapTimeRef.current > TAP_TIMEOUT) {
+      tapCountRef.current = 0;
+    }
+
+    lastTapTimeRef.current = now;
+    tapCountRef.current += 1;
+
+    if (tapCountRef.current >= SECRET_TAP_COUNT) {
+      tapCountRef.current = 0;
+      router.push('/debug-logs');
+    }
+  }, []);
 
   // Check network status and load cached user data
   useEffect(() => {
@@ -73,7 +103,7 @@ export default function ProfileScreen() {
           updatedAt: user.updatedAt,
           // Add any additional user metadata you need offline
           metadata: user.publicMetadata,
-        })
+        }),
       ).catch((error) => console.error('Error caching user data:', error));
     }
   }, [user]);
@@ -83,7 +113,7 @@ export default function ProfileScreen() {
       if (isOffline) {
         Alert.alert(
           'Offline Mode',
-          'You are currently offline. Some features may not work until you reconnect.'
+          'You are currently offline. Some features may not work until you reconnect.',
         );
         return;
       }
@@ -165,7 +195,12 @@ export default function ProfileScreen() {
             </CardHeader>
             <CardContent>
               <View className='space-y-2'>
-                <InfoRow label='Version' value='1.0.0' />
+                <TouchableOpacity
+                  onPress={handleVersionTap}
+                  activeOpacity={0.7}
+                >
+                  <InfoRow label='Version' value='1.0.0' />
+                </TouchableOpacity>
                 <InfoRow
                   label='Update Channel'
                   value={Updates.channel || 'development'}

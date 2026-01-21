@@ -124,11 +124,11 @@ const ScheduleCard = React.memo(
           if (parsedHasPhotos) {
             // Check if there are any before/after photos
             const hasBeforeAfter = photosArray.some(
-              (photo) => photo.type === 'before' || photo.type === 'after'
+              (photo) => photo.type === 'before' || photo.type === 'after',
             );
             // Check if there are any estimate photos
             const hasEstimate = photosArray.some(
-              (photo) => photo.type === 'estimate'
+              (photo) => photo.type === 'estimate',
             );
 
             // Show images icon if there are before/after photos
@@ -163,7 +163,7 @@ const ScheduleCard = React.memo(
         event.stopPropagation();
         onOpenPhotos(schedule);
       },
-      [onOpenPhotos, schedule]
+      [onOpenPhotos, schedule],
     );
 
     const handleMapPress = useCallback(
@@ -171,7 +171,7 @@ const ScheduleCard = React.memo(
         event.stopPropagation();
         onOpenMap(schedule);
       },
-      [onOpenMap, schedule]
+      [onOpenMap, schedule],
     );
 
     return (
@@ -239,11 +239,7 @@ const ScheduleCard = React.memo(
                 onPress={handlePhotosPress}
                 className='bg-blue-500 p-2 rounded-full mr-2 relative'
               >
-                <Ionicons
-                  name={photoIcon}
-                  size={20}
-                  color='#ffffff'
-                />
+                <Ionicons name={photoIcon} size={20} color='#ffffff' />
               </TouchableOpacity>
 
               {/* Map Button */}
@@ -258,7 +254,7 @@ const ScheduleCard = React.memo(
         </View>
       </TouchableOpacity>
     );
-  }
+  },
 );
 
 export function DailyAgenda({
@@ -272,7 +268,7 @@ export function DailyAgenda({
 }: DailyAgendaProps) {
   const [photoModalVisible, setPhotoModalVisible] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(
-    null
+    null,
   );
   const [weatherDataMap, setWeatherDataMap] = useState<
     Map<string, WeatherData>
@@ -283,8 +279,8 @@ export function DailyAgenda({
       new Set(
         schedules
           .filter((schedule) => Boolean(schedule.location))
-          .map((schedule) => schedule.location as string)
-      )
+          .map((schedule) => schedule.location as string),
+      ),
     );
 
     if (uniqueLocations.length === 0) {
@@ -303,7 +299,7 @@ export function DailyAgenda({
 
           const forecast = await WeatherService.getForecast(
             coords.latitude,
-            coords.longitude
+            coords.longitude,
           );
 
           const dayWeather = forecast.find((day) => day.date === dateStr);
@@ -312,7 +308,7 @@ export function DailyAgenda({
           console.error('Error loading weather for', location, error);
           return null;
         }
-      })
+      }),
     );
 
     const weatherMap = new Map<string, WeatherData>();
@@ -388,7 +384,7 @@ export function DailyAgenda({
         onInvoicePress(schedule);
       }
     },
-    [onInvoicePress]
+    [onInvoicePress],
   );
 
   const severeWeatherJobs = useMemo(
@@ -397,7 +393,7 @@ export function DailyAgenda({
         const weather = weatherDataMap.get(schedule.location);
         return weather && WeatherService.isSevereWeather(weather);
       }),
-    [schedules, weatherDataMap]
+    [schedules, weatherDataMap],
   );
 
   const goToPreviousDay = useCallback(() => {
@@ -424,6 +420,8 @@ export function DailyAgenda({
 
   const panGesture = Gesture.Pan()
     .enabled(!!onDateChange) // Only enable gestures when in day view
+    .activeOffsetX([-20, 20]) // Only activate on horizontal swipe
+    .failOffsetY([-20, 20]) // Fail on vertical swipe to allow scrolling
     .onUpdate((event) => {
       translateX.value = event.translationX;
     })

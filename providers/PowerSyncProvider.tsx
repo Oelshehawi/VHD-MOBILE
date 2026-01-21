@@ -3,6 +3,7 @@ import { PowerSyncContext } from '@powersync/react-native';
 import { ReactNode, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
 import { System, useSystem } from '../services/database/System';
+import { debugLogger } from '@/utils/DebugLogger';
 
 const TECHNICIAN_MAP: Record<string, string> = {
   user_38Ghu2yPVPlTmB3D9UxbPj0okJN: 'Mohnad Elkeliny',
@@ -27,27 +28,35 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const initializePowerSync = async () => {
+      debugLogger.debug('SYNC', 'PowerSync init check', { isSignedIn, isInitialized });
+
       if (isSignedIn && !isInitialized) {
         try {
           setError(null);
+          debugLogger.info('SYNC', 'Starting PowerSync initialization');
           await system.init();
+          debugLogger.info('SYNC', 'PowerSync initialized successfully');
           setIsInitialized(true);
         } catch (err) {
           const error =
             err instanceof Error
               ? err
               : new Error('PowerSync initialization failed');
-          console.error('❌ PowerSync initialization error:', error);
+          debugLogger.error('SYNC', 'PowerSync initialization error', {
+            error: error.message
+          });
           setError(error);
         }
       } else if (!isSignedIn && isInitialized) {
         try {
-          console.log('🔄 Disconnecting PowerSync...');
+          debugLogger.info('SYNC', 'Disconnecting PowerSync (user signed out)');
           await system.disconnect();
           setIsInitialized(false);
-          console.log('✅ PowerSync disconnected successfully');
+          debugLogger.info('SYNC', 'PowerSync disconnected successfully');
         } catch (err) {
-          console.error('❌ PowerSync disconnect error:', err);
+          debugLogger.error('SYNC', 'PowerSync disconnect error', {
+            error: err instanceof Error ? err.message : String(err)
+          });
         }
       }
     };
@@ -60,7 +69,7 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
   }, [system]);
 
   if (error) {
-    console.error('PowerSync Error State:', error);
+    debugLogger.error('SYNC', 'PowerSync error state active', { error: error.message });
   }
 
   return (

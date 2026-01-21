@@ -17,8 +17,8 @@
   },
   "dependencies": {
     "@azure/core-asynciterator-polyfill": "^1.0.2",
-    "@clerk/clerk-expo": "^2.14.30",
-    "@clerk/types": "^4.40.0",
+    "@clerk/clerk-expo": "^2.19.18",
+    "@clerk/types": "^4.101.11",
     "@expo/vector-icons": "^15.0.2",
     "@gorhom/bottom-sheet": "^5.2.6",
     "@likashefqet/react-native-image-zoom": "^4.3.0",

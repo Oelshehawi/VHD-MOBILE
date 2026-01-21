@@ -1,3 +1,5 @@
+import { debugLogger } from '@/utils/DebugLogger';
+
 export interface PhotoRequest {
   _id?: string;
   id?: string;
@@ -61,21 +63,23 @@ let CURRENT_ENV: 'PRODUCTION' | 'DEVELOPMENT' = isPreviewBuild()
 // Function to explicitly set the environment (useful for testing)
 export function setEnvironment(env: 'PRODUCTION' | 'DEVELOPMENT') {
   CURRENT_ENV = env;
-  console.log(`Environment set to ${env}`);
-  console.log(`API URL: ${ENV[CURRENT_ENV].apiUrl}`);
-  console.log(`PowerSync URL: ${ENV[CURRENT_ENV].powerSyncUrl}`);
+  debugLogger.info('NETWORK', `Environment set to ${env}`, {
+    apiUrl: ENV[CURRENT_ENV].apiUrl,
+    powerSyncUrl: ENV[CURRENT_ENV].powerSyncUrl
+  });
 }
 
 // Log environment on initialization
-console.log(`App initialized in ${CURRENT_ENV} environment`);
-console.log(`API URL: ${ENV[CURRENT_ENV].apiUrl}`);
-console.log(`PowerSync URL: ${ENV[CURRENT_ENV].powerSyncUrl}`);
+debugLogger.info('NETWORK', `App initialized in ${CURRENT_ENV} environment`, {
+  apiUrl: ENV[CURRENT_ENV].apiUrl,
+  powerSyncUrl: ENV[CURRENT_ENV].powerSyncUrl
+});
 
 // Function to get current PowerSync URL
 export function getPowerSyncUrl() {
   // If PowerSync URL is empty or invalid, use the production URL as fallback
   if (!ENV[CURRENT_ENV].powerSyncUrl) {
-    console.warn('PowerSync URL is empty, using production URL as fallback');
+    debugLogger.warn('NETWORK', 'PowerSync URL is empty, using production URL as fallback');
     return ENV.PRODUCTION.powerSyncUrl;
   }
   return ENV[CURRENT_ENV].powerSyncUrl;
@@ -116,7 +120,7 @@ export class ApiClient {
       };
     }
 
-    console.log(`ApiClient initialized with baseUrl: ${this.baseUrl}`);
+    debugLogger.info('NETWORK', 'ApiClient initialized', { baseUrl: this.baseUrl });
   }
 
   // Method for CloudinaryStorageAdapter to get upload URL
@@ -552,7 +556,9 @@ export class ApiClient {
         record.signerName || ''
       );
     } catch (error) {
-      console.error('Error processing photo add operation:', error);
+      debugLogger.error('PHOTO', 'Error processing photo add operation', {
+        error: error instanceof Error ? error.message : String(error)
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -618,7 +624,9 @@ export class ApiClient {
         };
       }
 
-      console.error('Error processing photo delete operation:', error);
+      debugLogger.error('PHOTO', 'Error processing photo delete operation', {
+        error: error instanceof Error ? error.message : String(error)
+      });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Unknown error',

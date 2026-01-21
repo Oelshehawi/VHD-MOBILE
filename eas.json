@@ -47,7 +47,8 @@
         "appleTeamId": "6XF59VVRR3"
       },
       "android": {
-        "track": "internal"
+        "track": "internal",
+        "releaseStatus": "draft"
       }
     }
   }

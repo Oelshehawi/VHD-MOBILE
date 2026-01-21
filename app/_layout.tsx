@@ -17,7 +17,7 @@ import { PowerSyncProvider } from '../providers/PowerSyncProvider';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
-import { resourceCache } from '@clerk/clerk-expo/resource-cache';
+// import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
 
@@ -205,7 +205,7 @@ export default function RootLayout() {
         <ClerkProvider
           publishableKey={CLERK_PUBLISHABLE_KEY!}
           tokenCache={tokenCache}
-          __experimental_resourceCache={resourceCache}
+          // __experimental_resourceCache={resourceCache} // Disabled to debug href error
         >
           <InitialLayout>
             <ThemeProvider>
