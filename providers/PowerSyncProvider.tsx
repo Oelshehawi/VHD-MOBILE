@@ -5,9 +5,9 @@ import { useAuth } from '@clerk/clerk-expo';
 import { System, useSystem } from '../services/database/System';
 
 const TECHNICIAN_MAP: Record<string, string> = {
-  user_2mqv5uvRlgBoXqWxPj3j1tAKXcE: 'Mohnad Elkeliny',
-  user_2niPyF6ZPTOmNwxooRZu2F7ypMd: 'Ahmed Habib',
-  user_2fFg8dDRtCeNEP9IVmQrFAAGrpT: 'Ziad Elshehawi',
+  user_38Ghu2yPVPlTmB3D9UxbPj0okJN: 'Mohnad Elkeliny',
+  user_38Ghu33VeKR30As0If7L483CKPC: 'Ahmed Habib',
+  user_38GhtkZa3oKjxakPlEXKJbduzeQ: 'Ziad Elshehawi',
 } as const;
 
 export const getTechnicianName = (userId: string): string => {
