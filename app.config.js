@@ -54,7 +54,6 @@ export default {
         backgroundColor: '#FFFFFF',
       },
       package: 'com.braille71.VHDApp',
-      versionCode: 2,
       permissions: [
         'android.permission.WAKE_LOCK',
         'android.permission.FOREGROUND_SERVICE',
