@@ -1,6 +1,8 @@
 export default {
   expo: {
-    runtimeVersion: '1.0.5',
+    runtimeVersion: {
+      policy: 'appVersion',
+    },
     name: 'Vancouver Hood Doctors',
     slug: 'VHD-App',
     version: '1.0.0',
@@ -22,7 +24,6 @@ export default {
     ios: {
       supportsTablet: true,
       bundleIdentifier: 'com.braille71.vhdapp',
-      buildNumber: '1',
       infoPlist: {
         NSCameraUsageDescription:
           'This app uses the camera to capture photos of work completed.',
