@@ -222,7 +222,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     return {
       id: photoId,
       filename,
-      media_type: 'image/jpeg',
+      media_type: record?.type === 'signature' ? 'image/png' : 'image/jpeg',
       state: AttachmentState.QUEUED_UPLOAD,
       scheduleId: record?.scheduleId,
       ...restOfRecord,

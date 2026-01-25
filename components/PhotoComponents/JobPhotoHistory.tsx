@@ -15,9 +15,10 @@ import { FastImageWrapper } from '@/components/common/FastImageWrapper';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { preloadImages } from '@/utils/imageCache';
 import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
+import { AppConfig } from '@/services/database/AppConfig';
 
 // Cloudinary configuration
-const CLOUD_NAME = 'dhu4yrn5k';
+const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
 const THUMBNAIL_WIDTH = 240; // Width for grid thumbnails
 
 // Photo type with signature name extension

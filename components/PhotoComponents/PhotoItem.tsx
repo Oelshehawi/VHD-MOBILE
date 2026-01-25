@@ -6,9 +6,10 @@ import { useSystem } from '@/services/database/System';
 import { File, Paths } from 'expo-file-system';
 import { Image } from 'react-native';
 import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
+import { AppConfig } from '@/services/database/AppConfig';
 
 // Cloudinary configuration
-const CLOUD_NAME = 'dhu4yrn5k';
+const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
 const THUMBNAIL_WIDTH = 240; // Grid thumbnails are ~1/3 screen width
 
 /**

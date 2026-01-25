@@ -34,6 +34,7 @@ import {
   pickCloudinaryWidth,
   getCloudinaryCacheKey,
 } from '@/utils/cloudinaryUrl.native';
+import { AppConfig } from '@/services/database/AppConfig';
 
 // Simplified props interface
 export interface FastImageViewerProps {
@@ -54,7 +55,7 @@ export interface FastImageViewerProps {
 }
 
 // Cloudinary configuration
-const CLOUD_NAME = 'dhu4yrn5k';
+const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
 
 const styles = StyleSheet.create({
   viewerContainer: {

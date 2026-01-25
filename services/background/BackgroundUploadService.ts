@@ -29,6 +29,7 @@ import { AttachmentState, ATTACHMENT_TABLE } from '@powersync/attachments';
 import { Platform } from 'react-native';
 import { requestNotificationPermission } from '@/utils/permissions';
 import { logUpload, logUploadError } from '@/utils/DebugLogger';
+import { File, Paths } from 'expo-file-system/next';
 
 // Enable global garbage collection for debugging (if available)
 if (typeof global !== 'undefined' && !global.gc) {
@@ -54,9 +55,12 @@ const logUploadService = (message: string, details?: any) => {
   logUpload(message, details);
 };
 
-
 // Simple batch processing - no locking needed since PowerSync auto-sync is disabled
-const getBatchForWorker = (allAttachments: any[], workerIndex: number, totalWorkers: number): any[] => {
+const getBatchForWorker = (
+  allAttachments: any[],
+  workerIndex: number,
+  totalWorkers: number,
+): any[] => {
   const batch: any[] = [];
   for (let i = workerIndex; i < allAttachments.length; i += totalWorkers) {
     batch.push(allAttachments[i]);
@@ -65,31 +69,40 @@ const getBatchForWorker = (allAttachments: any[], workerIndex: number, totalWork
 };
 
 // Mark attachment as completed
-const markAttachmentCompleted = async (system: any, attachmentId: string): Promise<void> => {
+const markAttachmentCompleted = async (
+  system: any,
+  attachmentId: string,
+): Promise<void> => {
   try {
     await system.powersync.execute(
       `UPDATE ${ATTACHMENT_TABLE} SET state = ? WHERE id = ?`,
-      [AttachmentState.SYNCED, attachmentId]
+      [AttachmentState.SYNCED, attachmentId],
     );
     logUploadService(`Marked attachment ${attachmentId} as completed`);
   } catch (error) {
-    logUploadError(`Error marking attachment ${attachmentId} as completed`, error);
+    logUploadError(
+      `Error marking attachment ${attachmentId} as completed`,
+      error,
+    );
   }
 };
 
 // Mark attachment as failed (back to queued for retry)
-const markAttachmentFailed = async (system: any, attachmentId: string): Promise<void> => {
+const markAttachmentFailed = async (
+  system: any,
+  attachmentId: string,
+): Promise<void> => {
   try {
+    // Put back to queued state for retry
     await system.powersync.execute(
       `UPDATE ${ATTACHMENT_TABLE} SET state = ? WHERE id = ?`,
-      [AttachmentState.QUEUED_UPLOAD, attachmentId]
+      [AttachmentState.QUEUED_UPLOAD, attachmentId],
     );
-    logUploadService(`Marked attachment ${attachmentId} as failed (back to queued)`);
+    logUploadService(`Marked attachment ${attachmentId} as failed (will retry)`);
   } catch (error) {
     logUploadError(`Error marking attachment ${attachmentId} as failed`, error);
   }
 };
-
 
 // Define interface for task parameters
 interface TaskParameters {
@@ -120,10 +133,15 @@ const backgroundOptions = {
 let totalUploadsAtStart = 0;
 let uploadedSoFar = 0;
 let activeWorkers = 0;
-let workerProgress: { [workerId: string]: { current: number; total: number } } = {};
+let workerProgress: { [workerId: string]: { current: number; total: number } } =
+  {};
 
 // Process a single batch of attachments using direct upload
-const processBatch = async (system: any, batch: Array<any>, workerId: string): Promise<number> => {
+const processBatch = async (
+  system: any,
+  batch: Array<any>,
+  workerId: string,
+): Promise<number> => {
   let uploadedCount = 0;
 
   if (batch.length === 0) {
@@ -139,7 +157,7 @@ const processBatch = async (system: any, batch: Array<any>, workerId: string): P
       // Update worker progress
       workerProgress[workerId] = {
         current: uploadedCount,
-        total: batch.length
+        total: batch.length,
       };
 
       // Use direct upload instead of PowerSync sequential processing
@@ -149,20 +167,48 @@ const processBatch = async (system: any, batch: Array<any>, workerId: string): P
 
       if (result.success) {
         await markAttachmentCompleted(system, attachment.id);
+
+        // Clean up local file after successful upload
+        try {
+          const localFile = new File(
+            Paths.document,
+            'attachments',
+            attachment.filename,
+          );
+          if (localFile.exists) {
+            localFile.delete();
+            logUpload(
+              `Worker ${workerId} cleaned up local file: ${attachment.filename}`,
+            );
+          }
+        } catch (cleanupError) {
+          // Non-fatal: log but don't fail the upload
+          logUpload(
+            `Worker ${workerId} failed to cleanup ${attachment.filename}:`,
+            cleanupError,
+          );
+        }
+
         uploadedCount++;
-        logUpload(`Worker ${workerId} successfully uploaded ${attachment.filename}`);
+        logUpload(
+          `Worker ${workerId} successfully uploaded ${attachment.filename}`,
+        );
       } else {
         await markAttachmentFailed(system, attachment.id);
-        logUpload(`Worker ${workerId} failed to upload ${attachment.filename}: ${result.error}`);
+        logUpload(
+          `Worker ${workerId} failed to upload ${attachment.filename}: ${result.error}`,
+        );
       }
 
       // Force garbage collection for large files
       if (attachment.size > SMALL_FILE_THRESHOLD && global.gc) {
         global.gc();
       }
-
     } catch (error) {
-      logUpload(`Worker ${workerId} failed to upload attachment ${attachment.id}:`, error);
+      logUpload(
+        `Worker ${workerId} failed to upload attachment ${attachment.id}:`,
+        error,
+      );
       await markAttachmentFailed(system, attachment.id);
     }
   }
@@ -171,7 +217,6 @@ const processBatch = async (system: any, batch: Array<any>, workerId: string): P
   delete workerProgress[workerId];
   return uploadedCount;
 };
-
 
 // Concurrent upload processing with simple round-robin distribution
 const processConcurrentUploads = async (system: any): Promise<number> => {
@@ -187,22 +232,31 @@ const processConcurrentUploads = async (system: any): Promise<number> => {
            ELSE 2
          END,
          size ASC`,
-      [AttachmentState.QUEUED_UPLOAD]
+      [AttachmentState.QUEUED_UPLOAD],
     );
 
     if (pendingAttachments.length === 0) {
       return 0;
     }
 
-    logUpload(`Starting concurrent processing with ${pendingAttachments.length} attachments`);
+    logUpload(
+      `Starting concurrent processing with ${pendingAttachments.length} attachments`,
+    );
 
     // Create worker promises with simple round-robin distribution
     const workers: Promise<number>[] = [];
-    const maxConcurrentWorkers = Math.min(CONCURRENT_WORKERS, pendingAttachments.length);
+    const maxConcurrentWorkers = Math.min(
+      CONCURRENT_WORKERS,
+      pendingAttachments.length,
+    );
 
     for (let i = 0; i < maxConcurrentWorkers; i++) {
       const workerId = `worker-${i + 1}`;
-      const workerBatch = getBatchForWorker(pendingAttachments, i, maxConcurrentWorkers);
+      const workerBatch = getBatchForWorker(
+        pendingAttachments,
+        i,
+        maxConcurrentWorkers,
+      );
 
       const workerPromise = (async (): Promise<number> => {
         activeWorkers++;
@@ -231,7 +285,6 @@ const processConcurrentUploads = async (system: any): Promise<number> => {
 
     logUpload(`Concurrent upload completed. Total uploaded: ${totalUploaded}`);
     return totalUploaded;
-
   } catch (error) {
     logUpload('Error in concurrent upload processing:', error);
     return 0;
@@ -240,12 +293,10 @@ const processConcurrentUploads = async (system: any): Promise<number> => {
 
 // Background task implementation
 const uploadTask = async (
-  taskDataArguments?: TaskParameters
+  taskDataArguments?: TaskParameters,
 ): Promise<void> => {
   // Use default values if undefined
-  const {
-    checkInterval = DEFAULT_CHECK_INTERVAL
-  } = taskDataArguments || {};
+  const { checkInterval = DEFAULT_CHECK_INTERVAL } = taskDataArguments || {};
 
   logUpload('Starting upload task');
 
@@ -259,7 +310,7 @@ const uploadTask = async (
     // Check how many photos need uploading
     const pendingRecords = await system.powersync.getAll<{ count: number }>(
       `SELECT COUNT(*) as count FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
-      [AttachmentState.QUEUED_UPLOAD]
+      [AttachmentState.QUEUED_UPLOAD],
     );
     const pendingCount = pendingRecords[0]?.count || 0;
 
@@ -314,7 +365,7 @@ const uploadTask = async (
       // Get current pending count
       const finalRecords = await system.powersync.getAll<{ count: number }>(
         `SELECT COUNT(*) as count FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
-        [AttachmentState.QUEUED_UPLOAD]
+        [AttachmentState.QUEUED_UPLOAD],
       );
       const remainingCount = finalRecords[0]?.count || 0;
 
@@ -327,7 +378,8 @@ const uploadTask = async (
 
       // Update notification with latest progress
       await BackgroundService.updateNotification({
-        taskTitle: remainingCount === 0 ? 'Upload Complete' : 'Uploading Photos',
+        taskTitle:
+          remainingCount === 0 ? 'Upload Complete' : 'Uploading Photos',
         taskDesc:
           remainingCount === 0
             ? `Successfully uploaded ${totalUploadsAtStart} photos`
@@ -407,7 +459,7 @@ export const startBackgroundUpload = async (): Promise<void> => {
     const hasPermission = await requestNotificationPermission();
     if (!hasPermission) {
       logUpload(
-        'Cannot start background upload: notification permission denied'
+        'Cannot start background upload: notification permission denied',
       );
       return;
     }
@@ -446,7 +498,7 @@ export const checkAndStartBackgroundUpload = async (): Promise<boolean> => {
 
     const pendingRecords = await system.powersync.getAll<{ count: number }>(
       `SELECT COUNT(*) as count FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
-      [AttachmentState.QUEUED_UPLOAD]
+      [AttachmentState.QUEUED_UPLOAD],
     );
     const pendingCount = pendingRecords[0]?.count || 0;
 
@@ -466,7 +518,6 @@ export const checkAndStartBackgroundUpload = async (): Promise<boolean> => {
   }
 };
 
-
 // Get current upload statistics (useful for monitoring)
 export const getUploadStats = () => {
   return {
@@ -476,4 +527,70 @@ export const getUploadStats = () => {
     workerProgress: { ...workerProgress },
     isRunning: BackgroundService.isRunning(),
   };
+};
+
+/**
+ * Cancel all pending and failed uploads
+ * Deletes attachments from the queue and stops the background service
+ */
+export const cancelPendingUploads = async (): Promise<{
+  cancelled: number;
+}> => {
+  try {
+    logUploadService('Cancelling all pending uploads');
+
+    // Get count before deleting
+    const countResult = await system.powersync.getAll<{ count: number }>(
+      `SELECT COUNT(*) as count FROM ${ATTACHMENT_TABLE} WHERE state IN (?, ?)`,
+      [AttachmentState.QUEUED_UPLOAD, AttachmentState.ARCHIVED],
+    );
+    const cancelledCount = countResult[0]?.count || 0;
+
+    // Delete all pending and failed uploads
+    await system.powersync.execute(
+      `DELETE FROM ${ATTACHMENT_TABLE} WHERE state IN (?, ?)`,
+      [AttachmentState.QUEUED_UPLOAD, AttachmentState.ARCHIVED],
+    );
+
+    // Stop the background service
+    await stopBackgroundUpload();
+
+    logUploadService(`Cancelled ${cancelledCount} pending uploads`);
+    return { cancelled: cancelledCount };
+  } catch (error) {
+    logUploadError('Error cancelling uploads', error);
+    return { cancelled: 0 };
+  }
+};
+
+/**
+ * Get count of failed uploads (exceeded max retries)
+ */
+export const getFailedUploadsCount = async (): Promise<number> => {
+  try {
+    const result = await system.powersync.getAll<{ count: number }>(
+      `SELECT COUNT(*) as count FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
+      [AttachmentState.ARCHIVED],
+    );
+    return result[0]?.count || 0;
+  } catch (error) {
+    logUploadError('Error getting failed uploads count', error);
+    return 0;
+  }
+};
+
+/**
+ * Get count of pending uploads (still in queue)
+ */
+export const getPendingUploadsCount = async (): Promise<number> => {
+  try {
+    const result = await system.powersync.getAll<{ count: number }>(
+      `SELECT COUNT(*) as count FROM ${ATTACHMENT_TABLE} WHERE state = ?`,
+      [AttachmentState.QUEUED_UPLOAD],
+    );
+    return result[0]?.count || 0;
+  } catch (error) {
+    logUploadError('Error getting pending uploads count', error);
+    return 0;
+  }
 };

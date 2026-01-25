@@ -12,6 +12,12 @@ import { Stack, router } from 'expo-router';
 import { Text } from '../components/ui/text';
 import { debugLogger } from '../utils/DebugLogger';
 import { Ionicons } from '@expo/vector-icons';
+import {
+  cancelPendingUploads,
+  getPendingUploadsCount,
+  getFailedUploadsCount,
+  getUploadStats,
+} from '../services/background/BackgroundUploadService';
 
 interface LogEntry {
   timestamp: string;
@@ -57,15 +63,30 @@ export default function DebugLogsScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [expandedLogs, setExpandedLogs] = useState<Set<number>>(new Set());
+  const [uploadStatus, setUploadStatus] = useState<{
+    pending: number;
+    failed: number;
+    isRunning: boolean;
+  }>({ pending: 0, failed: 0, isRunning: false });
 
   const loadLogs = useCallback(async () => {
     const fetchedLogs = await debugLogger.getLogs();
     setLogs(fetchedLogs.reverse()); // Most recent first
   }, []);
 
+  const loadUploadStatus = useCallback(async () => {
+    const [pending, failed] = await Promise.all([
+      getPendingUploadsCount(),
+      getFailedUploadsCount(),
+    ]);
+    const stats = getUploadStats();
+    setUploadStatus({ pending, failed, isRunning: stats.isRunning });
+  }, []);
+
   useEffect(() => {
     loadLogs();
-  }, [loadLogs]);
+    loadUploadStatus();
+  }, [loadLogs, loadUploadStatus]);
 
   useEffect(() => {
     let filtered = logs;
@@ -91,9 +112,15 @@ export default function DebugLogsScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadLogs();
+    await Promise.all([loadLogs(), loadUploadStatus()]);
     setRefreshing(false);
-  }, [loadLogs]);
+  }, [loadLogs, loadUploadStatus]);
+
+  const handleCancelUploads = async () => {
+    const result = await cancelPendingUploads();
+    await loadUploadStatus();
+    await loadLogs();
+  };
 
   const handleExport = async () => {
     try {
@@ -208,6 +235,40 @@ export default function DebugLogsScreen() {
             <Text className='text-white font-medium ml-2'>Clear</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Upload Status Section */}
+        {(uploadStatus.pending > 0 || uploadStatus.failed > 0) && (
+          <View className='mb-4 p-4 bg-orange-100 dark:bg-orange-900 rounded-lg'>
+            <View className='flex-row items-center justify-between mb-2'>
+              <View className='flex-row items-center'>
+                <Ionicons
+                  name={
+                    uploadStatus.isRunning ? 'cloud-upload' : 'cloud-offline'
+                  }
+                  size={20}
+                  color={uploadStatus.isRunning ? '#f97316' : '#9ca3af'}
+                />
+                <Text className='text-orange-800 dark:text-orange-200 font-medium ml-2'>
+                  Upload Status
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleCancelUploads}
+                className='bg-orange-600 px-4 py-2 rounded-lg'
+              >
+                <Text className='text-white font-medium'>Cancel All</Text>
+              </TouchableOpacity>
+            </View>
+            <View className='flex-row gap-4'>
+              <Text className='text-orange-700 dark:text-orange-300'>
+                Pending: {uploadStatus.pending}
+              </Text>
+              <Text className='text-orange-700 dark:text-orange-300'>
+                Failed: {uploadStatus.failed}
+              </Text>
+            </View>
+          </View>
+        )}
 
         {/* Log Count */}
         <Text className='text-gray-500 dark:text-gray-400 mb-2'>

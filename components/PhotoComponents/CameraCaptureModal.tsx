@@ -57,8 +57,8 @@ export function CameraCaptureModal({
     <Modal
       visible={visible}
       onRequestClose={handleClose}
-      presentationStyle="fullScreen"
-      animationType="slide"
+      presentationStyle='fullScreen'
+      animationType='slide'
     >
       {!showReview ? (
         <CameraCaptureScreen
@@ -73,6 +73,7 @@ export function CameraCaptureModal({
           photos={capturedPhotos}
           onUpload={handleUpload}
           onCancel={handleCancel}
+          onBack={() => setShowReview(false)}
           onDeletePhoto={handleDeletePhoto}
           type={type}
         />

@@ -43,9 +43,8 @@ export class BackendConnector implements PowerSyncBackendConnector {
       },
     };
 
-    // Use cloudinary URL from AppConfig or default to an empty string (which will be updated later)
-    const cloudinaryUrl = AppConfig.cloudinaryUrl || 'pending-initialization';
-    this.apiClient = new ApiClient(cloudinaryUrl, this.cloudinaryOptions);
+    // ApiClient base URL - not used for Cloudinary uploads (which use server-signed URLs)
+    this.apiClient = new ApiClient('', this.cloudinaryOptions);
     this.storage = new CloudinaryStorageAdapter(this.apiClient);
   }
 
