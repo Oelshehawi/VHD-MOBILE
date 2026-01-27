@@ -64,6 +64,26 @@ const photos = new Table(
     { indexes: { schedules: ["scheduleId"] } },
 );
 
+const reports = new Table(
+    {
+        // id column (text) is automatically included
+        scheduleId: column.text,
+        invoiceId: column.text,
+        technicianId: column.text,
+        dateCompleted: column.text,
+        reportStatus: column.text, // 'draft' | 'in_progress' | 'completed'
+        jobTitle: column.text,
+        location: column.text,
+        cookingVolume: column.text, // 'High' | 'Medium' | 'Low'
+        recommendedCleaningFrequency: column.integer,
+        comments: column.text,
+        // Nested objects stored as JSON text
+        cleaningDetails: column.text, // JSON: { hoodCleaned, filtersCleaned, ductworkCleaned, fanCleaned }
+        inspectionItems: column.text, // JSON: { adequateAccessPanels }
+    },
+    { indexes: { schedules: ["scheduleId"] } },
+);
+
 const payrollperiods = new Table(
     {
         // id column (text) is automatically included
@@ -118,6 +138,7 @@ export const AppSchema = new Schema({
     availabilities,
     timeoffrequests,
     photos,
+    reports,
     attachments: new AttachmentTable({
         name: "attachments",
         additionalColumns: [
@@ -145,3 +166,4 @@ export type Database = (typeof AppSchema)["types"];
 export type Schedule = Database["schedules"];
 export type Availability = Database["availabilities"];
 export type TimeOffRequest = Database["timeoffrequests"];
+export type Report = Database["reports"];

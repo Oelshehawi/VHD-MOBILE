@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { useAuth, useUser } from '@clerk/clerk-expo';
+import { useUser } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
 import { ScheduleView } from '../../components/schedule/ScheduleView';
 import { startOfDay } from 'date-fns';

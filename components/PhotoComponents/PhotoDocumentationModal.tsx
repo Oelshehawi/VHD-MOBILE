@@ -1,10 +1,17 @@
 import { useState } from "react";
-import { View, Text, Modal, ScrollView, Pressable } from "react-native";
+import { View, Modal, ScrollView, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PhotoCapture } from "../PhotoComponents/PhotoCapture";
 import { JobPhotoHistory } from "./JobPhotoHistory";
 import { useQuery, DEFAULT_ROW_COMPARATOR } from "@powersync/react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import { router } from "expo-router";
+import type { ReportStatus } from "@/types/report";
+import { Text } from "@/components/ui/text";
+import { cn } from "@/lib/utils";
+
+// Tab type for the modal navigation
+type TabType = "before" | "after" | "history";
 
 interface PhotoDocumentationModalProps {
     visible: boolean;
@@ -14,9 +21,6 @@ interface PhotoDocumentationModalProps {
     startDateTime: string;
     technicianId: string;
 }
-
-// Tab type for the modal navigation
-type TabType = "before" | "after" | "history";
 
 export function PhotoDocumentationModal({
     visible,
@@ -28,6 +32,7 @@ export function PhotoDocumentationModal({
 }: PhotoDocumentationModalProps) {
     const [activeTab, setActiveTab] = useState<TabType>("before");
     const insets = useSafeAreaInsets();
+
     const { data: photoCounts = [] } = useQuery<{
         beforeCount: number | null;
         afterCount: number | null;
@@ -43,8 +48,19 @@ export function PhotoDocumentationModal({
         { rowComparator: DEFAULT_ROW_COMPARATOR },
     );
 
+    const { data: reportStatusRows = [] } = useQuery<{
+        reportStatus: ReportStatus | null;
+    }>(
+        scheduleId
+            ? `SELECT reportStatus FROM reports WHERE scheduleId = ? ORDER BY dateCompleted DESC LIMIT 1`
+            : `SELECT NULL as reportStatus`,
+        [scheduleId],
+        { rowComparator: DEFAULT_ROW_COMPARATOR },
+    );
+
     const beforeCount = Number(photoCounts[0]?.beforeCount ?? 0);
     const afterCount = Number(photoCounts[0]?.afterCount ?? 0);
+    const reportStatus = reportStatusRows[0]?.reportStatus ?? null;
 
     // Handle close with logging
     const handleClose = () => {
@@ -56,9 +72,24 @@ export function PhotoDocumentationModal({
         setActiveTab(tab);
     };
 
+    const canAddAfterPhotos =
+        reportStatus === "in_progress" || reportStatus === "completed";
+
+    const handleGoToReport = () => {
+        handleClose();
+        router.push({
+            pathname: "/report",
+            params: {
+                scheduleId,
+                jobTitle,
+                startDateTime,
+                technicianId,
+            },
+        });
+    };
+
     if (!visible) return null;
 
-    // Rebuilt with inline styles and Pressable (iOS-compatible)
     return (
         <Modal
             visible={visible}
@@ -67,86 +98,41 @@ export function PhotoDocumentationModal({
             animationType="slide"
         >
             <View
-                style={{
-                    flex: 1,
-                    backgroundColor: "#f9fafb",
-                    paddingTop: insets.top,
-                }}
+                className="flex-1 bg-gray-50"
+                style={{ paddingTop: insets.top }}
             >
                 {/* Header */}
-                <View
-                    style={{
-                        backgroundColor: "#064e3b", // darkGreen equivalent
-                        padding: 16,
-                        shadowColor: "#000",
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 3,
-                        elevation: 3,
-                        flexDirection: "row",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                    }}
-                >
-                    <Text
-                        style={{
-                            color: "white",
-                            fontSize: 20,
-                            fontWeight: "bold",
-                            flex: 1,
-                        }}
-                    >
+                <View className="flex-row items-center justify-between bg-emerald-900 p-4 shadow-sm">
+                    <Text className="flex-1 text-xl font-bold text-white">
                         {jobTitle}
                     </Text>
-
                     <Pressable
                         onPress={handleClose}
                         hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-                        style={({ pressed }) => ({
-                            width: 44,
-                            height: 44,
-                            backgroundColor: pressed
-                                ? "rgba(255, 255, 255, 0.3)"
-                                : "rgba(255, 255, 255, 0.2)",
-                            borderRadius: 16,
-                            alignItems: "center",
-                            justifyContent: "center",
-                        })}
+                        className="h-11 w-11 items-center justify-center rounded-2xl bg-white/20 active:bg-white/30"
                     >
                         <Ionicons name="close" size={24} color="white" />
                     </Pressable>
                 </View>
 
                 {/* Tabs */}
-                <View
-                    style={{
-                        flexDirection: "row",
-                        borderBottomWidth: 1,
-                        borderBottomColor: "#e5e7eb",
-                        backgroundColor: "white",
-                    }}
-                >
+                <View className="flex-row border-b border-gray-200 bg-white">
                     {["before", "after", "history"].map((tab) => (
                         <Pressable
                             key={tab}
                             onPress={() => handleTabChange(tab as TabType)}
-                            style={{
-                                flex: 1,
-                                paddingVertical: 16,
-                                paddingHorizontal: 16,
-                                borderBottomWidth: activeTab === tab ? 2 : 0,
-                                borderBottomColor: "#064e3b", // darkGreen
-                            }}
+                            className={cn(
+                                "flex-1 px-4 py-4",
+                                activeTab === tab && "border-b-2 border-emerald-900",
+                            )}
                         >
                             <Text
-                                style={{
-                                    textAlign: "center",
-                                    fontWeight: "600",
-                                    color:
-                                        activeTab === tab
-                                            ? "#064e3b"
-                                            : "#6b7280",
-                                }}
+                                className={cn(
+                                    "text-center font-semibold",
+                                    activeTab === tab
+                                        ? "text-emerald-900"
+                                        : "text-gray-500",
+                                )}
                             >
                                 {tab === "before"
                                     ? `Before Photos${beforeCount ? ` (${beforeCount})` : ""}`
@@ -161,27 +147,43 @@ export function PhotoDocumentationModal({
                 {/* Content */}
                 {activeTab === "before" || activeTab === "after" ? (
                     <ScrollView
-                        style={{
-                            flex: 1,
-                            paddingHorizontal: 16,
-                            paddingVertical: 16,
+                        className="flex-1 px-4 py-4"
+                        contentContainerStyle={{
+                            paddingBottom: insets.bottom + 16,
                         }}
                     >
-                        <PhotoCapture
-                            technicianId={technicianId}
-                            type={activeTab}
-                            jobTitle={jobTitle}
-                            startDate={startDateTime}
-                            scheduleId={scheduleId}
-                        />
+                        {activeTab === "after" && !canAddAfterPhotos ? (
+                            <View className="items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white p-5">
+                                <Text className="text-lg font-bold text-gray-900">
+                                    Submit report to add After photos
+                                </Text>
+                                <Text className="text-center text-sm text-gray-500">
+                                    Submit the report for admin review to unlock
+                                    After photos.
+                                </Text>
+                                <Pressable
+                                    onPress={handleGoToReport}
+                                    className="w-full rounded-xl bg-emerald-700 px-4 py-3 active:bg-emerald-800"
+                                >
+                                    <Text className="text-center font-semibold text-white">
+                                        Go to Report
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        ) : (
+                            <PhotoCapture
+                                technicianId={technicianId}
+                                type={activeTab}
+                                jobTitle={jobTitle}
+                                startDate={startDateTime}
+                                scheduleId={scheduleId}
+                            />
+                        )}
                     </ScrollView>
                 ) : (
                     <View
-                        style={{
-                            flex: 1,
-                            paddingHorizontal: 16,
-                            paddingVertical: 16,
-                        }}
+                        className="flex-1 px-4 pt-4"
+                        style={{ paddingBottom: insets.bottom + 16 }}
                     >
                         <JobPhotoHistory
                             scheduleId={scheduleId}

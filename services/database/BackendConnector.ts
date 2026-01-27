@@ -116,6 +116,33 @@ export class BackendConnector implements PowerSyncBackendConnector {
         }
     }
 
+    /**
+     * Parse JSON string fields in reports back to objects for MongoDB
+     */
+    private parseReportJsonFields<T extends Record<string, any>>(data: T): T {
+        const result: Record<string, any> = { ...data };
+
+        // Parse cleaningDetails if it's a string
+        if (typeof result.cleaningDetails === "string") {
+            try {
+                result.cleaningDetails = JSON.parse(result.cleaningDetails);
+            } catch {
+                debugLogger.warn("SYNC", "Failed to parse cleaningDetails JSON");
+            }
+        }
+
+        // Parse inspectionItems if it's a string
+        if (typeof result.inspectionItems === "string") {
+            try {
+                result.inspectionItems = JSON.parse(result.inspectionItems);
+            } catch {
+                debugLogger.warn("SYNC", "Failed to parse inspectionItems JSON");
+            }
+        }
+
+        return result as T;
+    }
+
     async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
         const transaction = await database.getNextCrudTransaction();
         if (!transaction) return;
@@ -136,9 +163,15 @@ export class BackendConnector implements PowerSyncBackendConnector {
                     continue;
                 }
 
+                // Parse JSON fields for reports table before sending to backend
+                let data = { ...op.opData, id: op.id };
+                if (op.table === "reports") {
+                    data = this.parseReportJsonFields(data);
+                }
+
                 const record = {
                     table: op.table,
-                    data: { ...op.opData, id: op.id },
+                    data,
                 };
 
                 switch (op.op) {
