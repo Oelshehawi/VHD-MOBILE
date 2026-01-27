@@ -46,8 +46,9 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const { data: payrollSchedules = [] } = usePayrollSchedules(
     currentPayroll[0]?.id,
     isManager,
-    userId
+      userId
   );
+  
 
   const sortedTodaySchedules = sortSchedulesByTime(todaySchedules);
   const totalHours = payrollSchedules.reduce(

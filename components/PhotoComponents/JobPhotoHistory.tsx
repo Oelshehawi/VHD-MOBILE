@@ -1,554 +1,509 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  Pressable,
-  ActivityIndicator,
-  useWindowDimensions,
-} from 'react-native';
-import { format } from 'date-fns';
-import { useQuery } from '@powersync/react-native';
-import { PhotoType } from '@/utils/photos';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { FastImageWrapper } from '@/components/common/FastImageWrapper';
-import { FastImageViewer } from '@/components/common/FastImageViewer';
-import { preloadImages } from '@/utils/imageCache';
-import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
-import { AppConfig } from '@/services/database/AppConfig';
+    View,
+    Text,
+    Pressable,
+    ActivityIndicator,
+    useWindowDimensions,
+} from "react-native";
+import { format } from "date-fns";
+import { useQuery, DEFAULT_ROW_COMPARATOR } from "@powersync/react-native";
+import { PhotoType } from "@/utils/photos";
+import Ionicons from "@expo/vector-icons/Ionicons";
+import { FastImageWrapper } from "@/components/common/FastImageWrapper";
+import { FastImageViewer } from "@/components/common/FastImageViewer";
+import { preloadImages } from "@/utils/imageCache";
+import { buildCloudinaryUrlMobile } from "@/utils/cloudinaryUrl.native";
+import { AppConfig } from "@/services/database/AppConfig";
 
-// Cloudinary configuration
-const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
-const THUMBNAIL_WIDTH = 240; // Width for grid thumbnails
+const CLOUD_NAME = AppConfig.cloudinaryCloudName || "";
+const THUMBNAIL_WIDTH = 240;
 
-// Photo type with signature name extension
-interface EnhancedPhotoType extends PhotoType {
-  signerName?: string;
-}
-
-// Gallery image structure
 interface GalleryImage {
-  uri: string;
-  title?: string;
-  type?: 'before' | 'after' | 'signature' | 'estimate';
+    uri: string;
+    title?: string;
+    type?: "before" | "after" | "signature" | "estimate";
 }
 
-// Job section with photos by type
 interface JobSection {
-  id: string;
-  title: string;
-  date: string;
-  beforePhotos: EnhancedPhotoType[];
-  afterPhotos: EnhancedPhotoType[];
-  signaturePhotos: EnhancedPhotoType[];
+    id: string;
+    title: string;
+    date: string;
+    beforePhotos: PhotoType[];
+    afterPhotos: PhotoType[];
+    signaturePhotos: PhotoType[];
 }
 
 interface JobPhotoHistoryProps {
-  scheduleId: string;
-  jobTitle: string;
+    scheduleId: string;
+    jobTitle: string;
+}
+
+interface HistoryRow {
+    scheduleId: string;
+    jobTitle: string;
+    startDateTime: string | null;
+    photoId: string | null;
+    cloudinaryUrl: string | null;
+    type: PhotoType["type"] | null;
+    timestamp: string | null;
+    signerName: string | null;
+    technicianId: string | null;
 }
 
 export function JobPhotoHistory({
-  scheduleId,
-  jobTitle,
+    scheduleId,
+    jobTitle,
 }: JobPhotoHistoryProps) {
-  const { width } = useWindowDimensions();
-  const [isLoading, setIsLoading] = useState(false);
+    const { width } = useWindowDimensions();
 
-  // Gallery state
-  const [galleryVisible, setGalleryVisible] = useState(false);
-  const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
-  const [galleryIndex, setGalleryIndex] = useState(0);
-  const [galleryJobDate, setGalleryJobDate] = useState('');
+    const [galleryVisible, setGalleryVisible] = useState(false);
+    const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
+    const [galleryIndex, setGalleryIndex] = useState(0);
+    const [galleryJobDate, setGalleryJobDate] = useState("");
 
-  // Calculate thumbnail size (3 per row with spacing)
-  const thumbnailSize = useMemo(() => Math.floor((width - 64) / 3), [width]);
+    const thumbnailSize = useMemo(() => Math.floor((width - 64) / 3), [width]);
 
-  // Fetch previous jobs with the same title
-  const { data: previousJobsData = [], isLoading: isQueryLoading } =
-    useQuery<any>(
-      jobTitle && scheduleId
-        ? `SELECT id, jobTitle, startDateTime, photos FROM schedules 
-         WHERE jobTitle = ? AND id != ? AND photos IS NOT NULL
-         ORDER BY startDateTime DESC LIMIT 10`
-        : `SELECT id FROM schedules WHERE 0`,
-      [jobTitle?.trim(), scheduleId]
-    );
-
-  // Fetch current schedule's photos to get estimate photos (for when no history exists)
-  const {
-    data: currentScheduleData = [],
-    isLoading: isCurrentScheduleLoading,
-  } = useQuery<any>(
-    scheduleId
-      ? `SELECT photos FROM schedules WHERE id = ?`
-      : `SELECT id FROM schedules WHERE 0`,
-    [scheduleId]
-  );
-
-  // Extract estimate photos from current schedule
-  const estimatePhotos = useMemo(() => {
-    if (!currentScheduleData.length) return [];
-
-    try {
-      const photosJson = currentScheduleData[0]?.photos;
-      if (!photosJson || typeof photosJson !== 'string') return [];
-
-      const photosObj = JSON.parse(photosJson);
-      let photosArray: EnhancedPhotoType[] = [];
-
-      if (Array.isArray(photosObj)) {
-        photosArray = photosObj;
-      } else if (Array.isArray(photosObj.photos)) {
-        photosArray = photosObj.photos;
-      }
-
-      // Filter only estimate type photos
-      return photosArray.filter((p) => p.type === 'estimate');
-    } catch (err) {
-      console.error('Error parsing current schedule photos:', err);
-      return [];
-    }
-  }, [currentScheduleData]);
-
-  // Process jobs data into sections
-  const jobSections = useMemo(() => {
-    if (!previousJobsData.length) return [];
-
-    const sections: JobSection[] = [];
-    const photoUrls: string[] = [];
-
-    for (const job of previousJobsData) {
-      try {
-        if (!job.photos || typeof job.photos !== 'string') continue;
-
-        // Parse photos JSON
-        let photosArray: EnhancedPhotoType[] = [];
-        try {
-          const photosObj = JSON.parse(job.photos);
-
-          if (Array.isArray(photosObj)) {
-            photosArray = photosObj;
-          } else if (Array.isArray(photosObj.photos)) {
-            photosArray = photosObj.photos;
-          } else if (photosObj.before || photosObj.after) {
-            const beforePhotos = Array.isArray(photosObj.before)
-              ? photosObj.before
-              : [];
-            const afterPhotos = Array.isArray(photosObj.after)
-              ? photosObj.after
-              : [];
-            photosArray = [...beforePhotos, ...afterPhotos];
-          }
-        } catch (err) {
-          console.error('Error parsing photos JSON:', err);
-          continue;
-        }
-
-        if (!photosArray.length) continue;
-
-        // Group photos by type
-        const beforePhotos = photosArray.filter((p) => p.type === 'before');
-        const afterPhotos = photosArray.filter((p) => p.type === 'after');
-        const signaturePhotos = photosArray.filter(
-          (p) => p.type === 'signature'
+    const { data: historyRows = [], isLoading: isHistoryLoading } =
+        useQuery<HistoryRow>(
+            jobTitle && scheduleId
+                ? `SELECT s.id as scheduleId, s.jobTitle, s.startDateTime,
+             p.id as photoId, p.cloudinaryUrl, p.type, p.timestamp, p.signerName, p.technicianId
+           FROM schedules s
+           LEFT JOIN photos p
+             ON p.scheduleId = s.id AND p.cloudinaryUrl IS NOT NULL
+           WHERE s.jobTitle = ? AND s.id != ?
+           ORDER BY s.startDateTime DESC, p.timestamp ASC`
+                : `SELECT s.id as scheduleId FROM schedules s WHERE 0`,
+            [jobTitle?.trim(), scheduleId],
+            { rowComparator: DEFAULT_ROW_COMPARATOR },
         );
 
-        if (
-          beforePhotos.length ||
-          afterPhotos.length ||
-          signaturePhotos.length
-        ) {
-          // Add transformed photo URLs for preloading (w_720 for viewer)
-          const transformedUrls = [
-            ...beforePhotos.map((p) =>
-              buildCloudinaryUrlMobile({
-                urlOrPublicId: p.url,
-                cloudName: CLOUD_NAME,
-                width: 720,
-              })
-            ),
-            ...afterPhotos.map((p) =>
-              buildCloudinaryUrlMobile({
-                urlOrPublicId: p.url,
-                cloudName: CLOUD_NAME,
-                width: 720,
-              })
-            ),
-            ...signaturePhotos.map((p) =>
-              buildCloudinaryUrlMobile({
-                urlOrPublicId: p.url,
-                cloudName: CLOUD_NAME,
-                width: 720,
-              })
-            ),
-          ];
-          photoUrls.push(...transformedUrls);
+    const { data: estimatePhotos = [], isLoading: isEstimateLoading } =
+        useQuery<PhotoType>(
+            scheduleId
+                ? `SELECT id, scheduleId, cloudinaryUrl, type, timestamp, technicianId, signerName
+           FROM photos
+           WHERE scheduleId = ? AND type = 'estimate' AND cloudinaryUrl IS NOT NULL
+           ORDER BY timestamp ASC`
+                : `SELECT id FROM photos WHERE 0`,
+            [scheduleId],
+            { rowComparator: DEFAULT_ROW_COMPARATOR },
+        );
 
-          // Create job section
-          sections.push({
-            id: job.id,
-            title: job.jobTitle || 'Untitled Job',
-            date: job.startDateTime
-              ? format(new Date(job.startDateTime), 'MMM d, yyyy')
-              : 'Unknown Date',
-            beforePhotos,
-            afterPhotos,
-            signaturePhotos,
-          });
+    const jobSections = useMemo(() => {
+        if (!historyRows.length) return [];
+
+        const sections = new Map<string, JobSection>();
+        const photoUrls: string[] = [];
+
+        for (const row of historyRows) {
+            if (!row.scheduleId) continue;
+
+            if (!sections.has(row.scheduleId)) {
+                sections.set(row.scheduleId, {
+                    id: row.scheduleId,
+                    title: row.jobTitle || "Untitled Job",
+                    date: row.startDateTime
+                        ? format(new Date(row.startDateTime), "MMM d, yyyy")
+                        : "Unknown Date",
+                    beforePhotos: [],
+                    afterPhotos: [],
+                    signaturePhotos: [],
+                });
+            }
+
+            if (!row.photoId || !row.cloudinaryUrl || !row.type) continue;
+
+            const cloudinaryUrl = row.cloudinaryUrl;
+            const section = sections.get(row.scheduleId);
+            if (!section) continue;
+
+            const photo: PhotoType = {
+                id: row.photoId,
+                scheduleId: row.scheduleId,
+                cloudinaryUrl,
+                type: row.type,
+                timestamp: row.timestamp || new Date().toISOString(),
+                technicianId: row.technicianId || "",
+                signerName: row.signerName ?? null,
+            };
+
+            if (photo.type === "before") section.beforePhotos.push(photo);
+            if (photo.type === "after") section.afterPhotos.push(photo);
+            if (photo.type === "signature") section.signaturePhotos.push(photo);
+
+            photoUrls.push(
+                buildCloudinaryUrlMobile({
+                    urlOrPublicId: cloudinaryUrl,
+                    cloudName: CLOUD_NAME,
+                    width: 720,
+                }),
+            );
         }
-      } catch (error) {
-        console.error('Error processing job:', error);
-      }
-    }
 
-    // Preload first 20 images
-    if (photoUrls.length > 0) {
-      preloadImages(photoUrls.slice(0, 20));
-    }
+        const sectionList = Array.from(sections.values()).filter(
+            (section) =>
+                section.beforePhotos.length ||
+                section.afterPhotos.length ||
+                section.signaturePhotos.length,
+        );
 
-    return sections;
-  }, [previousJobsData]);
+        if (photoUrls.length > 0) {
+            preloadImages(photoUrls.slice(0, 20));
+        }
 
-  // Open gallery with photos
-  const openGallery = useCallback(
-    (
-      jobSection: JobSection,
-      photoType: 'before' | 'after' | 'signature',
-      photoIndex: number = 0
-    ) => {
-      // Get relevant photos based on type
-      const photos =
-        photoType === 'before'
-          ? jobSection.beforePhotos
-          : photoType === 'after'
-          ? jobSection.afterPhotos
-          : jobSection.signaturePhotos;
+        return sectionList;
+    }, [historyRows]);
 
-      if (!photos.length) return;
+    const openGallery = useCallback(
+        (
+            jobSection: JobSection,
+            photoType: "before" | "after" | "signature",
+            photoIndex: number = 0,
+        ) => {
+            const photos =
+                photoType === "before"
+                    ? jobSection.beforePhotos
+                    : photoType === "after"
+                      ? jobSection.afterPhotos
+                      : jobSection.signaturePhotos;
 
-      // Create gallery images from all photos in this job
-      const allImages: GalleryImage[] = [
-        ...jobSection.beforePhotos.map((p) => ({
-          uri: p.url,
-          title: 'Before Photo',
-          type: 'before' as const,
-        })),
-        ...jobSection.afterPhotos.map((p) => ({
-          uri: p.url,
-          title: 'After Photo',
-          type: 'after' as const,
-        })),
-        ...jobSection.signaturePhotos.map((p) => ({
-          uri: p.url,
-          title: `Signature: ${p.signerName || 'Unknown'}`,
-          type: 'signature' as const,
-        })),
-      ];
+            if (!photos.length) return;
 
-      if (allImages.length === 0) return;
+            const allImages: GalleryImage[] = [
+                ...jobSection.beforePhotos.map((p) => ({
+                    uri: p.cloudinaryUrl || "",
+                    title: "Before Photo",
+                    type: "before" as const,
+                })),
+                ...jobSection.afterPhotos.map((p) => ({
+                    uri: p.cloudinaryUrl || "",
+                    title: "After Photo",
+                    type: "after" as const,
+                })),
+                ...jobSection.signaturePhotos.map((p) => ({
+                    uri: p.cloudinaryUrl || "",
+                    title: `Signature: ${p.signerName || "Unknown"}`,
+                    type: "signature" as const,
+                })),
+            ].filter((image) => image.uri);
 
-      // Find starting index for the selected photo type
-      let startIndex = 0;
-      if (photoType === 'after') {
-        startIndex = jobSection.beforePhotos.length;
-      } else if (photoType === 'signature') {
-        startIndex =
-          jobSection.beforePhotos.length + jobSection.afterPhotos.length;
-      }
+            if (allImages.length === 0) return;
 
-      // Set gallery state
-      setGalleryImages(allImages);
-      setGalleryIndex(Math.min(startIndex + photoIndex, allImages.length - 1));
-      setGalleryJobDate(jobSection.date);
-      setGalleryVisible(true);
-    },
-    []
-  );
+            let startIndex = 0;
+            if (photoType === "after") {
+                startIndex = jobSection.beforePhotos.length;
+            } else if (photoType === "signature") {
+                startIndex =
+                    jobSection.beforePhotos.length +
+                    jobSection.afterPhotos.length;
+            }
 
-  // Get subtitle for gallery
-  const getGallerySubtitle = useCallback(
-    (index: number, image: GalleryImage) => {
-      return `${galleryJobDate} - ${
-        image?.type === 'before'
-          ? 'Before Photo'
-          : image?.type === 'after'
-          ? 'After Photo'
-          : 'Signature'
-      }`;
-    },
-    [galleryJobDate]
-  );
-
-  // Render photo thumbnail
-  const renderPhotoItem = useCallback(
-    (
-      photo: EnhancedPhotoType,
-      jobSection: JobSection,
-      photoType: 'before' | 'after' | 'signature',
-      photoIndex: number
-    ) => {
-      const styles = {
-        before: { bg: 'bg-blue-500/80', label: 'Before' },
-        after: { bg: 'bg-green-500/80', label: 'After' },
-        signature: { bg: 'bg-purple-500/80', label: 'Signature' },
-      };
-
-      const style = styles[photoType];
-
-      // Transform thumbnail URL to optimize bandwidth
-      const thumbnailUrl = buildCloudinaryUrlMobile({
-        urlOrPublicId: photo.url,
-        cloudName: CLOUD_NAME,
-        width: THUMBNAIL_WIDTH,
-      });
-
-      return (
-        <Pressable
-          key={photo.id || `${jobSection.id}-${photoType}-${photoIndex}`}
-          onPress={() => openGallery(jobSection, photoType, photoIndex)}
-          style={{
-            width: thumbnailSize,
-            height: thumbnailSize,
-            marginRight: 8,
-            marginBottom: 8,
-          }}
-          className='rounded-lg overflow-hidden'
-        >
-          <FastImageWrapper
-            uri={thumbnailUrl}
-            style={{ width: '100%', height: '100%', borderRadius: 8 }}
-            showLoader={true}
-          />
-          <View
-            className={`absolute bottom-0 left-0 right-0 py-1 items-center ${style.bg}`}
-          >
-            <Text className='text-white text-xs font-medium'>
-              {style.label}
-            </Text>
-          </View>
-        </Pressable>
-      );
-    },
-    [thumbnailSize, openGallery]
-  );
-
-  // Render photo section (Before, After, or Signature)
-  const renderPhotoSection = useCallback(
-    (
-      photos: EnhancedPhotoType[],
-      jobSection: JobSection,
-      photoType: 'before' | 'after' | 'signature'
-    ) => {
-      if (!photos.length) return null;
-
-      const sectionConfig = {
-        before: {
-          icon: 'camera-outline',
-          color: '#3b82f6',
-          title: 'Before Photos',
+            setGalleryImages(allImages);
+            setGalleryIndex(
+                Math.min(startIndex + photoIndex, allImages.length - 1),
+            );
+            setGalleryJobDate(jobSection.date);
+            setGalleryVisible(true);
         },
-        after: {
-          icon: 'checkmark-circle-outline',
-          color: '#10b981',
-          title: 'After Photos',
-        },
-        signature: {
-          icon: 'pencil-outline',
-          color: '#8b5cf6',
-          title: 'Signatures',
-        },
-      };
-
-      const config = sectionConfig[photoType];
-
-      return (
-        <View className='mb-4'>
-          <Text className='text-sm font-medium mb-2 text-gray-600'>
-            <Ionicons
-              name={config.icon as any}
-              size={16}
-              color={config.color}
-            />{' '}
-            {config.title}
-          </Text>
-          <View className='flex-row flex-wrap'>
-            {photos.map((photo, index) =>
-              renderPhotoItem(photo, jobSection, photoType, index)
-            )}
-          </View>
-        </View>
-      );
-    },
-    [renderPhotoItem]
-  );
-
-  // Render job card
-  const renderJobCard = useCallback(
-    (jobSection: JobSection) => {
-      return (
-        <View className='bg-white rounded-xl p-4 mb-4 shadow-sm border border-gray-100'>
-          <View className='flex-row items-center mb-3'>
-            <View className='w-2.5 h-2.5 rounded-full bg-blue-500 mr-2.5' />
-            <Text className='text-base font-semibold text-gray-800'>
-              {jobSection.date}
-            </Text>
-          </View>
-
-          {renderPhotoSection(jobSection.beforePhotos, jobSection, 'before')}
-          {renderPhotoSection(jobSection.afterPhotos, jobSection, 'after')}
-          {renderPhotoSection(
-            jobSection.signaturePhotos,
-            jobSection,
-            'signature'
-          )}
-        </View>
-      );
-    },
-    [renderPhotoSection]
-  );
-
-  // Show loading indicator
-  if (isQueryLoading || isCurrentScheduleLoading || isLoading) {
-    return (
-      <View className='flex-1 justify-center items-center'>
-        <ActivityIndicator size='large' color='#0891b2' />
-        <Text className='mt-3 text-gray-500 text-base'>
-          Loading previous jobs...
-        </Text>
-      </View>
+        [],
     );
-  }
 
-  // Show estimate photos when no previous job history exists
-  if (jobSections.length === 0 && estimatePhotos.length > 0) {
-    return (
-      <View className='flex-1 p-2'>
-        <View className='bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4'>
-          <View className='flex-row items-center mb-1'>
-            <Ionicons name='information-circle' size={18} color='#d97706' />
-            <Text className='text-amber-800 font-semibold ml-2'>
-              First Time Job
-            </Text>
-          </View>
-          <Text className='text-amber-700 text-sm'>
-            No previous job history. Showing reference photos from the estimate.
-          </Text>
-        </View>
+    const getGallerySubtitle = useCallback(
+        (index: number, image: GalleryImage) => {
+            return `${galleryJobDate} - ${
+                image?.type === "before"
+                    ? "Before Photo"
+                    : image?.type === "after"
+                      ? "After Photo"
+                      : "Signature"
+            }`;
+        },
+        [galleryJobDate],
+    );
 
-        {/* Estimate Photos Section */}
-        <View className='bg-white rounded-xl p-4 shadow-sm border border-gray-100'>
-          <View className='flex-row items-center mb-3'>
-            <Ionicons name='images-outline' size={20} color='#8b5cf6' />
-            <Text className='text-base font-semibold text-gray-800 ml-2'>
-              Estimate Reference Photos ({estimatePhotos.length})
-            </Text>
-          </View>
+    const renderPhotoItem = useCallback(
+        (
+            photo: PhotoType,
+            jobSection: JobSection,
+            photoType: "before" | "after" | "signature",
+            photoIndex: number,
+        ) => {
+            const styles = {
+                before: { bg: "bg-blue-500/80", label: "Before" },
+                after: { bg: "bg-green-500/80", label: "After" },
+                signature: { bg: "bg-purple-500/80", label: "Signature" },
+            };
 
-          <View className='flex-row flex-wrap'>
-            {estimatePhotos.map((photo, index) => {
-              const thumbnailUrl = buildCloudinaryUrlMobile({
-                urlOrPublicId: photo.url,
+            const style = styles[photoType];
+
+            const thumbnailUrl = buildCloudinaryUrlMobile({
+                urlOrPublicId: photo.cloudinaryUrl || "",
                 cloudName: CLOUD_NAME,
                 width: THUMBNAIL_WIDTH,
-              });
+            });
 
-              return (
+            return (
                 <Pressable
-                  key={photo.id || photo._id || `estimate-${index}`}
-                  onPress={() => {
-                    const images = estimatePhotos.map((p) => ({
-                      uri: p.url,
-                      title: 'Estimate Reference Photo',
-                      type: 'estimate' as const,
-                    }));
-                    setGalleryImages(images);
-                    setGalleryIndex(index);
-                    setGalleryJobDate('Estimate');
-                    setGalleryVisible(true);
-                  }}
-                  style={{
-                    width: thumbnailSize,
-                    height: thumbnailSize,
-                    marginRight: 8,
-                    marginBottom: 8,
-                  }}
-                  className='rounded-lg overflow-hidden'
+                    key={
+                        photo.id ||
+                        `${jobSection.id}-${photoType}-${photoIndex}`
+                    }
+                    onPress={() =>
+                        openGallery(jobSection, photoType, photoIndex)
+                    }
+                    style={{
+                        width: thumbnailSize,
+                        height: thumbnailSize,
+                        marginRight: 8,
+                        marginBottom: 8,
+                    }}
+                    className="rounded-lg overflow-hidden"
                 >
-                  <FastImageWrapper
-                    uri={thumbnailUrl}
-                    style={{ width: '100%', height: '100%', borderRadius: 8 }}
-                    showLoader={true}
-                  />
-                  <View className='absolute bottom-0 left-0 right-0 py-1 items-center bg-purple-500/80'>
-                    <Text className='text-white text-xs font-medium'>
-                      Estimate
-                    </Text>
-                  </View>
+                    <FastImageWrapper
+                        uri={thumbnailUrl}
+                        style={{
+                            width: "100%",
+                            height: "100%",
+                            borderRadius: 8,
+                        }}
+                        showLoader={true}
+                    />
+                    <View
+                        className={`absolute bottom-0 left-0 right-0 py-1 items-center ${style.bg}`}
+                    >
+                        <Text className="text-white text-xs font-medium">
+                            {style.label}
+                        </Text>
+                    </View>
                 </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Image Gallery Viewer */}
-        <FastImageViewer
-          images={galleryImages}
-          imageIndex={galleryIndex}
-          visible={galleryVisible}
-          onRequestClose={() => setGalleryVisible(false)}
-          swipeToCloseEnabled={true}
-          doubleTapToZoomEnabled={true}
-          title={jobTitle}
-          getSubtitle={(index, image) => `Estimate - Reference Photo`}
-        />
-      </View>
+            );
+        },
+        [thumbnailSize, openGallery],
     );
-  }
 
-  // Show empty state when no history AND no estimate photos
-  if (jobSections.length === 0) {
+    const renderPhotoSection = useCallback(
+        (
+            photos: PhotoType[],
+            jobSection: JobSection,
+            photoType: "before" | "after" | "signature",
+        ) => {
+            if (!photos.length) return null;
+
+            const sectionConfig = {
+                before: {
+                    icon: "camera-outline",
+                    color: "#3b82f6",
+                    title: "Before Photos",
+                },
+                after: {
+                    icon: "checkmark-circle-outline",
+                    color: "#10b981",
+                    title: "After Photos",
+                },
+                signature: {
+                    icon: "pencil-outline",
+                    color: "#8b5cf6",
+                    title: "Signatures",
+                },
+            };
+
+            const config = sectionConfig[photoType];
+
+            return (
+                <View className="mb-4">
+                    <Text className="text-sm font-medium mb-2 text-gray-600">
+                        <Ionicons
+                            name={config.icon as any}
+                            size={16}
+                            color={config.color}
+                        />{" "}
+                        {config.title}
+                    </Text>
+                    <View className="flex-row flex-wrap">
+                        {photos.map((photo, index) =>
+                            renderPhotoItem(
+                                photo,
+                                jobSection,
+                                photoType,
+                                index,
+                            ),
+                        )}
+                    </View>
+                </View>
+            );
+        },
+        [renderPhotoItem],
+    );
+
+    const renderJobCard = useCallback(
+        (jobSection: JobSection) => {
+            return (
+                <View className="bg-white rounded-xl p-4 mb-4 shadow-sm border border-gray-100">
+                    <View className="flex-row items-center mb-3">
+                        <View className="w-2.5 h-2.5 rounded-full bg-blue-500 mr-2.5" />
+                        <Text className="text-base font-semibold text-gray-800">
+                            {jobSection.date}
+                        </Text>
+                    </View>
+
+                    {renderPhotoSection(
+                        jobSection.beforePhotos,
+                        jobSection,
+                        "before",
+                    )}
+                    {renderPhotoSection(
+                        jobSection.afterPhotos,
+                        jobSection,
+                        "after",
+                    )}
+                    {renderPhotoSection(
+                        jobSection.signaturePhotos,
+                        jobSection,
+                        "signature",
+                    )}
+                </View>
+            );
+        },
+        [renderPhotoSection],
+    );
+
+    if (isHistoryLoading || isEstimateLoading) {
+        return (
+            <View className="flex-1 justify-center items-center">
+                <ActivityIndicator size="large" color="#0891b2" />
+                <Text className="mt-3 text-gray-500 text-base">
+                    Loading previous jobs...
+                </Text>
+            </View>
+        );
+    }
+
+    if (jobSections.length === 0 && estimatePhotos.length > 0) {
+        return (
+            <View className="flex-1 p-2">
+                <View className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <View className="flex-row items-center mb-1">
+                        <Ionicons
+                            name="information-circle"
+                            size={18}
+                            color="#d97706"
+                        />
+                        <Text className="text-amber-800 font-semibold ml-2">
+                            First Time Job
+                        </Text>
+                    </View>
+                    <Text className="text-amber-700 text-sm">
+                        No previous job history. Showing reference photos from
+                        the estimate.
+                    </Text>
+                </View>
+
+                <View className="bg-white rounded-xl p-4 shadow-sm border border-gray-100">
+                    <View className="flex-row items-center mb-3">
+                        <Ionicons
+                            name="images-outline"
+                            size={20}
+                            color="#8b5cf6"
+                        />
+                        <Text className="text-base font-semibold text-gray-800 ml-2">
+                            Estimate Reference Photos ({estimatePhotos.length})
+                        </Text>
+                    </View>
+
+                    <View className="flex-row flex-wrap">
+                        {estimatePhotos.map((photo, index) => {
+                            const thumbnailUrl = buildCloudinaryUrlMobile({
+                                urlOrPublicId: photo.cloudinaryUrl || "",
+                                cloudName: CLOUD_NAME,
+                                width: THUMBNAIL_WIDTH,
+                            });
+
+                            return (
+                                <Pressable
+                                    key={photo.id || `estimate-${index}`}
+                                    onPress={() => {
+                                        const images = estimatePhotos
+                                            .map((p) => ({
+                                                uri: p.cloudinaryUrl || "",
+                                                title: "Estimate Photo",
+                                                type: "estimate" as const,
+                                            }))
+                                            .filter((image) => image.uri);
+                                        setGalleryImages(images);
+                                        setGalleryIndex(index);
+                                        setGalleryJobDate("Estimate");
+                                        setGalleryVisible(true);
+                                    }}
+                                    style={{
+                                        width: thumbnailSize,
+                                        height: thumbnailSize,
+                                        marginRight: 8,
+                                        marginBottom: 8,
+                                    }}
+                                    className="rounded-lg overflow-hidden"
+                                >
+                                    <FastImageWrapper
+                                        uri={thumbnailUrl}
+                                        style={{
+                                            width: "100%",
+                                            height: "100%",
+                                            borderRadius: 8,
+                                        }}
+                                        showLoader={true}
+                                    />
+                                </Pressable>
+                            );
+                        })}
+                    </View>
+                </View>
+
+                {galleryVisible && (
+                    <FastImageViewer
+                        images={galleryImages}
+                        imageIndex={galleryIndex}
+                        visible={galleryVisible}
+                        onRequestClose={() => setGalleryVisible(false)}
+                        swipeToCloseEnabled={true}
+                        doubleTapToZoomEnabled={true}
+                        title={jobTitle}
+                        getSubtitle={getGallerySubtitle}
+                    />
+                )}
+            </View>
+        );
+    }
+
+    if (jobSections.length === 0) {
+        return (
+            <View className="flex-1 items-center justify-center py-8">
+                <Ionicons name="image-outline" size={48} color="#9ca3af" />
+                <Text className="text-gray-500 mt-2">
+                    No previous job photos found
+                </Text>
+            </View>
+        );
+    }
+
     return (
-      <View className='flex-1 justify-center items-center px-6'>
-        <Ionicons name='time-outline' size={48} color='#9ca3af' />
-        <Text className='text-lg font-semibold mt-4 mb-2 text-gray-600'>
-          No job history found
-        </Text>
-        <Text className='text-center text-gray-500 max-w-[240px]'>
-          No previous jobs with title "{jobTitle}" were found
-        </Text>
-      </View>
+        <View className="flex-1">
+            {jobSections.map((jobSection) => (
+                <View key={jobSection.id}>{renderJobCard(jobSection)}</View>
+            ))}
+
+            {galleryVisible && (
+                <FastImageViewer
+                    images={galleryImages}
+                    imageIndex={galleryIndex}
+                    visible={galleryVisible}
+                    onRequestClose={() => setGalleryVisible(false)}
+                    swipeToCloseEnabled={true}
+                    doubleTapToZoomEnabled={true}
+                    title={jobTitle}
+                    getSubtitle={getGallerySubtitle}
+                />
+            )}
+        </View>
     );
-  }
-
-  return (
-    <View className='flex-1 p-2'>
-      <Text className='text-xs text-gray-500 mb-3 italic px-1'>
-        Showing photos from previous instances of "{jobTitle}"
-      </Text>
-
-      <FlatList
-        data={jobSections}
-        keyExtractor={(item) => item.id}
-        renderItem={({ item }) => renderJobCard(item)}
-        initialNumToRender={2}
-        maxToRenderPerBatch={1}
-        windowSize={3}
-        removeClippedSubviews={true}
-        ListFooterComponent={<View className='h-12' />}
-      />
-
-      {/* Image Gallery Viewer */}
-      <FastImageViewer
-        images={galleryImages}
-        imageIndex={galleryIndex}
-        visible={galleryVisible}
-        onRequestClose={() => setGalleryVisible(false)}
-        swipeToCloseEnabled={true}
-        doubleTapToZoomEnabled={true}
-        title={jobTitle}
-        getSubtitle={getGallerySubtitle}
-      />
-    </View>
-  );
 }

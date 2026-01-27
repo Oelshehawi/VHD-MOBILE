@@ -30,7 +30,7 @@ importers:
         specifier: ^14.1.4
         version: 14.1.4(react-native@0.81.5(@babel/core@7.28.6)(@types/react@19.1.17)(bufferutil@4.1.0)(react@19.1.0)(utf-8-validate@5.0.10))(react@19.1.0)
       '@powersync/attachments':
-        specifier: ^2.2.0
+        specifier: ^2.4.1
         version: 2.4.1(@powersync/common@1.45.0)
       '@powersync/op-sqlite':
         specifier: ^0.7.11
@@ -7905,7 +7905,7 @@ snapshots:
 
   '@types/connect@3.4.38':
     dependencies:
-      '@types/node': 12.20.55
+      '@types/node': 25.0.9
 
   '@types/geojson@7946.0.16': {}
 
@@ -7955,7 +7955,7 @@ snapshots:
 
   '@types/ws@7.4.7':
     dependencies:
-      '@types/node': 12.20.55
+      '@types/node': 25.0.9
 
   '@types/ws@8.18.1':
     dependencies:

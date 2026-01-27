@@ -6,7 +6,6 @@ import { ConfirmationModal } from '@/components/common/ConfirmationModal';
 interface TechnicianNotesProps {
   schedule: any;
   scheduleId: string;
-  isManager: boolean;
 }
 
 /**
@@ -15,7 +14,6 @@ interface TechnicianNotesProps {
 export function TechnicianNotes({
   schedule,
   scheduleId,
-  isManager,
 }: TechnicianNotesProps) {
   const [editingNotes, setEditingNotes] = useState(false);
   const [technicianNotes, setTechnicianNotes] = useState('');
@@ -59,7 +57,7 @@ export function TechnicianNotes({
         <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
           Technician Notes
         </Text>
-        {!isManager && !editingNotes && (
+        {!editingNotes && (
           <TouchableOpacity
             onPress={() => setEditingNotes(true)}
             className='px-3 py-1 bg-darkGreen rounded-lg'

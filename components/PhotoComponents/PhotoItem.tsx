@@ -8,18 +8,14 @@ import { Image } from 'react-native';
 import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
 import { AppConfig } from '@/services/database/AppConfig';
 
-// Cloudinary configuration
 const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
-const THUMBNAIL_WIDTH = 240; // Grid thumbnails are ~1/3 screen width
+const THUMBNAIL_WIDTH = 240;
 
-/**
- * Individual photo item component
- */
 interface PhotoItemProps {
   photo: PhotoType;
   index: number;
   onPhotoPress?: (index: number) => void;
-  onDelete: (id: string, url: string, attachmentId?: string) => void;
+  onDelete: (id: string) => void;
   isDeleting: boolean;
 }
 
@@ -30,72 +26,56 @@ export function PhotoItem({
   onDelete,
   isDeleting,
 }: PhotoItemProps) {
-  const photoId = photo._id;
   const [imageError, setImageError] = useState(false);
-  const [imageLoaded, setImageLoaded] = useState(false);
   const [resolvedUrl, setResolvedUrl] = useState<string>('');
   const system = useSystem();
 
-  // Enhanced detection of pending photos
-  const isPending = photo.status === 'pending';
+  const isLoading = photo.cloudinaryUrl === null;
 
-  // Resolve the image URL - for pending photos we need the local file path
   useEffect(() => {
     const resolveUrl = async () => {
-      if (isPending && system?.attachmentQueue) {
-        try {
-          // If this is a pending photo, use local_uri which we can use directly
-          if (photo.local_uri) {
-            const localUri = system.attachmentQueue.getLocalUri(
-              photo.local_uri
-            );
-            setResolvedUrl(localUri);
+      setImageError(false);
 
-            // Verify the file exists using new File API
-            const file = new File(localUri);
-            if (!file.exists) {
-              setImageError(true);
-            }
-            return;
-          }
-
-          // Fallback if no local_uri - try direct attachments folder access
-          if (photo.url) {
-            const filename = photo.url.split('/').pop() || photo.url;
-            const directPath = new File(Paths.document, 'attachments', filename).uri;
-
-            // Check if file exists using new File API
-            const file = new File(directPath);
-            if (file.exists) {
-              setResolvedUrl(directPath);
-              return;
-            }
-
-            // Final fallback - use the URL as is
-            setResolvedUrl(photo.url);
-          } else {
-            setImageError(true);
-          }
-        } catch (error) {
-          setImageError(true);
+      if (isLoading && system?.attachmentQueue) {
+        if (photo.local_uri) {
+          const localUri = system.attachmentQueue.getLocalUri(photo.local_uri);
+          setResolvedUrl(localUri);
+          return;
         }
-      } else {
-        // For uploaded photos, transform to thumbnail size for bandwidth optimization
+
+        if (photo.filename) {
+          const directPath = new File(
+            Paths.document,
+            'attachments',
+            photo.filename
+          ).uri;
+          setResolvedUrl(directPath);
+          return;
+        }
+
+        setResolvedUrl('');
+        return;
+      }
+
+      if (photo.cloudinaryUrl) {
         const transformedUrl = buildCloudinaryUrlMobile({
-          urlOrPublicId: photo.url,
+          urlOrPublicId: photo.cloudinaryUrl,
           cloudName: CLOUD_NAME,
           width: THUMBNAIL_WIDTH,
         });
         setResolvedUrl(transformedUrl);
+        return;
       }
+
+      setResolvedUrl('');
     };
 
     resolveUrl();
   }, [
-    photo.url,
+    photo.cloudinaryUrl,
     photo.local_uri,
-    photo.attachmentId,
-    isPending,
+    photo.filename,
+    isLoading,
     system?.attachmentQueue,
   ]);
 
@@ -105,15 +85,13 @@ export function PhotoItem({
         onPress={() => onPhotoPress?.(index)}
         className='flex-1 rounded-xl overflow-hidden bg-gray-100 relative shadow-sm'
         activeOpacity={0.8}
-        disabled={isDeleting || isPending}
+        disabled={isDeleting}
       >
-        {/* If there's an error or no URL, show placeholder */}
         {imageError || !resolvedUrl ? (
           <View className='w-full h-full bg-gray-200 items-center justify-center'>
             <Text className='text-gray-500 font-medium'>Image</Text>
           </View>
-        ) : // For local file URLs, use regular Image instead of FastImageWrapper
-        resolvedUrl.startsWith('file:') ? (
+        ) : resolvedUrl.startsWith('file:') ? (
           <Image
             source={{ uri: resolvedUrl }}
             style={{ width: '100%', height: '100%' }}
@@ -126,12 +104,10 @@ export function PhotoItem({
             style={{ width: '100%', height: '100%' }}
             showLoader={true}
             onError={() => setImageError(true)}
-            onLoad={() => setImageLoaded(true)}
           />
         )}
 
-        {/* Status indicator - enhanced for more visibility */}
-        {isPending && (
+        {isLoading && (
           <View className='absolute inset-0 flex items-center justify-center bg-black/40'>
             <View className='bg-black/70 p-3 rounded-lg items-center'>
               <ActivityIndicator size='small' color='#ffffff' />
@@ -142,7 +118,6 @@ export function PhotoItem({
           </View>
         )}
 
-        {/* Photo timestamp indicator */}
         <View className='absolute bottom-0 left-0 right-0 bg-black/40 py-1'>
           <Text className='text-white text-[10px] text-center font-medium'>
             {new Date(photo.timestamp).toLocaleTimeString([], {
@@ -152,16 +127,13 @@ export function PhotoItem({
           </Text>
         </View>
 
-        {/* Delete button */}
         <TouchableOpacity
-          onPress={() =>
-            onDelete(photoId as string, photo.url || '', photo.attachmentId)
-          }
+          onPress={() => onDelete(photo.id)}
           className={`absolute top-2 right-2 ${
-            isPending ? 'bg-gray-400' : 'bg-red-500'
+            isLoading ? 'bg-gray-400' : 'bg-red-500'
           } w-[22px] h-[22px] rounded-full items-center justify-center opacity-90`}
           hitSlop={{ top: 10, right: 10, bottom: 10, left: 10 }}
-          disabled={isDeleting || isPending}
+          disabled={isDeleting}
         >
           <Text className='text-white text-xs font-bold leading-[18px]'>✕</Text>
         </TouchableOpacity>
