@@ -268,7 +268,7 @@ export default function DebugLogsScreen() {
         />
 
         {/* Action Buttons */}
-        <View className='flex-row gap-3 mb-4'>
+        <View className='flex-row gap-3 mb-2'>
           <TouchableOpacity
             onPress={handleExport}
             className='flex-1 flex-row items-center justify-center bg-blue-600 py-3 rounded-lg'
@@ -284,6 +284,17 @@ export default function DebugLogsScreen() {
             <Text className='text-white font-medium ml-2'>Clear</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Environment Tools Link */}
+        <TouchableOpacity
+          onPress={() => router.push('/debug-env')}
+          className='flex-row items-center justify-center bg-gray-100 dark:bg-gray-800 py-3 rounded-lg mb-4'
+        >
+          <Ionicons name='settings-outline' size={18} color='#4b5563' />
+          <Text className='text-gray-700 dark:text-gray-300 font-medium ml-2'>
+            Environment & PowerSync Tools
+          </Text>
+        </TouchableOpacity>
 
         {/* Log Count */}
         <Text className='text-gray-500 dark:text-gray-400 mb-2'>

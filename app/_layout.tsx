@@ -3,7 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
-import { View, Text, Modal, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, TouchableOpacity } from 'react-native';
 import { useUpdates } from 'expo-updates';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -42,6 +42,80 @@ export const unstable_settings = {
 SplashScreen.preventAutoHideAsync();
 
 const UPDATE_PENDING_KEY = 'updatePending';
+
+function UpdateChecker({ children }: { children: React.ReactNode }) {
+  const [isChecking, setIsChecking] = useState(true);
+  const [showUpdateToast, setShowUpdateToast] = useState(false);
+  const { isUpdateAvailable } = useUpdates();
+  const insets = useSafeAreaInsets();
+
+  // Check if we just came back from an update (show toast)
+  useEffect(() => {
+    if (__DEV__) {
+      setIsChecking(false);
+      return;
+    }
+
+    const checkIfJustUpdated = async () => {
+      try {
+        const updatePending = await AsyncStorage.getItem(UPDATE_PENDING_KEY);
+        if (updatePending === 'true') {
+          await AsyncStorage.removeItem(UPDATE_PENDING_KEY);
+          setShowUpdateToast(true);
+          setTimeout(() => setShowUpdateToast(false), 3000);
+        }
+      } catch (error) {
+        console.warn('Error checking update status:', error);
+      }
+      setIsChecking(false);
+    };
+    checkIfJustUpdated();
+  }, []);
+
+  // Auto-apply updates when available
+  useEffect(() => {
+    if (__DEV__ || isChecking) return;
+
+    if (isUpdateAvailable) {
+      const applyUpdate = async () => {
+        try {
+          await AsyncStorage.setItem(UPDATE_PENDING_KEY, 'true');
+          await Updates.fetchUpdateAsync();
+          await Updates.reloadAsync();
+        } catch (error) {
+          console.error('Error applying update:', error);
+          await AsyncStorage.removeItem(UPDATE_PENDING_KEY);
+        }
+      };
+      applyUpdate();
+    }
+  }, [isUpdateAvailable, isChecking]);
+
+  // Show nothing while checking for updates initially (keeps splash screen visible)
+  if (isChecking) {
+    return null;
+  }
+
+  return (
+    <>
+      {children}
+      {showUpdateToast && (
+        <Animated.View
+          entering={FadeInDown.duration(300)}
+          exiting={FadeOutUp.duration(300)}
+          className='absolute left-4 right-4 z-50'
+          style={{ top: Math.max(insets.top + 8, 48) }}
+        >
+          <View className='bg-green-600 dark:bg-green-700 rounded-lg p-4 shadow-lg'>
+            <Text className='text-white font-semibold text-center'>
+              ✓ App updated to latest version!
+            </Text>
+          </View>
+        </Animated.View>
+      )}
+    </>
+  );
+}
 
 function PowerSyncStatusBanner() {
   const { error, isRetrying, retryInit, isSignedIn } = usePowerSyncStatus();
@@ -82,23 +156,18 @@ function PowerSyncStatusBanner() {
 }
 
 function InitialLayout({ children }: { children: React.ReactNode }) {
-  const { isLoaded, user } = useUser();
-
-  const canManage = user?.publicMetadata.isManager;
+  const { isLoaded } = useUser();
 
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font,
   });
 
-  const [showUpdateModal, setShowUpdateModal] = useState(false);
-  const [showUpdateToast, setShowUpdateToast] = useState(false);
-
-  // Use the Expo Updates hook for reactive update state
-  const { isUpdateAvailable } = useUpdates();
-
   useEffect(() => {
-    if (isLoaded) {
+    if (isLoaded && fontsLoaded) {
+      // Hide splash screen once fonts and auth are ready
+      SplashScreen.hideAsync();
+
       // Initialize image cache management
       initImageCache().catch((err) => {
         console.warn('Failed to initialize image cache:', err);
@@ -109,121 +178,16 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
         console.warn('Failed to request app permissions:', err);
       });
     }
-  }, [isLoaded]);
+  }, [isLoaded, fontsLoaded]);
 
-  // Check if we just came back from an update (on mount only)
-  useEffect(() => {
-    if (__DEV__) {
-      return;
-    }
+  return <>{children}</>;
+}
 
-    const checkIfJustUpdated = async () => {
-      try {
-        const updatePending = await AsyncStorage.getItem(UPDATE_PENDING_KEY);
+const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
-        if (updatePending === 'true') {
-          // We just updated! Show success toast
-          await AsyncStorage.removeItem(UPDATE_PENDING_KEY);
-          setShowUpdateToast(true);
-          setTimeout(() => setShowUpdateToast(false), 3000);
-        }
-      } catch (error) {
-        console.warn('Error checking update status:', error);
-      }
-    };
-
-    checkIfJustUpdated();
-  }, []);
-
-  // Show update modal when an update becomes available
-  useEffect(() => {
-    if (__DEV__) {
-      return;
-    }
-
-    if (isUpdateAvailable && !showUpdateToast) {
-      console.log('Update available!');
-      setShowUpdateModal(true);
-    }
-  }, [isUpdateAvailable, showUpdateToast]);
-
-  const handleUpdateConfirm = async () => {
-    try {
-      // Set flag that update is pending
-      await AsyncStorage.setItem(UPDATE_PENDING_KEY, 'true');
-
-      // Download and install the update
-      await Updates.fetchUpdateAsync();
-
-      // Reload the app to apply the update
-      await Updates.reloadAsync();
-    } catch (error) {
-      console.error('Error applying update:', error);
-      await AsyncStorage.removeItem(UPDATE_PENDING_KEY);
-      Alert.alert(
-        'Update Failed',
-        'Could not install update. Please try again later.',
-      );
-    }
-  };
-
-  return (
-    <>
-      {children}
-      {/* Debug button - commented out to prevent hooks error on iOS */}
-      {/* <DebugButton visible={__DEV__ || canManage as boolean} /> */}
-
-      {/* Update Available Modal */}
-      <Modal
-        visible={showUpdateModal}
-        transparent
-        animationType='fade'
-        onRequestClose={() => setShowUpdateModal(false)}
-      >
-        <View className='flex-1 justify-center items-center bg-black/50 px-6'>
-          <View className='bg-white dark:bg-gray-800 rounded-2xl p-6 w-full max-w-sm shadow-xl'>
-            <Text className='text-xl font-bold text-gray-900 dark:text-white mb-3'>
-              Update Available
-            </Text>
-            <Text className='text-gray-600 dark:text-gray-300 mb-6'>
-              A new version is available. Tap OK to download and install the
-              update.
-            </Text>
-            <View className='flex-row gap-3'>
-              <TouchableOpacity
-                onPress={() => setShowUpdateModal(false)}
-                className='flex-1 bg-gray-200 dark:bg-gray-700 py-3 rounded-lg'
-              >
-                <Text className='text-gray-900 dark:text-white font-semibold text-center'>
-                  Later
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                onPress={handleUpdateConfirm}
-                className='flex-1 bg-green-600 dark:bg-green-700 py-3 rounded-lg'
-              >
-                <Text className='text-white font-semibold text-center'>OK</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Update Success Toast */}
-      {showUpdateToast && (
-        <Animated.View
-          entering={FadeInDown.duration(300)}
-          exiting={FadeOutUp.duration(300)}
-          className='absolute top-12 left-4 right-4 z-50'
-        >
-          <View className='bg-green-600 dark:bg-green-700 rounded-lg p-4 shadow-lg'>
-            <Text className='text-white font-semibold text-center'>
-              ✓ App updated to latest version!
-            </Text>
-          </View>
-        </Animated.View>
-      )}
-    </>
+if (!CLERK_PUBLISHABLE_KEY) {
+  throw new Error(
+    'Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env',
   );
 }
 
@@ -231,44 +195,55 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <ClerkProvider
-          tokenCache={tokenCache}
-          // __experimental_resourceCache={resourceCache} // Disabled to debug href error
-        >
-          <InitialLayout>
-            <ThemeProvider>
-              <PowerSyncProvider>
-                <PushNotificationInitializer />
-                <PowerSyncStatusBanner />
-                <BottomSheetModalProvider>
-                  <Stack screenOptions={{ headerShown: false }}>
-                    <Stack.Screen
-                      name='(tabs)'
-                      options={{ headerShown: false }}
-                    />
-                    <Stack.Screen
-                      name='report'
-                      options={{
-                        headerShown: true,
-                        presentation: 'card',
-                        title: 'Report Essentials',
-                      }}
-                    />
-                    <Stack.Screen
-                      name='debug-logs'
-                      options={{
-                        headerShown: true,
-                        presentation: 'card',
-                        title: 'Debug Logs',
-                      }}
-                    />
-                  </Stack>
-                  <PortalHost />
-                </BottomSheetModalProvider>
-              </PowerSyncProvider>
-            </ThemeProvider>
-          </InitialLayout>
-        </ClerkProvider>
+        <UpdateChecker>
+          <ClerkProvider
+            publishableKey={CLERK_PUBLISHABLE_KEY}
+            tokenCache={tokenCache}
+            // __experimental_resourceCache={resourceCache} // Disabled to debug href error
+          >
+            <InitialLayout>
+              <ThemeProvider>
+                <PowerSyncProvider>
+                  <PushNotificationInitializer />
+                  <PowerSyncStatusBanner />
+                  <BottomSheetModalProvider>
+                    <Stack screenOptions={{ headerShown: false }}>
+                      <Stack.Screen
+                        name='(tabs)'
+                        options={{ headerShown: false }}
+                      />
+                      <Stack.Screen
+                        name='report'
+                        options={{
+                          headerShown: true,
+                          presentation: 'card',
+                          title: 'Report Essentials',
+                        }}
+                      />
+                      <Stack.Screen
+                        name='debug-logs'
+                        options={{
+                          headerShown: true,
+                          presentation: 'card',
+                          title: 'Debug Logs',
+                        }}
+                      />
+                      <Stack.Screen
+                        name='debug-env'
+                        options={{
+                          headerShown: true,
+                          presentation: 'card',
+                          title: 'Environment Tools',
+                        }}
+                      />
+                    </Stack>
+                    <PortalHost />
+                  </BottomSheetModalProvider>
+                </PowerSyncProvider>
+              </ThemeProvider>
+            </InitialLayout>
+          </ClerkProvider>
+        </UpdateChecker>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
