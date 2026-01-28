@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "790988079883",
+    "project_id": "vhd-mobile-app",
+    "storage_bucket": "vhd-mobile-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:790988079883:android:aafde9a4dcf606910a980e",
+        "android_client_info": {
+          "package_name": "com.braille71.VHDApp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAwvvAyo1OGfI_W7H3qg57nk0hEjUaqQLM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

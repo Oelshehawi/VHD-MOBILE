@@ -16,6 +16,7 @@ import {
 import { ProfileHeader } from '../../components/profile/ProfileHeader';
 import { OfflineBanner } from '../../components/profile/OfflineBanner';
 import { InfoRow } from '../../components/profile/InfoRow';
+import { NotificationPreferences } from '../../components/profile/NotificationPreferences';
 import { useAuth, useUser } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
 import { formatDateReadable } from '../../utils/date';
@@ -188,6 +189,8 @@ export default function ProfileScreen() {
               </View>
             </CardContent>
           </Card>
+
+          <NotificationPreferences />
 
           <Card className='mb-4'>
             <CardHeader>

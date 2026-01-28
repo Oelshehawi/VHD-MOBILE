@@ -54,6 +54,7 @@ export default {
         foregroundImage: './assets/images/adaptive-icon-foreground.png',
         backgroundColor: '#FFFFFF',
       },
+      googleServicesFile: './google-services.json',
       package: 'com.braille71.VHDApp',
       permissions: [
         'android.permission.WAKE_LOCK',
@@ -76,6 +77,7 @@ export default {
       'expo-router',
       'expo-sqlite',
       'expo-font',
+      'expo-background-task',
       [
         'react-native-maps',
         {
