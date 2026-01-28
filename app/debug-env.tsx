@@ -25,6 +25,10 @@ export default function DebugEnvScreen() {
       label: 'Cloudinary Cloud Name',
       value: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
     },
+    {
+      labels: 'API URL',
+      value: process.env.EXPO_PUBLIC_API_URL,
+    },
     { label: 'Environment', value: __DEV__ ? 'Development' : 'Production' },
     { label: 'Platform', value: process.platform },
   ];

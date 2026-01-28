@@ -4,6 +4,7 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { router } from 'expo-router';
 import { debugLogger } from '@/utils/DebugLogger';
+import { generateObjectId } from '@/utils/objectId';
 import type { AbstractPowerSyncDatabase } from '@powersync/react-native';
 import type { PushNotificationData } from '@/types/notifications';
 
@@ -138,15 +139,13 @@ class PushNotificationService {
       const deviceName = Device.deviceName || 'Unknown Device';
 
       if (existing.length > 0) {
-        // Update existing token
-        await this.powerSync.execute(
-          'UPDATE expopushtokens SET lastUsedAt = ?, updatedAt = ?, platform = ?, deviceName = ? WHERE userId = ? AND token = ?',
-          [now, now, Platform.OS, deviceName, userId, token],
-        );
-        debugLogger.info('PUSH', 'Updated existing push token');
+        // Token already registered, no update needed
+        // (Expo tokens don't expire, only change on reinstall)
+        debugLogger.debug('PUSH', 'Push token already registered');
       } else {
         // Insert new token with default preferences (both enabled)
-        const id = `${userId}_${Date.now()}_${Math.random().toString(36).substring(7)}`;
+        // Use MongoDB ObjectId format (same as photos)
+        const id = generateObjectId();
         await this.powerSync.execute(
           'INSERT INTO expopushtokens (id, userId, token, platform, deviceName, notifyNewJobs, notifyScheduleChanges, lastUsedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [

@@ -18,6 +18,9 @@ export default function TabLayout() {
     const insets = useSafeAreaInsets();
     const isDark = colorScheme === "dark";
 
+    if (!isLoaded) {
+        return null;
+    }
     if (!isSignedIn) {
         return <Redirect href="/sign-in" />;
     }
