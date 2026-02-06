@@ -26,7 +26,7 @@ export default function Page() {
     <>
       <Stack.Screen
         options={{
-          headerShown: false,
+          headerShown: false
         }}
       />
       <ScheduleView

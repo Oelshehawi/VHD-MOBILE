@@ -28,7 +28,7 @@ export function PhotoDocumentationModal({
   scheduleId,
   jobTitle,
   startDateTime,
-  technicianId,
+  technicianId
 }: PhotoDocumentationModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('before');
   const insets = useSafeAreaInsets();
@@ -45,7 +45,7 @@ export function PhotoDocumentationModal({
                WHERE scheduleId = ?`
       : `SELECT 0 as beforeCount, 0 as afterCount`,
     [scheduleId],
-    { rowComparator: DEFAULT_ROW_COMPARATOR },
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
   const { data: reportStatusRows = [] } = useQuery<{
@@ -55,7 +55,7 @@ export function PhotoDocumentationModal({
       ? `SELECT reportStatus FROM reports WHERE scheduleId = ? ORDER BY dateCompleted DESC LIMIT 1`
       : `SELECT NULL as reportStatus`,
     [scheduleId],
-    { rowComparator: DEFAULT_ROW_COMPARATOR },
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
   const beforeCount = Number(photoCounts[0]?.beforeCount ?? 0);
@@ -72,8 +72,7 @@ export function PhotoDocumentationModal({
     setActiveTab(tab);
   };
 
-  const canAddAfterPhotos =
-    reportStatus === 'in_progress' || reportStatus === 'completed';
+  const canAddAfterPhotos = reportStatus === 'in_progress' || reportStatus === 'completed';
 
   const handleGoToReport = () => {
     handleClose();
@@ -83,8 +82,8 @@ export function PhotoDocumentationModal({
         scheduleId,
         jobTitle,
         startDateTime,
-        technicianId,
-      },
+        technicianId
+      }
     });
   };
 
@@ -100,9 +99,7 @@ export function PhotoDocumentationModal({
       <View className='flex-1 bg-gray-50' style={{ paddingTop: insets.top }}>
         {/* Header */}
         <View className='flex-row items-center justify-between bg-emerald-900 p-4 shadow-sm'>
-          <Text className='flex-1 text-xl font-bold text-white'>
-            {jobTitle}
-          </Text>
+          <Text className='flex-1 text-xl font-bold text-white'>{jobTitle}</Text>
           <Pressable
             onPress={handleClose}
             hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
@@ -120,13 +117,13 @@ export function PhotoDocumentationModal({
               onPress={() => handleTabChange(tab as TabType)}
               className={cn(
                 'flex-1 px-4 py-4',
-                activeTab === tab && 'border-b-2 border-emerald-900',
+                activeTab === tab && 'border-b-2 border-emerald-900'
               )}
             >
               <Text
                 className={cn(
                   'text-center font-semibold',
-                  activeTab === tab ? 'text-emerald-900' : 'text-gray-500',
+                  activeTab === tab ? 'text-emerald-900' : 'text-gray-500'
                 )}
               >
                 {tab === 'before'
@@ -144,7 +141,7 @@ export function PhotoDocumentationModal({
           <ScrollView
             className='flex-1 px-4 py-4'
             contentContainerStyle={{
-              paddingBottom: insets.bottom + 16,
+              paddingBottom: insets.bottom + 16
             }}
           >
             {activeTab === 'after' && !canAddAfterPhotos && afterCount === 0 ? (
@@ -159,9 +156,7 @@ export function PhotoDocumentationModal({
                   onPress={handleGoToReport}
                   className='w-full rounded-xl bg-emerald-700 px-4 py-3 active:bg-emerald-800'
                 >
-                  <Text className='text-center font-semibold text-white'>
-                    Go to Report
-                  </Text>
+                  <Text className='text-center font-semibold text-white'>Go to Report</Text>
                 </Pressable>
               </View>
             ) : (
@@ -180,10 +175,7 @@ export function PhotoDocumentationModal({
             )}
           </ScrollView>
         ) : (
-          <View
-            className='flex-1 px-4 pt-4'
-            style={{ paddingBottom: insets.bottom + 16 }}
-          >
+          <View className='flex-1 px-4 pt-4' style={{ paddingBottom: insets.bottom + 16 }}>
             <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />
           </View>
         )}

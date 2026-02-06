@@ -36,10 +36,7 @@ class PushNotificationService {
    * Initialize push notification service
    * Should be called after user authentication
    */
-  async initialize(
-    userId: string,
-    powerSync: AbstractPowerSyncDatabase,
-  ): Promise<void> {
+  async initialize(userId: string, powerSync: AbstractPowerSyncDatabase): Promise<void> {
     debugLogger.info('PUSH', 'Initializing push notification service');
 
     this.userId = userId;
@@ -51,8 +48,8 @@ class PushNotificationService {
         shouldShowBanner: true,
         shouldShowList: true,
         shouldPlaySound: true,
-        shouldSetBadge: true,
-      }),
+        shouldSetBadge: true
+      })
     });
 
     // Register for push notifications
@@ -78,8 +75,7 @@ class PushNotificationService {
 
     try {
       // Check existing permissions
-      const { status: existingStatus } =
-        await Notifications.getPermissionsAsync();
+      const { status: existingStatus } = await Notifications.getPermissionsAsync();
       let finalStatus = existingStatus;
 
       // Request permissions if not already granted
@@ -95,19 +91,18 @@ class PushNotificationService {
 
       // Get Expo push token
       const projectId =
-        Constants.expoConfig?.extra?.eas?.projectId ||
-        process.env.EXPO_PUBLIC_PROJECT_ID;
+        Constants.expoConfig?.extra?.eas?.projectId || process.env.EXPO_PUBLIC_PROJECT_ID;
       if (!projectId) {
         debugLogger.error('PUSH', 'Missing EAS project ID');
         return null;
       }
 
       const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId,
+        projectId
       });
 
       debugLogger.info('PUSH', 'Got Expo push token', {
-        token: tokenData.data,
+        token: tokenData.data
       });
       return tokenData.data;
     } catch (error) {
@@ -119,10 +114,7 @@ class PushNotificationService {
   /**
    * Save push token to PowerSync database (auto-syncs to backend)
    */
-  private async saveTokenToDatabase(
-    userId: string,
-    token: string,
-  ): Promise<void> {
+  private async saveTokenToDatabase(userId: string, token: string): Promise<void> {
     if (!this.powerSync) {
       debugLogger.error('PUSH', 'PowerSync not initialized');
       return;
@@ -132,7 +124,7 @@ class PushNotificationService {
       // Check if token already exists for this user
       const existing = await this.powerSync.getAll(
         'SELECT * FROM expopushtokens WHERE userId = ? AND token = ?',
-        [userId, token],
+        [userId, token]
       );
 
       const now = new Date().toISOString();
@@ -158,14 +150,14 @@ class PushNotificationService {
             1, // notifyScheduleChanges enabled
             now,
             now,
-            now,
-          ],
+            now
+          ]
         );
         debugLogger.info('PUSH', 'Saved new push token to database');
       }
     } catch (error) {
       debugLogger.error('PUSH', 'Failed to save token to database', {
-        error,
+        error
       });
     }
   }
@@ -175,22 +167,19 @@ class PushNotificationService {
    */
   private setupNotificationListeners(): void {
     // Handle notifications received while app is foregrounded
-    this.notificationListener = Notifications.addNotificationReceivedListener(
-      (notification) => {
-        debugLogger.info('PUSH', 'Notification received in foreground', {
-          data: notification.request.content.data,
-        });
-      },
-    );
+    this.notificationListener = Notifications.addNotificationReceivedListener((notification) => {
+      debugLogger.info('PUSH', 'Notification received in foreground', {
+        data: notification.request.content.data
+      });
+    });
 
     // Handle user tapping on notification
-    this.responseListener =
-      Notifications.addNotificationResponseReceivedListener((response) => {
-        const rawData = response.notification.request.content.data;
-        const data = rawData as unknown as PushNotificationData;
-        debugLogger.info('PUSH', 'Notification tapped', { data });
-        this.handleNotificationTap(data);
-      });
+    this.responseListener = Notifications.addNotificationResponseReceivedListener((response) => {
+      const rawData = response.notification.request.content.data;
+      const data = rawData as unknown as PushNotificationData;
+      debugLogger.info('PUSH', 'Notification tapped', { data });
+      this.handleNotificationTap(data);
+    });
   }
 
   /**
@@ -205,8 +194,8 @@ class PushNotificationService {
             pathname: '/(tabs)/schedule',
             params: {
               scheduleId: data.scheduleId,
-              highlight: 'true',
-            },
+              highlight: 'true'
+            }
           });
         } else {
           router.push('/(tabs)/schedule');
@@ -227,10 +216,10 @@ class PushNotificationService {
 
     try {
       // Delete token from PowerSync (will sync to backend)
-      await this.powerSync.execute(
-        'DELETE FROM expopushtokens WHERE userId = ? AND token = ?',
-        [this.userId, this.expoPushToken],
-      );
+      await this.powerSync.execute('DELETE FROM expopushtokens WHERE userId = ? AND token = ?', [
+        this.userId,
+        this.expoPushToken
+      ]);
 
       // Clean up listeners
       if (this.notificationListener) {
@@ -247,7 +236,7 @@ class PushNotificationService {
       debugLogger.info('PUSH', 'Push notifications unregistered');
     } catch (error) {
       debugLogger.error('PUSH', 'Failed to unregister push token', {
-        error,
+        error
       });
     }
   }

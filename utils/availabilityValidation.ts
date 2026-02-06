@@ -71,22 +71,15 @@ export function validateNoConflicts(
   }
 ): string | null {
   try {
-    const [newStartHour, newStartMin] = newAvailability.startTime
-      .split(':')
-      .map(Number);
-    const [newEndHour, newEndMin] = newAvailability.endTime
-      .split(':')
-      .map(Number);
+    const [newStartHour, newStartMin] = newAvailability.startTime.split(':').map(Number);
+    const [newEndHour, newEndMin] = newAvailability.endTime.split(':').map(Number);
 
     const newStartMinutes = newStartHour * 60 + newStartMin;
     const newEndMinutes = newEndHour * 60 + newEndMin;
 
     for (const existing of existingAvailability) {
       // Skip the same record if editing
-      if (
-        newAvailability.availabilityId &&
-        existing.id === newAvailability.availabilityId
-      ) {
+      if (newAvailability.availabilityId && existing.id === newAvailability.availabilityId) {
         continue;
       }
 
@@ -96,12 +89,8 @@ export function validateNoConflicts(
         existing.isRecurring &&
         newAvailability.dayOfWeek === existing.dayOfWeek
       ) {
-        const [existStartHour, existStartMin] = (existing.startTime || '')
-          .split(':')
-          .map(Number);
-        const [existEndHour, existEndMin] = (existing.endTime || '')
-          .split(':')
-          .map(Number);
+        const [existStartHour, existStartMin] = (existing.startTime || '').split(':').map(Number);
+        const [existEndHour, existEndMin] = (existing.endTime || '').split(':').map(Number);
 
         const existStartMinutes = existStartHour * 60 + existStartMin;
         const existEndMinutes = existEndHour * 60 + existEndMin;
@@ -120,22 +109,15 @@ export function validateNoConflicts(
         !existing.isRecurring &&
         newAvailability.specificDate === existing.specificDate
       ) {
-        const [existStartHour, existStartMin] = (existing.startTime || '')
-          .split(':')
-          .map(Number);
-        const [existEndHour, existEndMin] = (existing.endTime || '')
-          .split(':')
-          .map(Number);
+        const [existStartHour, existStartMin] = (existing.startTime || '').split(':').map(Number);
+        const [existEndHour, existEndMin] = (existing.endTime || '').split(':').map(Number);
 
         const existStartMinutes = existStartHour * 60 + existStartMin;
         const existEndMinutes = existEndHour * 60 + existEndMin;
 
         // Check for overlap
         if (newStartMinutes < existEndMinutes && newEndMinutes > existStartMinutes) {
-          const dateStr = format(
-            parseISO(newAvailability.specificDate!),
-            'MMM d, yyyy'
-          );
+          const dateStr = format(parseISO(newAvailability.specificDate!), 'MMM d, yyyy');
           return `Overlapping availability block exists on ${dateStr}`;
         }
       }
@@ -153,10 +135,7 @@ export function validateNoConflicts(
  * @param endDate End date in ISO format
  * @returns error message if invalid, null if valid
  */
-export function validateTimeOffDateRange(
-  startDate: string,
-  endDate: string
-): string | null {
+export function validateTimeOffDateRange(startDate: string, endDate: string): string | null {
   try {
     const start = parseISO(startDate);
     const end = parseISO(endDate);
@@ -292,7 +271,10 @@ export function parseISODateToLocalDate(isoDateString: string): Date {
  * @param endDate End date in ISO format (can be null/undefined)
  * @returns Formatted string like "Dec 15 - Dec 20, 2024"
  */
-export function formatDateRange(startDate: string | null | undefined, endDate: string | null | undefined): string {
+export function formatDateRange(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined
+): string {
   try {
     if (!startDate || !endDate) {
       return 'Invalid dates';

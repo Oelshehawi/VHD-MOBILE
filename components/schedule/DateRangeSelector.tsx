@@ -24,7 +24,7 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
   endDate,
   onDateRangeChange,
   label = 'Select Dates',
-  error,
+  error
 }) => {
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [startDateSelected, setStartDateSelected] = useState(startDate || '');
@@ -123,28 +123,32 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
 
   const calendarDays = generateCalendarDays(calendarMonth);
   const dayLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const displayValue = startDate && endDate ? formatDateRange(startDate, endDate) : 'Select date range';
+  const displayValue =
+    startDate && endDate ? formatDateRange(startDate, endDate) : 'Select date range';
 
   // Helper component: Calendar View
   const CalendarView = () => (
     <View>
       {/* Month/Year Header with Navigation */}
-      <View className="flex-row items-center justify-between mb-4 px-2">
+      <View className='flex-row items-center justify-between mb-4 px-2'>
         <TouchableOpacity onPress={() => handleMonthChange('prev')}>
-          <Ionicons name="chevron-back" size={24} color="#3b82f6" />
+          <Ionicons name='chevron-back' size={24} color='#3b82f6' />
         </TouchableOpacity>
-        <Text className="text-lg font-bold text-gray-900 dark:text-white">
+        <Text className='text-lg font-bold text-gray-900 dark:text-white'>
           {format(calendarMonth, 'MMMM yyyy')}
         </Text>
         <TouchableOpacity onPress={() => handleMonthChange('next')}>
-          <Ionicons name="chevron-forward" size={24} color="#3b82f6" />
+          <Ionicons name='chevron-forward' size={24} color='#3b82f6' />
         </TouchableOpacity>
       </View>
 
       {/* Day Labels */}
-      <View className="flex-row gap-1 mb-2">
+      <View className='flex-row gap-1 mb-2'>
         {dayLabels.map((day) => (
-          <Text key={day} className="flex-1 text-center text-xs font-semibold text-gray-600 dark:text-gray-400">
+          <Text
+            key={day}
+            className='flex-1 text-center text-xs font-semibold text-gray-600 dark:text-gray-400'
+          >
             {day}
           </Text>
         ))}
@@ -153,10 +157,16 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
       {/* Calendar Grid - Fixed 6 rows for consistent height */}
       <View style={{ minHeight: 260 }}>
         {Array.from({ length: 6 }).map((_, weekIndex) => (
-          <View key={weekIndex} className="flex-row gap-1 mb-1">
+          <View key={weekIndex} className='flex-row gap-1 mb-1'>
             {calendarDays.slice(weekIndex * 7, weekIndex * 7 + 7).map((day, dayIndex) => {
               const isDisabled = isDateDisabled(day, calendarMonth);
-              const dateStr = day !== null ? format(new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day), 'yyyy-MM-dd') : null;
+              const dateStr =
+                day !== null
+                  ? format(
+                      new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day),
+                      'yyyy-MM-dd'
+                    )
+                  : null;
               const isCurrentDay = dateStr === format(new Date(), 'yyyy-MM-dd');
               const isSelectedStart = dateStr === startDateSelected;
               const isSelectedEnd = dateStr === endDateSelected;
@@ -198,8 +208,8 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
       </View>
 
       {/* Selection Status */}
-      <View className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg">
-        <Text className="text-xs text-gray-700 dark:text-gray-300 text-center">
+      <View className='mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg'>
+        <Text className='text-xs text-gray-700 dark:text-gray-300 text-center'>
           {!startDateSelected && 'Select start date (14+ days from today)'}
           {startDateSelected && !endDateSelected && `Start: ${startDateSelected} → Select end date`}
           {startDateSelected && endDateSelected && `${startDateSelected} to ${endDateSelected}`}
@@ -209,8 +219,10 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
   );
 
   return (
-    <View className="mb-4">
-      {label && <Text className="text-gray-700 dark:text-gray-300 font-semibold mb-2">{label}</Text>}
+    <View className='mb-4'>
+      {label && (
+        <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>{label}</Text>
+      )}
 
       <TouchableOpacity
         onPress={() => {
@@ -223,39 +235,50 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
           error ? 'border-red-500' : 'border-gray-200 dark:border-gray-600'
         }`}
       >
-        <Text className={`${startDate && endDate ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
+        <Text
+          className={`${startDate && endDate ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}
+        >
           {displayValue}
         </Text>
-        <Ionicons name="calendar-outline" size={20} color={error ? '#ef4444' : '#666'} />
+        <Ionicons name='calendar-outline' size={20} color={error ? '#ef4444' : '#666'} />
       </TouchableOpacity>
 
-      {error && <Text className="text-red-500 text-sm mt-2">{error}</Text>}
+      {error && <Text className='text-red-500 text-sm mt-2'>{error}</Text>}
 
       {/* Single Date Picker Modal */}
-      <Modal visible={showDatePicker} transparent animationType="slide" onRequestClose={() => setShowDatePicker(false)}>
-        <SafeAreaView className="flex-1 bg-black/50 justify-end">
-          <View className="bg-white dark:bg-gray-800 rounded-t-xl p-6">
-            <View className="flex-row justify-between items-center mb-4">
-              <Text className="text-lg font-bold text-gray-900 dark:text-white">Select Date Range</Text>
+      <Modal
+        visible={showDatePicker}
+        transparent
+        animationType='slide'
+        onRequestClose={() => setShowDatePicker(false)}
+      >
+        <SafeAreaView className='flex-1 bg-black/50 justify-end'>
+          <View className='bg-white dark:bg-gray-800 rounded-t-xl p-6'>
+            <View className='flex-row justify-between items-center mb-4'>
+              <Text className='text-lg font-bold text-gray-900 dark:text-white'>
+                Select Date Range
+              </Text>
               <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                <Ionicons name="close" size={24} color="#666" />
+                <Ionicons name='close' size={24} color='#666' />
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false} className="mb-6">
+            <ScrollView showsVerticalScrollIndicator={false} className='mb-6'>
               <CalendarView />
             </ScrollView>
 
             {/* Action Buttons */}
-            <View className="flex-row gap-3">
+            <View className='flex-row gap-3'>
               <TouchableOpacity
                 onPress={() => {
                   handleReset();
                   setShowDatePicker(false);
                 }}
-                className="flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg"
+                className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
               >
-                <Text className="text-center font-semibold text-gray-900 dark:text-white">Cancel</Text>
+                <Text className='text-center font-semibold text-gray-900 dark:text-white'>
+                  Cancel
+                </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleConfirm}
@@ -264,7 +287,7 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
                   startDateSelected && endDateSelected ? 'bg-blue-500' : 'bg-gray-400'
                 }`}
               >
-                <Text className="text-center font-semibold text-white">Confirm</Text>
+                <Text className='text-center font-semibold text-white'>Confirm</Text>
               </TouchableOpacity>
             </View>
           </View>

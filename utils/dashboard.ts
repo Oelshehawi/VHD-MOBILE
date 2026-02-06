@@ -6,14 +6,11 @@ export const sortSchedulesByTime = (schedules: Schedule[]) => {
     .filter((schedule) => schedule.startDateTime)
     .sort((a, b) => {
       try {
-        return (
-          new Date(a.startDateTime).getTime() -
-          new Date(b.startDateTime).getTime()
-        );
+        return new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime();
       } catch (err) {
         console.error('Error sorting schedules:', err, {
           a: a.startDateTime,
-          b: b.startDateTime,
+          b: b.startDateTime
         });
         return 0;
       }

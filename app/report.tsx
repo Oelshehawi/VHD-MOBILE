@@ -1,16 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { View, ScrollView, Pressable, TextInput, Alert } from 'react-native';
-import {
-  SafeAreaView,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller, useWatch } from 'react-hook-form';
-import {
-  useQuery,
-  usePowerSync,
-  DEFAULT_ROW_COMPARATOR,
-} from '@powersync/react-native';
+import { useQuery, usePowerSync, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
@@ -37,7 +30,7 @@ const FREQUENCY_OPTIONS = [
   { value: 1, label: '1x per year' },
   { value: 2, label: '2x per year' },
   { value: 3, label: '3x per year' },
-  { value: 4, label: '4x per year' },
+  { value: 4, label: '4x per year' }
 ];
 
 function getCookingVolume(value: number) {
@@ -52,9 +45,7 @@ function mapTriStateToBoolean(value: TriState) {
   return null;
 }
 
-function mapBooleanToTriState(
-  value: boolean | number | string | null,
-): TriState {
+function mapBooleanToTriState(value: boolean | number | string | null): TriState {
   // Handle all possible formats: boolean, number, or string
   if (value === true || value === 1 || value === '1') return 'Yes';
   if (value === false || value === 0 || value === '0') return 'No';
@@ -92,37 +83,30 @@ export default function ReportScreen() {
     technicianId?: string;
   }>();
 
-  const scheduleId =
-    typeof params.scheduleId === 'string' ? params.scheduleId : '';
+  const scheduleId = typeof params.scheduleId === 'string' ? params.scheduleId : '';
   const technicianId =
-    typeof params.technicianId === 'string'
-      ? params.technicianId
-      : user?.id || '';
+    typeof params.technicianId === 'string' ? params.technicianId : user?.id || '';
 
   const scheduleQuery = useQuery<Schedule>(
-    scheduleId
-      ? `SELECT * FROM schedules WHERE id = ?`
-      : `SELECT * FROM schedules WHERE 0`,
+    scheduleId ? `SELECT * FROM schedules WHERE id = ?` : `SELECT * FROM schedules WHERE 0`,
     [scheduleId || ''],
-    { rowComparator: DEFAULT_ROW_COMPARATOR },
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
   const schedule = (scheduleQuery.data?.[0] as Schedule | undefined) ?? null;
 
-  const { data: existingReports = [], isLoading: isLoadingReport } =
-    useQuery<ReportRow>(
-      scheduleId
-        ? `SELECT * FROM reports WHERE scheduleId = ? LIMIT 1`
-        : `SELECT * FROM reports WHERE 0`,
-      [scheduleId || ''],
-      { rowComparator: DEFAULT_ROW_COMPARATOR },
-    );
+  const { data: existingReports = [], isLoading: isLoadingReport } = useQuery<ReportRow>(
+    scheduleId
+      ? `SELECT * FROM reports WHERE scheduleId = ? LIMIT 1`
+      : `SELECT * FROM reports WHERE 0`,
+    [scheduleId || ''],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
+  );
   const existingReport = existingReports[0] ?? null;
 
   const invoiceId = schedule?.invoiceRef || '';
   const jobTitle =
-    schedule?.jobTitle ||
-    (typeof params.jobTitle === 'string' ? params.jobTitle : '');
+    schedule?.jobTitle || (typeof params.jobTitle === 'string' ? params.jobTitle : '');
   const location = schedule?.location || '';
 
   const [isSaving, setIsSaving] = useState(false);
@@ -135,12 +119,12 @@ export default function ReportScreen() {
           hoodCleaned: 'N/A',
           filtersCleaned: 'N/A',
           ductworkCleaned: 'N/A',
-          fanCleaned: 'N/A',
+          fanCleaned: 'N/A'
         },
         accessPanels: 'N/A',
         dirtyScale: 5,
         recommendedCleaningFrequency: undefined,
-        comments: '',
+        comments: ''
       };
     }
 
@@ -172,33 +156,25 @@ export default function ReportScreen() {
     return {
       cleaningDetails: {
         hoodCleaned: mapBooleanToTriState(cleaningData.hoodCleaned ?? null),
-        filtersCleaned: mapBooleanToTriState(
-          cleaningData.filtersCleaned ?? null,
-        ),
-        ductworkCleaned: mapBooleanToTriState(
-          cleaningData.ductworkCleaned ?? null,
-        ),
-        fanCleaned: mapBooleanToTriState(cleaningData.fanCleaned ?? null),
+        filtersCleaned: mapBooleanToTriState(cleaningData.filtersCleaned ?? null),
+        ductworkCleaned: mapBooleanToTriState(cleaningData.ductworkCleaned ?? null),
+        fanCleaned: mapBooleanToTriState(cleaningData.fanCleaned ?? null)
       },
       accessPanels: (inspectionData.adequateAccessPanels as TriState) ?? 'N/A',
       dirtyScale: mapCookingVolumeToScale(report.cookingVolume),
-      recommendedCleaningFrequency:
-        report.recommendedCleaningFrequency ?? undefined,
-      comments: report.comments ?? '',
+      recommendedCleaningFrequency: report.recommendedCleaningFrequency ?? undefined,
+      comments: report.comments ?? ''
     };
   };
 
   const { control, handleSubmit, setError, clearErrors, getValues, reset } =
     useForm<ReportFormValues>({
-      defaultValues: getDefaultValues(null),
+      defaultValues: getDefaultValues(null)
     });
 
   useEffect(() => {
     if (existingReport) {
-      console.log(
-        '[Report] Loaded existing report:',
-        JSON.stringify(existingReport, null, 2),
-      );
+      console.log('[Report] Loaded existing report:', JSON.stringify(existingReport, null, 2));
       reset(getDefaultValues(existingReport));
     }
   }, [existingReport, reset]);
@@ -210,19 +186,17 @@ export default function ReportScreen() {
       watchedValues?.cleaningDetails?.filtersCleaned,
       watchedValues?.cleaningDetails?.ductworkCleaned,
       watchedValues?.cleaningDetails?.fanCleaned,
-      watchedValues?.accessPanels,
+      watchedValues?.accessPanels
     ];
     return values.some((value) => value === 'No');
   }, [watchedValues]);
 
   const cookingVolumeLabel = useMemo(
     () => getCookingVolume(watchedValues?.dirtyScale || 1),
-    [watchedValues?.dirtyScale],
+    [watchedValues?.dirtyScale]
   );
 
-  const buildPayload = (
-    status: ReportSavePayload['reportStatus'],
-  ): ReportSavePayload => {
+  const buildPayload = (status: ReportSavePayload['reportStatus']): ReportSavePayload => {
     const values = getValues();
     return {
       scheduleId,
@@ -237,17 +211,13 @@ export default function ReportScreen() {
       comments: values.comments?.trim() || undefined,
       cleaningDetails: {
         hoodCleaned: mapTriStateToBoolean(values.cleaningDetails.hoodCleaned),
-        filtersCleaned: mapTriStateToBoolean(
-          values.cleaningDetails.filtersCleaned,
-        ),
-        ductworkCleaned: mapTriStateToBoolean(
-          values.cleaningDetails.ductworkCleaned,
-        ),
-        fanCleaned: mapTriStateToBoolean(values.cleaningDetails.fanCleaned),
+        filtersCleaned: mapTriStateToBoolean(values.cleaningDetails.filtersCleaned),
+        ductworkCleaned: mapTriStateToBoolean(values.cleaningDetails.ductworkCleaned),
+        fanCleaned: mapTriStateToBoolean(values.cleaningDetails.fanCleaned)
       },
       inspectionItems: {
-        adequateAccessPanels: values.accessPanels,
-      },
+        adequateAccessPanels: values.accessPanels
+      }
     };
   };
 
@@ -260,14 +230,14 @@ export default function ReportScreen() {
     if (!getValues().recommendedCleaningFrequency) {
       setError('recommendedCleaningFrequency', {
         type: 'required',
-        message: 'Select a cleaning frequency.',
+        message: 'Select a cleaning frequency.'
       });
       valid = false;
     }
     if (anyNoSelected && !getValues().comments?.trim()) {
       setError('comments', {
         type: 'required',
-        message: 'Explain why any item is marked No.',
+        message: 'Explain why any item is marked No.'
       });
       valid = false;
     }
@@ -318,98 +288,69 @@ export default function ReportScreen() {
           payload.recommendedCleaningFrequency ?? null,
           payload.comments ?? null,
           JSON.stringify(payload.cleaningDetails),
-          JSON.stringify(payload.inspectionItems),
-        ],
+          JSON.stringify(payload.inspectionItems)
+        ]
       );
       Alert.alert(
         status === 'draft' ? 'Draft saved' : 'Submitted',
-        status === 'draft'
-          ? 'Report draft saved.'
-          : 'Report submitted for admin review.',
+        status === 'draft' ? 'Report draft saved.' : 'Report submitted for admin review.'
       );
       router.back();
     } catch (error) {
-      setSubmitError(
-        error instanceof Error ? error.message : 'Failed to save report',
-      );
+      setSubmitError(error instanceof Error ? error.message : 'Failed to save report');
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <SafeAreaView
-      className='flex-1 bg-background'
-      edges={['bottom', 'left', 'right']}
-    >
+    <SafeAreaView className='flex-1 bg-background' edges={['bottom', 'left', 'right']}>
       <Stack.Screen
         options={{
           headerShown: true,
           title: 'Report Essentials',
-          headerBackTitle: 'Back',
+          headerBackTitle: 'Back'
         }}
       />
       <ScrollView
         className='flex-1 px-5 py-6'
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
-        <Text className='text-xl font-semibold text-foreground'>
-          Cleaning + Access Panels
-        </Text>
+        <Text className='text-xl font-semibold text-foreground'>Cleaning + Access Panels</Text>
         <View className='mt-4 gap-4'>
           <Controller
             control={control}
             name='cleaningDetails.hoodCleaned'
             render={({ field: { onChange, value } }) => (
-              <TriStateRow
-                label='Hood Cleaned'
-                value={value}
-                onChange={onChange}
-              />
+              <TriStateRow label='Hood Cleaned' value={value} onChange={onChange} />
             )}
           />
           <Controller
             control={control}
             name='cleaningDetails.filtersCleaned'
             render={({ field: { onChange, value } }) => (
-              <TriStateRow
-                label='Filters Cleaned'
-                value={value}
-                onChange={onChange}
-              />
+              <TriStateRow label='Filters Cleaned' value={value} onChange={onChange} />
             )}
           />
           <Controller
             control={control}
             name='cleaningDetails.ductworkCleaned'
             render={({ field: { onChange, value } }) => (
-              <TriStateRow
-                label='Ductwork Cleaned'
-                value={value}
-                onChange={onChange}
-              />
+              <TriStateRow label='Ductwork Cleaned' value={value} onChange={onChange} />
             )}
           />
           <Controller
             control={control}
             name='cleaningDetails.fanCleaned'
             render={({ field: { onChange, value } }) => (
-              <TriStateRow
-                label='Fan Cleaned'
-                value={value}
-                onChange={onChange}
-              />
+              <TriStateRow label='Fan Cleaned' value={value} onChange={onChange} />
             )}
           />
           <Controller
             control={control}
             name='accessPanels'
             render={({ field: { onChange, value } }) => (
-              <TriStateRow
-                label='Access Panels Adequate'
-                value={value}
-                onChange={onChange}
-              />
+              <TriStateRow label='Access Panels Adequate' value={value} onChange={onChange} />
             )}
           />
         </View>
@@ -430,14 +371,12 @@ export default function ReportScreen() {
                     placeholder='Example: No roof access / fan locked out'
                     className={cn(
                       'mt-2 min-h-[96px] rounded-md border border-border bg-background px-3 py-2 text-base text-foreground',
-                      fieldState.error && 'border-red-500',
+                      fieldState.error && 'border-red-500'
                     )}
                     multiline
                   />
                   {fieldState.error && (
-                    <Text className='mt-1 text-xs text-red-600'>
-                      {fieldState.error.message}
-                    </Text>
+                    <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
                   )}
                 </>
               )}
@@ -446,9 +385,7 @@ export default function ReportScreen() {
         )}
 
         <View className='mt-8'>
-          <Text className='text-xl font-semibold text-foreground'>
-            Dirty Scale
-          </Text>
+          <Text className='text-xl font-semibold text-foreground'>Dirty Scale</Text>
           <Text className='mt-1 text-sm text-muted-foreground'>
             1 is clean, 10 is heavy build up
           </Text>
@@ -461,9 +398,7 @@ export default function ReportScreen() {
           />
           <Text className='mt-2 text-sm text-muted-foreground'>
             Cooking Volume:{' '}
-            <Text className='font-semibold text-foreground'>
-              {cookingVolumeLabel}
-            </Text>
+            <Text className='font-semibold text-foreground'>{cookingVolumeLabel}</Text>
           </Text>
         </View>
 
@@ -486,15 +421,13 @@ export default function ReportScreen() {
                         'rounded-full border px-4 py-2',
                         value === option.value
                           ? 'border-emerald-600 bg-emerald-600'
-                          : 'border-border bg-background',
+                          : 'border-border bg-background'
                       )}
                     >
                       <Text
                         className={cn(
                           'text-sm font-semibold',
-                          value === option.value
-                            ? 'text-white'
-                            : 'text-foreground',
+                          value === option.value ? 'text-white' : 'text-foreground'
                         )}
                       >
                         {option.label}
@@ -503,18 +436,14 @@ export default function ReportScreen() {
                   ))}
                 </View>
                 {fieldState.error && (
-                  <Text className='mt-2 text-xs text-red-600'>
-                    {fieldState.error.message}
-                  </Text>
+                  <Text className='mt-2 text-xs text-red-600'>{fieldState.error.message}</Text>
                 )}
               </>
             )}
           />
         </View>
 
-        {submitError && (
-          <Text className='mt-6 text-sm text-red-600'>{submitError}</Text>
-        )}
+        {submitError && <Text className='mt-6 text-sm text-red-600'>{submitError}</Text>}
 
         <View className='mt-8 flex-row gap-3'>
           <Button
@@ -541,7 +470,7 @@ export default function ReportScreen() {
 function TriStateRow({
   label,
   value,
-  onChange,
+  onChange
 }: {
   label: string;
   value: TriState;
@@ -565,7 +494,7 @@ function TriStateRow({
                 isSelected && isYes && 'border-emerald-600 bg-emerald-600',
                 isSelected && isNo && 'border-red-600 bg-red-600',
                 isSelected && isNA && 'border-gray-300 bg-gray-300',
-                !isSelected && 'border-border bg-background',
+                !isSelected && 'border-border bg-background'
               )}
             >
               <Text
@@ -573,7 +502,7 @@ function TriStateRow({
                   'text-sm font-semibold',
                   isSelected && (isYes || isNo) && 'text-white',
                   isSelected && isNA && 'text-gray-800',
-                  !isSelected && 'text-foreground',
+                  !isSelected && 'text-foreground'
                 )}
               >
                 {option}
@@ -588,7 +517,7 @@ function TriStateRow({
 
 function DirtyScaleSelector({
   value,
-  onChange,
+  onChange
 }: {
   value: number;
   onChange: (value: number) => void;
@@ -605,15 +534,13 @@ function DirtyScaleSelector({
               onPress={() => onChange(scaleValue)}
               className={cn(
                 'h-10 w-10 items-center justify-center rounded-md border',
-                isSelected
-                  ? 'border-emerald-600 bg-emerald-600'
-                  : 'border-border bg-background',
+                isSelected ? 'border-emerald-600 bg-emerald-600' : 'border-border bg-background'
               )}
             >
               <Text
                 className={cn(
                   'text-sm font-semibold',
-                  isSelected ? 'text-white' : 'text-foreground',
+                  isSelected ? 'text-white' : 'text-foreground'
                 )}
               >
                 {scaleValue}

@@ -49,7 +49,7 @@ export class WeatherService {
         temp_c: day.day.avgtemp_c,
         condition: day.day.condition,
         chance_of_rain: day.day.daily_chance_of_rain,
-        wind_kph: day.day.maxwind_kph,
+        wind_kph: day.day.maxwind_kph
       }));
 
       // Cache for 6 hours
@@ -81,7 +81,7 @@ export class WeatherService {
         time: hour.time,
         temp_c: hour.temp_c,
         condition: hour.condition,
-        chance_of_rain: hour.chance_of_rain,
+        chance_of_rain: hour.chance_of_rain
       }));
     } catch (error) {
       console.error('Error fetching hourly weather:', error);
@@ -132,10 +132,7 @@ export class WeatherService {
 
   private static async setCached(key: string, data: any): Promise<void> {
     try {
-      await AsyncStorage.setItem(
-        key,
-        JSON.stringify({ data, timestamp: Date.now() })
-      );
+      await AsyncStorage.setItem(key, JSON.stringify({ data, timestamp: Date.now() }));
     } catch (error) {
       console.error('Error caching weather data:', error);
     }

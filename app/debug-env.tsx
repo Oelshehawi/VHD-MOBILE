@@ -14,23 +14,23 @@ export default function DebugEnvScreen() {
   const envVars = [
     {
       label: 'Clerk Publishable Key',
-      value: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY,
+      value: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
     },
     {
       label: 'EAS Project ID',
-      value: Constants.expoConfig?.extra?.eas?.projectId,
+      value: Constants.expoConfig?.extra?.eas?.projectId
     },
     { label: 'PowerSync URL', value: process.env.EXPO_PUBLIC_POWERSYNC_URL },
     {
       label: 'Cloudinary Cloud Name',
-      value: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME,
+      value: process.env.EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME
     },
     {
       labels: 'API URL',
-      value: process.env.EXPO_PUBLIC_API_URL,
+      value: process.env.EXPO_PUBLIC_API_URL
     },
     { label: 'Environment', value: __DEV__ ? 'Development' : 'Production' },
-    { label: 'Platform', value: process.platform },
+    { label: 'Platform', value: process.platform }
   ];
 
   const handleWipeDatabase = () => {
@@ -48,26 +48,21 @@ export default function DebugEnvScreen() {
             } catch (error) {
               Alert.alert(
                 'Error',
-                error instanceof Error
-                  ? error.message
-                  : 'Failed to wipe database',
+                error instanceof Error ? error.message : 'Failed to wipe database'
               );
             }
-          },
-        },
-      ],
+          }
+        }
+      ]
     );
   };
 
   return (
-    <SafeAreaView
-      className='flex-1 bg-white dark:bg-gray-950'
-      edges={['bottom']}
-    >
+    <SafeAreaView className='flex-1 bg-white dark:bg-gray-950' edges={['bottom']}>
       <Stack.Screen
         options={{
           headerShown: true,
-          title: 'Environment & Tools',
+          title: 'Environment & Tools'
         }}
       />
 
@@ -108,12 +103,9 @@ export default function DebugEnvScreen() {
               <Ionicons name='refresh-outline' size={24} color='white' />
             </View>
             <View className='flex-1'>
-              <Text className='text-red-700 dark:text-red-400 font-bold'>
-                Wipe Local Database
-              </Text>
+              <Text className='text-red-700 dark:text-red-400 font-bold'>Wipe Local Database</Text>
               <Text className='text-red-600 dark:text-red-500/80 text-xs'>
-                Clears all local sync data and reloads the app. Use to fix
-                schema mismatches.
+                Clears all local sync data and reloads the app. Use to fix schema mismatches.
               </Text>
             </View>
             <Ionicons name='chevron-forward' size={20} color='#ef4444' />
@@ -123,13 +115,11 @@ export default function DebugEnvScreen() {
         <View className='mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800'>
           <View className='flex-row items-center mb-2'>
             <Ionicons name='information-circle' size={20} color='#3b82f6' />
-            <Text className='text-blue-700 dark:text-blue-400 font-bold ml-2'>
-              Note
-            </Text>
+            <Text className='text-blue-700 dark:text-blue-400 font-bold ml-2'>Note</Text>
           </View>
           <Text className='text-blue-600 dark:text-blue-500/80 text-sm'>
-            Wiping the database won't delete data on the server. It only forces
-            a fresh sync from PowerSync.
+            Wiping the database won't delete data on the server. It only forces a fresh sync from
+            PowerSync.
           </Text>
         </View>
       </ScrollView>

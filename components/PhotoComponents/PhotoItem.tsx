@@ -19,13 +19,7 @@ interface PhotoItemProps {
   isDeleting: boolean;
 }
 
-export function PhotoItem({
-  photo,
-  index,
-  onPhotoPress,
-  onDelete,
-  isDeleting,
-}: PhotoItemProps) {
+export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: PhotoItemProps) {
   const [imageError, setImageError] = useState(false);
   const [resolvedUrl, setResolvedUrl] = useState<string>('');
   const system = useSystem();
@@ -44,11 +38,7 @@ export function PhotoItem({
         }
 
         if (photo.filename) {
-          const directPath = new File(
-            Paths.document,
-            'attachments',
-            photo.filename
-          ).uri;
+          const directPath = new File(Paths.document, 'attachments', photo.filename).uri;
           setResolvedUrl(directPath);
           return;
         }
@@ -61,7 +51,7 @@ export function PhotoItem({
         const transformedUrl = buildCloudinaryUrlMobile({
           urlOrPublicId: photo.cloudinaryUrl,
           cloudName: CLOUD_NAME,
-          width: THUMBNAIL_WIDTH,
+          width: THUMBNAIL_WIDTH
         });
         setResolvedUrl(transformedUrl);
         return;
@@ -71,13 +61,7 @@ export function PhotoItem({
     };
 
     resolveUrl();
-  }, [
-    photo.cloudinaryUrl,
-    photo.local_uri,
-    photo.filename,
-    isLoading,
-    system?.attachmentQueue,
-  ]);
+  }, [photo.cloudinaryUrl, photo.local_uri, photo.filename, isLoading, system?.attachmentQueue]);
 
   return (
     <View className='w-1/3 aspect-square p-1'>
@@ -122,7 +106,7 @@ export function PhotoItem({
           <Text className='text-white text-[10px] text-center font-medium'>
             {new Date(photo.timestamp).toLocaleTimeString([], {
               hour: '2-digit',
-              minute: '2-digit',
+              minute: '2-digit'
             })}
           </Text>
         </View>

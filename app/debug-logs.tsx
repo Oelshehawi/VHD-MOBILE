@@ -1,12 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import {
-  View,
-  ScrollView,
-  TouchableOpacity,
-  TextInput,
-  Share,
-  RefreshControl,
-} from 'react-native';
+import { View, ScrollView, TouchableOpacity, TextInput, Share, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { Text } from '../components/ui/text';
@@ -42,33 +35,25 @@ interface PhotoRow {
   timestamp: string | null;
 }
 
-const CATEGORIES = [
-  'ALL',
-  'PHOTO',
-  'UPLOAD',
-  'DATABASE',
-  'SYNC',
-  'AUTH',
-  'NETWORK',
-];
+const CATEGORIES = ['ALL', 'PHOTO', 'UPLOAD', 'DATABASE', 'SYNC', 'AUTH', 'NETWORK'];
 
 const levelColors: Record<string, { bg: string; text: string }> = {
   error: {
     bg: 'bg-red-100 dark:bg-red-900',
-    text: 'text-red-700 dark:text-red-300',
+    text: 'text-red-700 dark:text-red-300'
   },
   warn: {
     bg: 'bg-yellow-100 dark:bg-yellow-900',
-    text: 'text-yellow-700 dark:text-yellow-300',
+    text: 'text-yellow-700 dark:text-yellow-300'
   },
   info: {
     bg: 'bg-blue-100 dark:bg-blue-900',
-    text: 'text-blue-700 dark:text-blue-300',
+    text: 'text-blue-700 dark:text-blue-300'
   },
   debug: {
     bg: 'bg-gray-100 dark:bg-gray-800',
-    text: 'text-gray-700 dark:text-gray-300',
-  },
+    text: 'text-gray-700 dark:text-gray-300'
+  }
 };
 
 export default function DebugLogsScreen() {
@@ -81,9 +66,7 @@ export default function DebugLogsScreen() {
   const [expandedLogs, setExpandedLogs] = useState<Set<number>>(new Set());
   const [diagnosticLoading, setDiagnosticLoading] = useState(false);
   const [diagnosticError, setDiagnosticError] = useState<string | null>(null);
-  const [attachmentCounts, setAttachmentCounts] = useState<
-    { state: number; count: number }[]
-  >([]);
+  const [attachmentCounts, setAttachmentCounts] = useState<{ state: number; count: number }[]>([]);
   const [attachmentRows, setAttachmentRows] = useState<AttachmentRow[]>([]);
   const [photoPendingCount, setPhotoPendingCount] = useState(0);
   const [photoRows, setPhotoRows] = useState<PhotoRow[]>([]);
@@ -106,16 +89,16 @@ export default function DebugLogsScreen() {
         `SELECT id, filename, state, photoType, jobTitle, startDate, local_uri
                  FROM attachments
                  ORDER BY timestamp DESC
-                 LIMIT 10`,
+                 LIMIT 10`
       );
       const pendingPhotos = await powerSync.getAll<{ count: number }>(
-        `SELECT COUNT(*) as count FROM photos WHERE cloudinaryUrl IS NULL`,
+        `SELECT COUNT(*) as count FROM photos WHERE cloudinaryUrl IS NULL`
       );
       const recentPhotos = await powerSync.getAll<PhotoRow>(
         `SELECT id, type, scheduleId, cloudinaryUrl, timestamp
                  FROM photos
                  ORDER BY timestamp DESC
-                 LIMIT 10`,
+                 LIMIT 10`
       );
 
       setAttachmentCounts(counts);
@@ -123,9 +106,7 @@ export default function DebugLogsScreen() {
       setPhotoPendingCount(Number(pendingPhotos[0]?.count ?? 0));
       setPhotoRows(recentPhotos);
     } catch (error) {
-      setDiagnosticError(
-        error instanceof Error ? error.message : 'Unknown error',
-      );
+      setDiagnosticError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setDiagnosticLoading(false);
     }
@@ -139,9 +120,7 @@ export default function DebugLogsScreen() {
       await powerSync.execute('DELETE FROM attachments');
       await loadDiagnostics();
     } catch (error) {
-      setDiagnosticError(
-        error instanceof Error ? error.message : 'Unknown error',
-      );
+      setDiagnosticError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
       setDiagnosticLoading(false);
     }
@@ -170,7 +149,7 @@ export default function DebugLogsScreen() {
         (log) =>
           log.message.toLowerCase().includes(query) ||
           log.category.toLowerCase().includes(query) ||
-          (log.data && log.data.toLowerCase().includes(query)),
+          (log.data && log.data.toLowerCase().includes(query))
       );
     }
 
@@ -189,7 +168,7 @@ export default function DebugLogsScreen() {
       const exportedLogs = await debugLogger.exportLogs();
       await Share.share({
         message: exportedLogs,
-        title: 'Debug Logs Export',
+        title: 'Debug Logs Export'
       });
     } catch (error) {
       console.error('Failed to export logs:', error);
@@ -220,19 +199,16 @@ export default function DebugLogsScreen() {
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-      second: '2-digit',
+      second: '2-digit'
     });
   };
 
   return (
-    <SafeAreaView
-      className='flex-1 bg-white dark:bg-gray-950'
-      edges={['bottom', 'left', 'right']}
-    >
+    <SafeAreaView className='flex-1 bg-white dark:bg-gray-950' edges={['bottom', 'left', 'right']}>
       <Stack.Screen
         options={{
           headerShown: true,
-          title: 'Debug Logs',
+          title: 'Debug Logs'
         }}
       />
 
@@ -304,20 +280,12 @@ export default function DebugLogsScreen() {
         {/* Logs List */}
         <ScrollView
           className='flex-1'
-          refreshControl={
-            <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-          }
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
           {filteredLogs.length === 0 ? (
             <View className='flex-1 items-center justify-center py-8'>
-              <Ionicons
-                name='document-text-outline'
-                size={48}
-                color='#9ca3af'
-              />
-              <Text className='text-gray-500 dark:text-gray-400 mt-2'>
-                No logs found
-              </Text>
+              <Ionicons name='document-text-outline' size={48} color='#9ca3af' />
+              <Text className='text-gray-500 dark:text-gray-400 mt-2'>No logs found</Text>
             </View>
           ) : (
             filteredLogs.map((log, index) => {
@@ -334,9 +302,7 @@ export default function DebugLogsScreen() {
                   <View className='flex-row items-start justify-between'>
                     <View className='flex-1'>
                       <View className='flex-row items-center gap-2 mb-1'>
-                        <Text
-                          className={`text-xs font-bold uppercase ${colors.text}`}
-                        >
+                        <Text className={`text-xs font-bold uppercase ${colors.text}`}>
                           {log.level}
                         </Text>
                         <Text className='text-xs text-gray-500 dark:text-gray-400'>

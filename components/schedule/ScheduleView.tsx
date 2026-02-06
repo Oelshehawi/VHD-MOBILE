@@ -18,29 +18,22 @@ interface ScheduleViewProps {
 
 type ViewMode = 'month' | 'week' | 'day';
 
-export function ScheduleView({
-  userId,
-  currentDate,
-  onDateChange,
-  isManager,
-}: ScheduleViewProps) {
+export function ScheduleView({ userId, currentDate, onDateChange, isManager }: ScheduleViewProps) {
   const [selectedDate, setSelectedDate] = useState<string>(
     startOfDay(new Date(currentDate)).toISOString()
   );
   const [viewMode, setViewMode] = useState<ViewMode>('day'); // Changed from 'month' to 'day'
   const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
-  const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] =
-    useState<Schedule | null>(null);
+  const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] = useState<Schedule | null>(
+    null
+  );
 
   useEffect(() => {
     const normalized = startOfDay(new Date(currentDate)).toISOString();
     setSelectedDate(normalized);
   }, [currentDate]);
 
-  const selectedDateParam = useMemo(
-    () => selectedDate.slice(0, 10),
-    [selectedDate]
-  );
+  const selectedDateParam = useMemo(() => selectedDate.slice(0, 10), [selectedDate]);
 
   // Get all schedules for the month view
   const monthQuery = useQuery<Schedule>(
@@ -72,11 +65,7 @@ export function ScheduleView({
       : `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
     isManager
       ? [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')]
-      : [
-          format(weekStart, 'yyyy-MM-dd'),
-          format(weekEnd, 'yyyy-MM-dd'),
-          `%${userId}%`,
-        ],
+      : [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'), `%${userId}%`],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
   const weekSchedules: ReadonlyArray<Schedule> = weekQuery.data ?? [];
@@ -88,7 +77,7 @@ export function ScheduleView({
         id: schedule.id,
         startTime: schedule.startDateTime,
         clientName: schedule.jobTitle,
-        status: schedule.confirmed ? 'confirmed' : 'pending',
+        status: schedule.confirmed ? 'confirmed' : 'pending'
       })),
     [monthSchedules]
   );
@@ -104,10 +93,7 @@ export function ScheduleView({
       }
 
       try {
-        return (
-          format(new Date(schedule.startDateTime), 'yyyy-MM-dd') ===
-          selectedDateParam
-        );
+        return format(new Date(schedule.startDateTime), 'yyyy-MM-dd') === selectedDateParam;
       } catch {
         return false;
       }
@@ -136,9 +122,7 @@ export function ScheduleView({
     if (typeof technicians === 'string') {
       try {
         const parsed = JSON.parse(technicians);
-        return Array.isArray(parsed)
-          ? parsed[0]
-          : technicians.split(',')[0] || '';
+        return Array.isArray(parsed) ? parsed[0] : technicians.split(',')[0] || '';
       } catch {
         return technicians.split(',')[0] || '';
       }
@@ -171,9 +155,7 @@ export function ScheduleView({
         >
           <Text
             className={`font-semibold ${
-              viewMode === 'day'
-                ? 'text-blue-500'
-                : 'text-gray-500 dark:text-gray-400'
+              viewMode === 'day' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
             }`}
           >
             Day
@@ -188,9 +170,7 @@ export function ScheduleView({
         >
           <Text
             className={`font-semibold ${
-              viewMode === 'week'
-                ? 'text-blue-500'
-                : 'text-gray-500 dark:text-gray-400'
+              viewMode === 'week' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
             }`}
           >
             Week
@@ -205,9 +185,7 @@ export function ScheduleView({
         >
           <Text
             className={`font-semibold ${
-              viewMode === 'month'
-                ? 'text-blue-500'
-                : 'text-gray-500 dark:text-gray-400'
+              viewMode === 'month' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
             }`}
           >
             Month
@@ -265,9 +243,7 @@ export function ScheduleView({
           visible={invoiceModalVisible}
           onClose={() => setInvoiceModalVisible(false)}
           scheduleId={selectedScheduleForInvoice.id}
-          technicianId={getTechnicianId(
-            selectedScheduleForInvoice.assignedTechnicians
-          )}
+          technicianId={getTechnicianId(selectedScheduleForInvoice.assignedTechnicians)}
           isManager={isManager}
         />
       )}

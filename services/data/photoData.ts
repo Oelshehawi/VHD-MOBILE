@@ -8,7 +8,7 @@ export async function updatePhotos(
 ) {
   await powerSync.execute(`UPDATE invoices SET photos = ? WHERE id = ?`, [
     JSON.stringify(newPhotos),
-    invoiceId,
+    invoiceId
   ]);
 }
 
@@ -30,38 +30,30 @@ export async function getInvoicePhotos(
 
     // Support for legacy data structure (before/after arrays)
     if (parsedData.before || parsedData.after) {
-      const beforePhotos = Array.isArray(parsedData.before)
-        ? parsedData.before
-        : [];
-      const afterPhotos = Array.isArray(parsedData.after)
-        ? parsedData.after
-        : [];
+      const beforePhotos = Array.isArray(parsedData.before) ? parsedData.before : [];
+      const afterPhotos = Array.isArray(parsedData.after) ? parsedData.after : [];
 
       // Ensure type field is set on all photos
       const typedBeforePhotos = beforePhotos.map((photo: any) => ({
         ...photo,
-        type: photo.type || 'before',
+        type: photo.type || 'before'
       }));
 
       const typedAfterPhotos = afterPhotos.map((photo: any) => ({
         ...photo,
-        type: photo.type || 'after',
+        type: photo.type || 'after'
       }));
 
       return {
         photos: [...typedBeforePhotos, ...typedAfterPhotos],
-        pendingOps: Array.isArray(parsedData.pendingOps)
-          ? parsedData.pendingOps
-          : [],
+        pendingOps: Array.isArray(parsedData.pendingOps) ? parsedData.pendingOps : []
       };
     }
 
     // New structure with single photos array
     return {
       photos: Array.isArray(parsedData.photos) ? parsedData.photos : [],
-      pendingOps: Array.isArray(parsedData.pendingOps)
-        ? parsedData.pendingOps
-        : [],
+      pendingOps: Array.isArray(parsedData.pendingOps) ? parsedData.pendingOps : []
     };
   } catch (error) {
     console.error('Error parsing invoice photos:', error);

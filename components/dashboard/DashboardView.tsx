@@ -1,28 +1,14 @@
 import { useState } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  StatusBar,
-  Modal,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StatusBar, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
   useCurrentPayrollPeriod,
   usePayrollSchedules,
-  useTodaySchedules,
+  useTodaySchedules
 } from '@/services/data/dashboard';
-import {
-  formatTimeUTC,
-  formatDateReadable,
-  formatDateShort,
-} from '@/utils/date';
-import {
-  roundHoursToBucket,
-  formatHoursDisplay,
-} from '@/utils/hoursFormatting';
+import { formatTimeUTC, formatDateReadable, formatDateShort } from '@/utils/date';
+import { roundHoursToBucket, formatHoursDisplay } from '@/utils/hoursFormatting';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
 import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
@@ -46,9 +32,8 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const { data: payrollSchedules = [] } = usePayrollSchedules(
     currentPayroll[0]?.id,
     isManager,
-      userId
+    userId
   );
-  
 
   const sortedTodaySchedules = sortSchedulesByTime(todaySchedules);
   const totalHours = payrollSchedules.reduce(
@@ -99,14 +84,9 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
             {/* Only show technician list for managers */}
             {isManager && technicians?.length > 0 && (
               <View className='mt-2'>
-                <Text className='text-gray-500 dark:text-gray-400 text-sm'>
-                  Technicians:
-                </Text>
+                <Text className='text-gray-500 dark:text-gray-400 text-sm'>Technicians:</Text>
                 {technicians.map((techId: string) => (
-                  <Text
-                    key={techId}
-                    className='text-gray-700 dark:text-gray-300 text-sm ml-2'
-                  >
+                  <Text key={techId} className='text-gray-700 dark:text-gray-300 text-sm ml-2'>
                     • {getTechnicianName(techId) || 'Unknown Technician'}
                   </Text>
                 ))}
@@ -123,13 +103,8 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   };
 
   const renderPayrollSchedule = (schedule: any) => (
-    <View
-      key={schedule.id}
-      className='border-b border-gray-100 dark:border-gray-800 py-3'
-    >
-      <Text className='text-gray-900 dark:text-gray-200 font-medium'>
-        {schedule.jobTitle}
-      </Text>
+    <View key={schedule.id} className='border-b border-gray-100 dark:border-gray-800 py-3'>
+      <Text className='text-gray-900 dark:text-gray-200 font-medium'>{schedule.jobTitle}</Text>
       <View className='flex-row justify-between mt-1'>
         <Text className='text-gray-600 dark:text-gray-400'>
           {formatDateReadable(schedule.date)}
@@ -138,24 +113,17 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
           {formatHoursDisplay(schedule.hours)}
         </Text>
       </View>
-      <Text className='text-gray-500 dark:text-gray-500 text-sm mt-1'>
-        {schedule.location}
-      </Text>
+      <Text className='text-gray-500 dark:text-gray-500 text-sm mt-1'>{schedule.location}</Text>
 
       {/* Only show technicians for managers */}
       {isManager && schedule.assignedTechnicians && (
         <View className='mt-1'>
-          <Text className='text-gray-500 dark:text-gray-400 text-sm'>
-            Technicians:
-          </Text>
+          <Text className='text-gray-500 dark:text-gray-400 text-sm'>Technicians:</Text>
           {(typeof schedule.assignedTechnicians === 'string'
             ? JSON.parse(schedule.assignedTechnicians)
             : schedule.assignedTechnicians
           ).map((techId: string) => (
-            <Text
-              key={techId}
-              className='text-gray-600 dark:text-gray-500 text-sm ml-2'
-            >
+            <Text key={techId} className='text-gray-600 dark:text-gray-500 text-sm ml-2'>
               • {getTechnicianName(techId)}
             </Text>
           ))}
@@ -165,18 +133,13 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   );
 
   return (
-    <SafeAreaView
-      edges={['top']}
-      className='flex-1 bg-gray-100 dark:bg-gray-900'
-    >
+    <SafeAreaView edges={['top']} className='flex-1 bg-gray-100 dark:bg-gray-900'>
       <StatusBar
         barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
         backgroundColor={colorScheme === 'dark' ? '#111827' : '#FFFFFF'}
       />
       <View className='flex-row justify-between items-center p-4 bg-white dark:bg-gray-800 shadow-sm'>
-        <Text className='text-2xl font-bold text-gray-800 dark:text-white'>
-          Dashboard
-        </Text>
+        <Text className='text-2xl font-bold text-gray-800 dark:text-white'>Dashboard</Text>
         <TouchableOpacity
           onPress={() => setShowThemeModal(true)}
           className='p-2 rounded-full bg-gray-100 dark:bg-gray-700'
@@ -212,9 +175,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                   className='flex-1 bg-purple-50 dark:bg-purple-900 p-4 rounded-lg border border-purple-200 dark:border-purple-700'
                 >
                   <Ionicons name='time' size={24} color='#a855f7' />
-                  <Text className='text-gray-900 dark:text-white font-semibold mt-2'>
-                    Time Off
-                  </Text>
+                  <Text className='text-gray-900 dark:text-white font-semibold mt-2'>Time Off</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -230,8 +191,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                 </Text>
               </View>
               <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                {sortedTodaySchedules.length}{' '}
-                {sortedTodaySchedules.length === 1 ? 'job' : 'jobs'}
+                {sortedTodaySchedules.length} {sortedTodaySchedules.length === 1 ? 'job' : 'jobs'}
               </Text>
             </View>
 
@@ -264,9 +224,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
               <View className='bg-gray-50 dark:bg-gray-700 rounded-lg p-4'>
                 <View className='flex-row justify-between mb-3'>
                   <View>
-                    <Text className='text-gray-500 dark:text-gray-400 text-sm'>
-                      Period
-                    </Text>
+                    <Text className='text-gray-500 dark:text-gray-400 text-sm'>Period</Text>
                     <Text className='text-gray-900 dark:text-gray-200 font-medium'>
                       {formatDateShort(currentPayroll[0].startDate)} -{' '}
                       {formatDateShort(currentPayroll[0].endDate)}
@@ -275,9 +233,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                   <View className='items-end'>
                     {isManager ? (
                       <>
-                        <Text className='text-gray-500 dark:text-gray-400 text-sm'>
-                          Pay Day
-                        </Text>
+                        <Text className='text-gray-500 dark:text-gray-400 text-sm'>Pay Day</Text>
                         <Text className='text-gray-900 dark:text-gray-200 font-medium'>
                           {formatDateShort(currentPayroll[0].payDay)}
                         </Text>
@@ -300,15 +256,12 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                   className='flex-row justify-between items-center bg-white dark:bg-gray-600 p-3 rounded-lg mt-2'
                 >
                   <Text className='text-gray-800 dark:text-gray-200 font-medium'>
-                    View {isManager ? 'All' : 'My'} Schedules (
-                    {payrollSchedules.length})
+                    View {isManager ? 'All' : 'My'} Schedules ({payrollSchedules.length})
                   </Text>
                 </TouchableOpacity>
 
                 {showSchedules && (
-                  <View className='mt-3'>
-                    {payrollSchedules.map(renderPayrollSchedule)}
-                  </View>
+                  <View className='mt-3'>{payrollSchedules.map(renderPayrollSchedule)}</View>
                 )}
               </View>
             ) : (
@@ -324,10 +277,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
       </ScrollView>
 
       {/* Theme Selector Modal */}
-      <ThemeSelectorModal
-        visible={showThemeModal}
-        onClose={() => setShowThemeModal(false)}
-      />
+      <ThemeSelectorModal visible={showThemeModal} onClose={() => setShowThemeModal(false)} />
 
       {/* Availability Manager Modal */}
       <Modal
@@ -335,9 +285,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
         animationType='slide'
         onRequestClose={() => setShowAvailabilityModal(false)}
       >
-        <AvailabilityManager
-          onNavigateBack={() => setShowAvailabilityModal(false)}
-        />
+        <AvailabilityManager onNavigateBack={() => setShowAvailabilityModal(false)} />
       </Modal>
 
       {/* Time Off Manager Modal */}

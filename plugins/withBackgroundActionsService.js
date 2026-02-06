@@ -19,7 +19,8 @@ module.exports = function withBackgroundActionsService(config) {
 
     // Check if the service already exists
     const serviceExists = app.service.some(
-      (service) => service.$['android:name'] === 'com.asterinet.react.bgactions.RNBackgroundActionsTask'
+      (service) =>
+        service.$['android:name'] === 'com.asterinet.react.bgactions.RNBackgroundActionsTask'
     );
 
     // Add the service if it doesn't exist
@@ -27,8 +28,8 @@ module.exports = function withBackgroundActionsService(config) {
       app.service.push({
         $: {
           'android:name': 'com.asterinet.react.bgactions.RNBackgroundActionsTask',
-          'android:foregroundServiceType': 'dataSync',
-        },
+          'android:foregroundServiceType': 'dataSync'
+        }
       });
     }
 

@@ -14,7 +14,7 @@ export function CameraCaptureModal({
   visible,
   onClose,
   onPhotosConfirmed,
-  type,
+  type
 }: CameraCaptureModalProps) {
   const [capturedPhotos, setCapturedPhotos] = useState<string[]>([]);
   const [showReview, setShowReview] = useState(false);

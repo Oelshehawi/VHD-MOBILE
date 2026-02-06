@@ -1,10 +1,4 @@
-import {
-  Column,
-  column,
-  ColumnType,
-  Schema,
-  Table,
-} from '@powersync/react-native';
+import { Column, column, ColumnType, Schema, Table } from '@powersync/react-native';
 import { AttachmentTable } from '@powersync/attachments';
 
 export const SCHEDULES_TABLE = 'schedules';
@@ -25,9 +19,9 @@ const invoices = new Table(
     // Payment info fields
     paymentMethod: column.text, // 'eft' | 'e-transfer' | 'cheque' | 'credit-card' | 'other'
     paymentDatePaid: column.text, // ISO date string
-    paymentNotes: column.text, // Optional payment notes
+    paymentNotes: column.text // Optional payment notes
   },
-  { indexes: {} },
+  { indexes: {} }
 );
 
 const schedules = new Table(
@@ -46,9 +40,9 @@ const schedules = new Table(
     technicianNotes: column.text, // Notes from technicians
     // Site access info
     onSiteContact: column.text, // JSON: { name, phone, email }
-    accessInstructions: column.text, // Free text
+    accessInstructions: column.text // Free text
   },
-  { indexes: { invoices: ['invoiceRef'] } },
+  { indexes: { invoices: ['invoiceRef'] } }
 );
 
 const photos = new Table(
@@ -59,9 +53,9 @@ const photos = new Table(
     type: column.text, // 'before' | 'after' | 'signature' | 'estimate'
     technicianId: column.text,
     timestamp: column.text, // ISO string
-    signerName: column.text, // Only for type='signature'
+    signerName: column.text // Only for type='signature'
   },
-  { indexes: { schedules: ['scheduleId'] } },
+  { indexes: { schedules: ['scheduleId'] } }
 );
 
 const reports = new Table(
@@ -79,9 +73,9 @@ const reports = new Table(
     comments: column.text,
     // Nested objects stored as JSON text
     cleaningDetails: column.text, // JSON: { hoodCleaned, filtersCleaned, ductworkCleaned, fanCleaned }
-    inspectionItems: column.text, // JSON: { adequateAccessPanels }
+    inspectionItems: column.text // JSON: { adequateAccessPanels }
   },
-  { indexes: { schedules: ['scheduleId'] } },
+  { indexes: { schedules: ['scheduleId'] } }
 );
 
 const payrollperiods = new Table(
@@ -93,9 +87,9 @@ const payrollperiods = new Table(
     payDay: column.text,
     startDate: column.text,
     status: column.text,
-    updatedAt: column.text,
+    updatedAt: column.text
   },
-  { indexes: {} },
+  { indexes: {} }
 );
 
 const availabilities = new Table(
@@ -109,9 +103,9 @@ const availabilities = new Table(
     isRecurring: column.integer, // Boolean as 0/1
     specificDate: column.text, // ISO date string (nullable)
     createdAt: column.text,
-    updatedAt: column.text,
+    updatedAt: column.text
   },
-  { indexes: { technicians: ['technicianId'] } },
+  { indexes: { technicians: ['technicianId'] } }
 );
 
 const timeoffrequests = new Table(
@@ -125,9 +119,9 @@ const timeoffrequests = new Table(
     requestedAt: column.text, // ISO datetime
     reviewedAt: column.text, // ISO datetime (nullable)
     reviewedBy: column.text, // Admin Clerk ID (nullable)
-    notes: column.text, // Admin notes (nullable)
+    notes: column.text // Admin notes (nullable)
   },
-  { indexes: { technicians: ['technicianId'] } },
+  { indexes: { technicians: ['technicianId'] } }
 );
 
 const expopushtokens = new Table(
@@ -141,9 +135,9 @@ const expopushtokens = new Table(
     notifyScheduleChanges: column.integer, // 1 = enabled, 0 = disabled
     lastUsedAt: column.text, // ISO datetime
     createdAt: column.text,
-    updatedAt: column.text,
+    updatedAt: column.text
   },
-  { indexes: { users: ['userId'] } },
+  { indexes: { users: ['userId'] } }
 );
 
 // Add the attachments table from PowerSync
@@ -161,22 +155,22 @@ export const AppSchema = new Schema({
     additionalColumns: [
       new Column({
         name: 'scheduleId',
-        type: ColumnType.TEXT,
+        type: ColumnType.TEXT
       }),
       new Column({
         name: 'photoType',
-        type: ColumnType.TEXT,
+        type: ColumnType.TEXT
       }),
       new Column({
         name: 'jobTitle',
-        type: ColumnType.TEXT,
+        type: ColumnType.TEXT
       }),
       new Column({
         name: 'startDate',
-        type: ColumnType.TEXT,
-      }),
-    ],
-  }),
+        type: ColumnType.TEXT
+      })
+    ]
+  })
 });
 
 export type Database = (typeof AppSchema)['types'];

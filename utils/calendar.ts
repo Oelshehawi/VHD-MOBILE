@@ -1,10 +1,4 @@
-import {
-  startOfMonth,
-  endOfMonth,
-  eachDayOfInterval,
-  subMonths,
-  addMonths,
-} from 'date-fns';
+import { startOfMonth, endOfMonth, eachDayOfInterval, subMonths, addMonths } from 'date-fns';
 import { AppointmentType } from '@/types';
 
 // Helper function to get current date in PT
@@ -44,10 +38,7 @@ export const getMonthDays = (currentDate: Date) => {
   return [...startPadding, ...days, ...endPadding];
 };
 
-export const getAppointmentsForDay = (
-  date: Date,
-  appointments: AppointmentType[]
-) => {
+export const getAppointmentsForDay = (date: Date, appointments: AppointmentType[]) => {
   if (!date || !appointments?.length) return [];
 
   // Format the date to YYYY-MM-DD in UTC

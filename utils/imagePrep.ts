@@ -35,11 +35,7 @@ export async function prepareImageForUpload(
   const dimensions = await getImageDimensions(sourceUri);
 
   // Calculate resize scale (never upscale).
-  const scale = Math.min(
-    MAX_DIMENSION / dimensions.width,
-    MAX_DIMENSION / dimensions.height,
-    1
-  );
+  const scale = Math.min(MAX_DIMENSION / dimensions.width, MAX_DIMENSION / dimensions.height, 1);
 
   const newWidth = Math.round(dimensions.width * scale);
   const newHeight = Math.round(dimensions.height * scale);
@@ -52,11 +48,8 @@ export async function prepareImageForUpload(
 
   const imageRef = await context.renderAsync();
   const manipulated = await imageRef.saveAsync({
-    compress: targetFormat === 'jpeg' ? options.compress ?? 1.0 : 1.0,
-    format:
-      targetFormat === 'png'
-        ? SaveFormat.PNG
-        : SaveFormat.JPEG,
+    compress: targetFormat === 'jpeg' ? (options.compress ?? 1.0) : 1.0,
+    format: targetFormat === 'png' ? SaveFormat.PNG : SaveFormat.JPEG
   });
 
   const file = new File(manipulated.uri);
@@ -66,16 +59,14 @@ export async function prepareImageForUpload(
     uri: manipulated.uri,
     width: manipulated.width,
     height: manipulated.height,
-    size,
+    size
   };
 }
 
 /**
  * Helper to read image dimensions without writing a new file.
  */
-async function getImageDimensions(
-  uri: string
-): Promise<{ width: number; height: number }> {
+async function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
   const context = ImageManipulator.manipulate(uri);
   const imageRef = await context.renderAsync();
   return { width: imageRef.width, height: imageRef.height };

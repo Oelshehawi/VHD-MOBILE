@@ -19,10 +19,7 @@ export const initImageCache = async (): Promise<void> => {
     const lastClearDateStr = await AsyncStorage.getItem(CACHE_CHECK_KEY);
     const now = Date.now();
 
-    if (
-      !lastClearDateStr ||
-      now - parseInt(lastClearDateStr, 10) > CACHE_CHECK_INTERVAL
-    ) {
+    if (!lastClearDateStr || now - parseInt(lastClearDateStr, 10) > CACHE_CHECK_INTERVAL) {
       console.log('Clearing Expo Image disk cache');
 
       // Clear disk cache

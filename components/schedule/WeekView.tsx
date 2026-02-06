@@ -1,11 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import {
-  View,
-  Text,
-  ScrollView,
-  TouchableOpacity,
-  Dimensions,
-} from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Dimensions } from 'react-native';
 import {
   format,
   startOfWeek,
@@ -14,7 +8,7 @@ import {
   isToday,
   addWeeks,
   parseISO,
-  startOfDay,
+  startOfDay
 } from 'date-fns';
 import { Schedule } from '@/types';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -46,7 +40,7 @@ const TimeSlotRow = React.memo(
     weekDays,
     getSchedulesForSlot,
     onSchedulePress,
-    getScheduleColor,
+    getScheduleColor
   }: TimeSlotRowProps) => {
     const timeLabel = useMemo(() => {
       const utcDate = new Date();
@@ -56,17 +50,15 @@ const TimeSlotRow = React.memo(
 
     return (
       <View
-        className="flex-row border-b border-gray-100 dark:border-gray-800"
+        className='flex-row border-b border-gray-100 dark:border-gray-800'
         style={{ minHeight: 80 }}
       >
         {/* Time Label Column */}
         <View
           style={{ width: TIME_COLUMN_WIDTH }}
-          className="items-center justify-start pt-2 border-r border-gray-200 dark:border-gray-800"
+          className='items-center justify-start pt-2 border-r border-gray-200 dark:border-gray-800'
         >
-          <Text className="text-xs text-gray-500 dark:text-gray-400">
-            {timeLabel}
-          </Text>
+          <Text className='text-xs text-gray-500 dark:text-gray-400'>{timeLabel}</Text>
         </View>
 
         {/* Day Columns */}
@@ -77,7 +69,7 @@ const TimeSlotRow = React.memo(
             <View
               key={dayIndex}
               style={{ width: DAY_COLUMN_WIDTH }}
-              className="border-r border-gray-100 dark:border-gray-800 p-1"
+              className='border-r border-gray-100 dark:border-gray-800 p-1'
             >
               {slotSchedules.map((schedule) => (
                 <TouchableOpacity
@@ -86,16 +78,10 @@ const TimeSlotRow = React.memo(
                   onPress={() => onSchedulePress(schedule)}
                   activeOpacity={0.7}
                 >
-                  <Text
-                    className="text-xs font-semibold text-white"
-                    numberOfLines={2}
-                  >
+                  <Text className='text-xs font-semibold text-white' numberOfLines={2}>
                     {schedule.jobTitle}
                   </Text>
-                  <Text
-                    className="text-[10px] text-white opacity-90 mt-1"
-                    numberOfLines={1}
-                  >
+                  <Text className='text-[10px] text-white opacity-90 mt-1' numberOfLines={1}>
                     {schedule.location}
                   </Text>
                 </TouchableOpacity>
@@ -112,7 +98,7 @@ export function WeekView({
   schedules,
   selectedDate,
   onDateSelect,
-  onSchedulePress,
+  onSchedulePress
 }: WeekViewProps) {
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
     startOfWeek(new Date(selectedDate), { weekStartsOn: 0 })
@@ -158,10 +144,12 @@ export function WeekView({
           const utcHour = scheduleDate.getUTCHours();
           // Check if the schedule is on the same day (in UTC) and at the same hour (in UTC)
           const dayUTC = new Date(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
-          const scheduleDateUTC = new Date(scheduleDate.getUTCFullYear(), scheduleDate.getUTCMonth(), scheduleDate.getUTCDate());
-          return (
-            dayUTC.getTime() === scheduleDateUTC.getTime() && utcHour === hour
+          const scheduleDateUTC = new Date(
+            scheduleDate.getUTCFullYear(),
+            scheduleDate.getUTCMonth(),
+            scheduleDate.getUTCDate()
           );
+          return dayUTC.getTime() === scheduleDateUTC.getTime() && utcHour === hour;
         } catch (err) {
           console.error('Error parsing schedule date:', err);
           return false;
@@ -172,56 +160,44 @@ export function WeekView({
   );
 
   return (
-    <View className="flex-1 bg-white dark:bg-gray-950">
+    <View className='flex-1 bg-white dark:bg-gray-950'>
       {/* Week Navigation Bar */}
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+      <View className='flex-row items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800'>
         <TouchableOpacity
           onPress={goToPreviousWeek}
-          className="flex-row items-center px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg"
+          className='flex-row items-center px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg'
         >
-          <Ionicons
-            name="chevron-back"
-            size={18}
-            color="#6b7280"
-          />
-          <Text className="text-sm text-gray-600 dark:text-gray-400 ml-1">
-            Prev
-          </Text>
+          <Ionicons name='chevron-back' size={18} color='#6b7280' />
+          <Text className='text-sm text-gray-600 dark:text-gray-400 ml-1'>Prev</Text>
         </TouchableOpacity>
 
-        <View className="flex-1 items-center">
-          <Text className="text-base font-semibold text-gray-900 dark:text-white">
+        <View className='flex-1 items-center'>
+          <Text className='text-base font-semibold text-gray-900 dark:text-white'>
             {format(currentWeekStart, 'MMM d')} -{' '}
             {format(addDays(currentWeekStart, 6), 'MMM d, yyyy')}
           </Text>
         </View>
 
-        <TouchableOpacity
-          onPress={goToToday}
-          className="px-3 py-2 bg-blue-500 rounded-lg mx-2"
-        >
-          <Text className="text-sm text-white font-medium">Today</Text>
+        <TouchableOpacity onPress={goToToday} className='px-3 py-2 bg-blue-500 rounded-lg mx-2'>
+          <Text className='text-sm text-white font-medium'>Today</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={goToNextWeek}
-          className="flex-row items-center px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg"
+          className='flex-row items-center px-3 py-2 bg-gray-100 dark:bg-gray-800 rounded-lg'
         >
-          <Text className="text-sm text-gray-600 dark:text-gray-400 mr-1">
-            Next
-          </Text>
-          <Ionicons
-            name="chevron-forward"
-            size={18}
-            color="#6b7280"
-          />
+          <Text className='text-sm text-gray-600 dark:text-gray-400 mr-1'>Next</Text>
+          <Ionicons name='chevron-forward' size={18} color='#6b7280' />
         </TouchableOpacity>
       </View>
 
       {/* Week Header with Day Names */}
-      <View className="flex-row border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900">
+      <View className='flex-row border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900'>
         {/* Empty space for time column */}
-        <View style={{ width: TIME_COLUMN_WIDTH }} className="border-r border-gray-200 dark:border-gray-800" />
+        <View
+          style={{ width: TIME_COLUMN_WIDTH }}
+          className='border-r border-gray-200 dark:border-gray-800'
+        />
 
         {weekDays.map((day, index) => {
           const isSelected = isSameDay(day, new Date(selectedDate));
@@ -238,18 +214,14 @@ export function WeekView({
             >
               <Text
                 className={`text-xs font-medium ${
-                  day.getDay() === 0
-                    ? 'text-red-500'
-                    : 'text-gray-600 dark:text-gray-400'
+                  day.getDay() === 0 ? 'text-red-500' : 'text-gray-600 dark:text-gray-400'
                 }`}
               >
                 {format(day, 'EEE')}
               </Text>
               <Text
                 className={`text-lg font-bold mt-1 ${
-                  isTodayDay
-                    ? 'text-blue-600 dark:text-blue-400'
-                    : 'text-gray-900 dark:text-white'
+                  isTodayDay ? 'text-blue-600 dark:text-blue-400' : 'text-gray-900 dark:text-white'
                 }`}
               >
                 {format(day, 'd')}
@@ -260,7 +232,7 @@ export function WeekView({
       </View>
 
       {/* Scrollable Time Grid */}
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
+      <ScrollView className='flex-1' showsVerticalScrollIndicator={true}>
         {TIME_SLOTS.map((hour) => (
           <TimeSlotRow
             key={hour}

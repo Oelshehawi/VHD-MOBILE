@@ -1,18 +1,8 @@
-import {
-  View,
-  Alert,
-  ScrollView,
-  TouchableOpacity,
-} from 'react-native';
+import { View, Alert, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../components/ui/button';
 import { Text } from '../../components/ui/text';
-import {
-  Card,
-  CardHeader,
-  CardTitle,
-  CardContent,
-} from '../../components/ui/Card';
+import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { ProfileHeader } from '../../components/profile/ProfileHeader';
 import { OfflineBanner } from '../../components/profile/OfflineBanner';
 import { InfoRow } from '../../components/profile/InfoRow';
@@ -26,10 +16,7 @@ import { router } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import * as Updates from 'expo-updates';
 // Import functions to get URLs
-import {
-  getPowerSyncUrl,
-  getApiUrl,
-} from '../../services/ApiClient';
+import { getPowerSyncUrl, getApiUrl } from '../../services/ApiClient';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -103,8 +90,8 @@ export default function ProfileScreen() {
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
           // Add any additional user metadata you need offline
-          metadata: user.publicMetadata,
-        }),
+          metadata: user.publicMetadata
+        })
       ).catch((error) => console.error('Error caching user data:', error));
     }
   }, [user]);
@@ -114,7 +101,7 @@ export default function ProfileScreen() {
       if (isOffline) {
         Alert.alert(
           'Offline Mode',
-          'You are currently offline. Some features may not work until you reconnect.',
+          'You are currently offline. Some features may not work until you reconnect.'
         );
         return;
       }
@@ -148,7 +135,7 @@ export default function ProfileScreen() {
         contentContainerStyle={{
           flexGrow: 1,
           padding: 16,
-          paddingBottom: 32,
+          paddingBottom: 32
         }}
       >
         <Stack.Screen options={{ headerShown: false }} />
@@ -159,9 +146,7 @@ export default function ProfileScreen() {
             imageUrl={displayUser.imageUrl}
             fullName={displayUser.fullName}
             username={displayUser.username}
-            email={
-              displayUser.email || displayUser.primaryEmailAddress?.emailAddress
-            }
+            email={displayUser.email || displayUser.primaryEmailAddress?.emailAddress}
           />
 
           <Card className='mb-4'>
@@ -172,19 +157,11 @@ export default function ProfileScreen() {
               <View className='space-y-2'>
                 <InfoRow
                   label='Member Since'
-                  value={
-                    displayUser.createdAt
-                      ? formatDateReadable(displayUser.createdAt)
-                      : 'N/A'
-                  }
+                  value={displayUser.createdAt ? formatDateReadable(displayUser.createdAt) : 'N/A'}
                 />
                 <InfoRow
                   label='Last Updated'
-                  value={
-                    displayUser.updatedAt
-                      ? formatDateReadable(displayUser.updatedAt)
-                      : 'N/A'
-                  }
+                  value={displayUser.updatedAt ? formatDateReadable(displayUser.updatedAt) : 'N/A'}
                 />
               </View>
             </CardContent>
@@ -198,25 +175,13 @@ export default function ProfileScreen() {
             </CardHeader>
             <CardContent>
               <View className='space-y-2'>
-                <TouchableOpacity
-                  onPress={handleVersionTap}
-                  activeOpacity={0.7}
-                >
+                <TouchableOpacity onPress={handleVersionTap} activeOpacity={0.7}>
                   <InfoRow label='Version' value='1.0.0' />
                 </TouchableOpacity>
-                <InfoRow
-                  label='Update Channel'
-                  value={Updates.channel || 'development'}
-                />
-                <InfoRow
-                  label='Update ID'
-                  value={Updates.updateId || 'No OTA update installed'}
-                />
+                <InfoRow label='Update Channel' value={Updates.channel || 'development'} />
+                <InfoRow label='Update ID' value={Updates.updateId || 'No OTA update installed'} />
                 {Updates.createdAt && (
-                  <InfoRow
-                    label='Update Published'
-                    value={formatDateReadable(Updates.createdAt)}
-                  />
+                  <InfoRow label='Update Published' value={formatDateReadable(Updates.createdAt)} />
                 )}
               </View>
             </CardContent>
@@ -225,9 +190,7 @@ export default function ProfileScreen() {
           <Button
             onPress={handleSignOut}
             disabled={isOffline}
-            className={` ${
-              isOffline ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'
-            }`}
+            className={` ${isOffline ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'}`}
           >
             <Text className='text-center text-white font-semibold'>
               {isOffline ? 'Offline - Sign Out Unavailable' : 'Sign Out'}

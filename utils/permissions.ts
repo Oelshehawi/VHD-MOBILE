@@ -20,7 +20,7 @@ export const requestNotificationPermission = async (): Promise<boolean> => {
           'This app needs permission to show notifications for background uploads and important updates',
         buttonNeutral: 'Ask Me Later',
         buttonNegative: 'Cancel',
-        buttonPositive: 'OK',
+        buttonPositive: 'OK'
       }
     );
 

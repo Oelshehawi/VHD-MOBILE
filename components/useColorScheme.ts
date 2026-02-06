@@ -10,8 +10,7 @@ type ColorSchemeType = 'light' | 'dark' | 'system';
  */
 export function useColorScheme(): string {
   const systemColorScheme = _useColorScheme();
-  const [userColorScheme, setUserColorScheme] =
-    useState<ColorSchemeType>('system');
+  const [userColorScheme, setUserColorScheme] = useState<ColorSchemeType>('system');
   const [isLoaded, setIsLoaded] = useState(false);
 
   // Load user preference from AsyncStorage on mount
@@ -53,9 +52,7 @@ export function useColorScheme(): string {
 
   // Determine the actual color scheme based on user preference
   const actualColorScheme =
-    userColorScheme === 'system'
-      ? systemColorScheme || 'light'
-      : userColorScheme;
+    userColorScheme === 'system' ? systemColorScheme || 'light' : userColorScheme;
 
   return actualColorScheme;
 }

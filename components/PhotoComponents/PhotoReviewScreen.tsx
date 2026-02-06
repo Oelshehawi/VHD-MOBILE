@@ -20,17 +20,14 @@ export function PhotoReviewScreen({
   onCancel,
   onBack,
   onDeletePhoto,
-  type,
+  type
 }: PhotoReviewScreenProps) {
   const insets = useSafeAreaInsets();
 
   return (
     <View className='flex-1 bg-white'>
       {/* Header */}
-      <View
-        style={{ paddingTop: insets.top + 16 }}
-        className='px-6 pb-4 border-b border-gray-200'
-      >
+      <View style={{ paddingTop: insets.top + 16 }} className='px-6 pb-4 border-b border-gray-200'>
         <Text variant='h2' className='text-gray-900'>
           Review Photos
         </Text>
@@ -45,11 +42,7 @@ export function PhotoReviewScreen({
           {photos.map((uri, index) => (
             <View key={index} className='w-1/3 aspect-square p-1'>
               <View className='flex-1 rounded-xl overflow-hidden bg-gray-100 relative'>
-                <Image
-                  source={{ uri }}
-                  className='w-full h-full'
-                  resizeMode='cover'
-                />
+                <Image source={{ uri }} className='w-full h-full' resizeMode='cover' />
                 {/* Delete Button */}
                 <TouchableOpacity
                   onPress={() => onDeletePhoto(index)}
@@ -72,10 +65,7 @@ export function PhotoReviewScreen({
         {/* Primary action - full width */}
         <Button
           variant='default'
-          className={cn(
-            'w-full mb-3',
-            type === 'before' ? 'bg-blue-500' : 'bg-green-500',
-          )}
+          className={cn('w-full mb-3', type === 'before' ? 'bg-blue-500' : 'bg-green-500')}
           onPress={() => onUpload(photos)}
           disabled={photos.length === 0}
         >

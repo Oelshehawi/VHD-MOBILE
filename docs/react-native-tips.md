@@ -1,5 +1,5 @@
 - dont use touchable opacity use Pressable instead.
-(can use pressable scale library)
+  (can use pressable scale library)
 
 --use platform file extensions NOT runtime checks.
 

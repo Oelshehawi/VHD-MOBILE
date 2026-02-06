@@ -45,7 +45,7 @@ export const FastImageWrapper = ({
     return buildCloudinaryUrlMobile({
       urlOrPublicId: uri,
       cloudName: cloudinaryTransform.cloudName,
-      width: cloudinaryTransform.width,
+      width: cloudinaryTransform.width
     });
   }, [uri, cloudinaryTransform]);
 

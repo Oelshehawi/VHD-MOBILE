@@ -11,10 +11,7 @@ interface TechnicianNotesProps {
 /**
  * A component to display and edit technician notes
  */
-export function TechnicianNotes({
-  schedule,
-  scheduleId,
-}: TechnicianNotesProps) {
+export function TechnicianNotes({ schedule, scheduleId }: TechnicianNotesProps) {
   const [editingNotes, setEditingNotes] = useState(false);
   const [technicianNotes, setTechnicianNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -36,10 +33,10 @@ export function TechnicianNotes({
       setIsSaving(true);
 
       // Update local PowerSync database
-      await powerSync.execute(
-        `UPDATE schedules SET technicianNotes = ? WHERE id = ?`,
-        [technicianNotes, scheduleId]
-      );
+      await powerSync.execute(`UPDATE schedules SET technicianNotes = ? WHERE id = ?`, [
+        technicianNotes,
+        scheduleId
+      ]);
 
       // Show success confirmation
       setShowConfirmation(true);
@@ -86,31 +83,23 @@ export function TechnicianNotes({
               className='px-4 py-2 bg-gray-200 dark:bg-gray-600 rounded-lg'
               disabled={isSaving}
             >
-              <Text className='text-gray-700 dark:text-gray-300 font-medium'>
-                Cancel
-              </Text>
+              <Text className='text-gray-700 dark:text-gray-300 font-medium'>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={saveTechnicianNotes}
               className='px-4 py-2 bg-darkGreen rounded-lg'
               disabled={isSaving}
             >
-              <Text className='text-white font-medium'>
-                {isSaving ? 'Saving...' : 'Save'}
-              </Text>
+              <Text className='text-white font-medium'>{isSaving ? 'Saving...' : 'Save'}</Text>
             </TouchableOpacity>
           </View>
         </View>
       ) : (
         <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
           {schedule?.technicianNotes ? (
-            <Text className='text-gray-700 dark:text-gray-300'>
-              {schedule.technicianNotes}
-            </Text>
+            <Text className='text-gray-700 dark:text-gray-300'>{schedule.technicianNotes}</Text>
           ) : (
-            <Text className='text-gray-500 dark:text-gray-400 italic'>
-              No technician notes yet
-            </Text>
+            <Text className='text-gray-500 dark:text-gray-400 italic'>No technician notes yet</Text>
           )}
         </View>
       )}

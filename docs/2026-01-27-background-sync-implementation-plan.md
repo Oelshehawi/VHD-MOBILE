@@ -10,6 +10,7 @@ This plan adds background task scheduling to enable PowerSync data sync and Clou
 ## Current State Analysis
 
 ### Already Configured
+
 - `expo-background-task` plugin in app.config.js (line 79)
 - `expo-task-manager` package installed (v14.0.8)
 - iOS UIBackgroundModes: `fetch`, `remote-notification`, `processing`, `location`
@@ -19,6 +20,7 @@ This plan adds background task scheduling to enable PowerSync data sync and Clou
 ### How It Will Work
 
 **PowerSync Data Sync (schedules, invoices, etc.):**
+
 1. App goes to background → background task is scheduled
 2. Task runs (system decides when based on battery/network/usage)
 3. Creates isolated PowerSync connection with cached Clerk token
@@ -29,6 +31,7 @@ This plan adds background task scheduling to enable PowerSync data sync and Clou
 **Error Handling:** Silent retry - errors are logged but no user notification. System will retry on next scheduled run.
 
 **Photo Uploads (Cloudinary):**
+
 1. PhotoAttachmentQueue has photos in `QUEUED_UPLOAD` state
 2. Background task calls `processQueue()` on the attachment queue
 3. Gets batch signed URLs from `/api/cloudinaryUpload` (authenticated)
@@ -39,17 +42,21 @@ This plan adds background task scheduling to enable PowerSync data sync and Clou
 ## Critical Implementation Requirements
 
 ### 1. Use `expo/fetch` for Background Network Requests
+
 The default React Native fetch doesn't work in background. Must override fetch:
+
 ```typescript
 import { fetch } from 'expo/fetch';
 ```
 
 ### 2. Avoid Multiple PowerSync Connections
+
 - Unregister task when app comes to foreground
 - Only one sync operation at a time (already have `isProcessing` flag)
 - Close connection when task completes
 
 ### 3. Token Caching
+
 Clerk tokens are cached via `tokenCache` - should work in background as long as session is valid.
 
 ---
@@ -61,11 +68,13 @@ Clerk tokens are cached via `tokenCache` - should work in background as long as 
 **File:** `services/background/BackgroundSync.ts`
 
 This module will:
+
 - Define the background task using `TaskManager.defineTask()`
 - Export functions to register/unregister the task
 - Handle the sync logic in isolation
 
 Key implementation:
+
 ```typescript
 import * as TaskManager from 'expo-task-manager';
 import * as BackgroundTask from 'expo-background-task';
@@ -78,6 +87,7 @@ import { fetch } from 'expo/fetch';
 **File:** `services/background/BackgroundSystem.ts`
 
 A lightweight PowerSync system for background use that:
+
 - Creates its own PowerSync database connection
 - Uses `expo/fetch` for all network requests
 - Can run independently of the main app thread
@@ -87,6 +97,7 @@ A lightweight PowerSync system for background use that:
 **File:** `app/_layout.tsx` (modify)
 
 Add AppState listener to:
+
 - Register background task when app goes to background
 - Unregister when app comes to foreground
 - Avoid conflicts with foreground sync
@@ -109,20 +120,20 @@ Add AppState listener to:
 
 ## Files to Create
 
-| File | Purpose |
-|------|---------|
-| `services/background/BackgroundSync.ts` | Main background task definition and registration |
-| `services/background/BackgroundSystem.ts` | Isolated PowerSync system for background |
-| `services/background/index.ts` | Exports for background services |
+| File                                      | Purpose                                          |
+| ----------------------------------------- | ------------------------------------------------ |
+| `services/background/BackgroundSync.ts`   | Main background task definition and registration |
+| `services/background/BackgroundSystem.ts` | Isolated PowerSync system for background         |
+| `services/background/index.ts`            | Exports for background services                  |
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `app/_layout.tsx` | Add AppState listener for task registration |
-| `services/database/PhotoAttachmentQueue.ts` | Support custom fetch function |
-| `services/ApiClient.ts` | Support custom fetch override |
-| `services/database/BackendConnector.ts` | Support custom fetch for credentials |
+| File                                        | Changes                                     |
+| ------------------------------------------- | ------------------------------------------- |
+| `app/_layout.tsx`                           | Add AppState listener for task registration |
+| `services/database/PhotoAttachmentQueue.ts` | Support custom fetch function               |
+| `services/ApiClient.ts`                     | Support custom fetch override               |
+| `services/database/BackendConnector.ts`     | Support custom fetch for credentials        |
 
 ---
 
@@ -162,7 +173,7 @@ export async function registerBackgroundSync() {
   const status = await BackgroundTask.getStatusAsync();
   if (status === BackgroundTask.BackgroundTaskStatus.Available) {
     await BackgroundTask.registerTaskAsync(BACKGROUND_SYNC_TASK, {
-      minimumInterval: 15, // 15 minutes (minimum allowed)
+      minimumInterval: 15 // 15 minutes (minimum allowed)
     });
   }
 }
@@ -186,7 +197,7 @@ export class BackgroundSystem {
     // Create isolated instances with expo/fetch
     this.powersync = new PowerSyncDatabase({
       schema: AppSchema,
-      database: new OPSqliteOpenFactory({ dbFilename: 'powersync.db' }),
+      database: new OPSqliteOpenFactory({ dbFilename: 'powersync.db' })
     });
   }
 
@@ -239,12 +250,14 @@ useEffect(() => {
 ## Platform Considerations
 
 ### iOS
+
 - Background tasks require physical device (not simulator)
 - System decides when to run based on battery/network/usage patterns
 - Minimum interval: 15 minutes
 - Task may not run immediately when backgrounded
 
 ### Android
+
 - Uses WorkManager API
 - Minimum interval: 15 minutes (enforced by platform)
 - More predictable scheduling than iOS
@@ -255,6 +268,7 @@ useEffect(() => {
 ## Testing Strategy
 
 ### iOS Testing
+
 1. Build development client: `npx expo run:ios --device`
 2. Queue some photos for upload
 3. Background the app
@@ -262,6 +276,7 @@ useEffect(() => {
 5. Check if photos uploaded via Cloudinary dashboard
 
 ### Android Testing
+
 1. Build: `npx expo run:android`
 2. Queue photos
 3. Background app
@@ -273,6 +288,7 @@ useEffect(() => {
 5. Check logs: `adb logcat | grep "Background Sync"`
 
 ### Debug Mode
+
 Use `BackgroundTask.triggerTaskWorkerForTestingAsync()` in development to manually trigger the task.
 
 ---

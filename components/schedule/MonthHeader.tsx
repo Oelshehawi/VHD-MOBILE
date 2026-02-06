@@ -14,9 +14,7 @@ export function MonthHeader({ currentDate, onMonthChange }: MonthHeaderProps) {
         onPress={() => onMonthChange(subMonths(currentDate, 1))}
         className='h-10 w-10 bg-gray-200 dark:bg-gray-800 rounded-full items-center justify-center'
       >
-        <Text className='text-gray-800 dark:text-gray-200 text-xl leading-none'>
-          ←
-        </Text>
+        <Text className='text-gray-800 dark:text-gray-200 text-xl leading-none'>←</Text>
       </TouchableOpacity>
       <Text className='text-xl font-bold text-gray-800 dark:text-gray-200'>
         {format(currentDate, 'MMMM yyyy')}
@@ -25,9 +23,7 @@ export function MonthHeader({ currentDate, onMonthChange }: MonthHeaderProps) {
         onPress={() => onMonthChange(addMonths(currentDate, 1))}
         className='h-10 w-10 bg-gray-200 dark:bg-gray-800 rounded-full items-center justify-center'
       >
-        <Text className='text-gray-800 dark:text-gray-200 text-xl leading-none'>
-          →
-        </Text>
+        <Text className='text-gray-800 dark:text-gray-200 text-xl leading-none'>→</Text>
       </TouchableOpacity>
     </View>
   );

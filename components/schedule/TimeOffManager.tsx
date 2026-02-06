@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  TextInput,
+  TextInput
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,9 +29,7 @@ interface TimeOffFormData {
  * TimeOffManager Component
  * Main screen for managing time-off requests
  */
-export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
-  onNavigateBack,
-}) => {
+export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNavigateBack }) => {
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const powerSync = usePowerSync();
@@ -46,7 +44,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
   const [formData, setFormData] = useState<TimeOffFormData>({
     startDate: null,
     endDate: null,
-    reason: '',
+    reason: ''
   });
 
   // Fetch time-off requests from PowerSync
@@ -61,14 +59,14 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
     setFormData((prev) => ({
       ...prev,
       startDate,
-      endDate,
+      endDate
     }));
   };
 
   const handleReasonChange = (text: string) => {
     setFormData((prev) => ({
       ...prev,
-      reason: text,
+      reason: text
     }));
   };
 
@@ -124,7 +122,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
           new Date().toISOString(),
           null,
           null,
-          null,
+          null
         ]
       );
 
@@ -132,13 +130,16 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
       setFormData({
         startDate: null,
         endDate: null,
-        reason: '',
+        reason: ''
       });
       setIsEditing(false);
       setEditingRequestId(null);
       setShowConfirmation(false);
 
-      Alert.alert('Success', isEditing ? 'Request updated successfully' : 'Request submitted successfully');
+      Alert.alert(
+        'Success',
+        isEditing ? 'Request updated successfully' : 'Request submitted successfully'
+      );
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -169,7 +170,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
     setFormData({
       startDate: request.startDate || null,
       endDate: request.endDate || null,
-      reason: request.reason || '',
+      reason: request.reason || ''
     });
     setIsEditing(true);
     setEditingRequestId(request.id || null);
@@ -185,159 +186,159 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
   const rejectedRequests = requests.filter((r) => r.status === 'rejected');
 
   return (
-    <View 
+    <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
-      className="flex-1 bg-gray-50 dark:bg-gray-900"
+      className='flex-1 bg-gray-50 dark:bg-gray-900'
     >
-      <ScrollView className="flex-1">
-        <View className="p-4">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-6">
-          <View>
-            <Text className="text-2xl font-bold text-gray-900 dark:text-white">
-              Time Off Requests
-            </Text>
-            <Text className="text-gray-600 dark:text-gray-400 mt-1">
-              Manage your time-off requests
-            </Text>
-          </View>
-          {onNavigateBack && (
-            <TouchableOpacity onPress={onNavigateBack}>
-              <Ionicons name="close" size={24} color="#666" />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Form Section */}
-        <View className="bg-white dark:bg-gray-800 p-4 rounded-lg mb-6">
-          <Text className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-            {isEditing ? 'Edit Request' : 'Submit New Request'}
-          </Text>
-
-          <DateRangeSelector
-            startDate={formData.startDate}
-            endDate={formData.endDate}
-            onDateRangeChange={handleDateRangeChange}
-            label="Select Dates (14+ days advance)"
-          />
-
-          {/* Reason */}
-          <View className="mb-4">
-            <Text className="text-gray-700 dark:text-gray-300 font-semibold mb-2">
-              Reason for Time Off
-            </Text>
-            <TextInput
-              className="bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-4 rounded-lg border border-gray-200 dark:border-gray-600"
-              placeholder="e.g., Vacation, Medical, Personal"
-              placeholderTextColor="#999"
-              value={formData.reason}
-              onChangeText={handleReasonChange}
-              multiline
-              numberOfLines={4}
-            />
-          </View>
-
-          {/* Action buttons */}
-          <View className="flex-row gap-3">
-            {isEditing && (
-              <TouchableOpacity
-                onPress={() => {
-                  setIsEditing(false);
-                  setEditingRequestId(null);
-                  setFormData({
-                    startDate: null,
-                    endDate: null,
-                    reason: '',
-                  });
-                }}
-                className="flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg"
-                disabled={isSaving}
-              >
-                <Text className="text-center font-semibold text-gray-900 dark:text-white">
-                  Cancel
-                </Text>
+      <ScrollView className='flex-1'>
+        <View className='p-4'>
+          {/* Header */}
+          <View className='flex-row items-center justify-between mb-6'>
+            <View>
+              <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
+                Time Off Requests
+              </Text>
+              <Text className='text-gray-600 dark:text-gray-400 mt-1'>
+                Manage your time-off requests
+              </Text>
+            </View>
+            {onNavigateBack && (
+              <TouchableOpacity onPress={onNavigateBack}>
+                <Ionicons name='close' size={24} color='#666' />
               </TouchableOpacity>
             )}
-            <TouchableOpacity
-              onPress={handleSubmit}
-              className="flex-1 bg-blue-500 p-4 rounded-lg flex-row items-center justify-center"
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator color="white" size="small" />
-              ) : (
-                <>
-                  <Ionicons name="send" size={20} color="white" />
-                  <Text className="text-white font-semibold ml-2">
-                    {isEditing ? 'Update' : 'Submit'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
           </View>
-        </View>
 
-        {/* Requests List - Grouped by Status */}
-
-        {/* Pending Requests */}
-        {pendingRequests.length > 0 && (
-          <View className="mb-6">
-            <Text className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-              Pending Requests ({pendingRequests.length})
+          {/* Form Section */}
+          <View className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-6'>
+            <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
+              {isEditing ? 'Edit Request' : 'Submit New Request'}
             </Text>
-            {pendingRequests.map((request) => (
-              <TimeOffRequestItem
-                key={request.id}
-                request={request}
-                onEdit={handleEdit}
-                onCancel={handleCancel}
+
+            <DateRangeSelector
+              startDate={formData.startDate}
+              endDate={formData.endDate}
+              onDateRangeChange={handleDateRangeChange}
+              label='Select Dates (14+ days advance)'
+            />
+
+            {/* Reason */}
+            <View className='mb-4'>
+              <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>
+                Reason for Time Off
+              </Text>
+              <TextInput
+                className='bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-4 rounded-lg border border-gray-200 dark:border-gray-600'
+                placeholder='e.g., Vacation, Medical, Personal'
+                placeholderTextColor='#999'
+                value={formData.reason}
+                onChangeText={handleReasonChange}
+                multiline
+                numberOfLines={4}
               />
-            ))}
-          </View>
-        )}
+            </View>
 
-        {/* Approved Requests */}
-        {approvedRequests.length > 0 && (
-          <View className="mb-6">
-            <Text className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-              Approved Requests ({approvedRequests.length})
-            </Text>
-            {approvedRequests.map((request) => (
-              <TimeOffRequestItem key={request.id} request={request} />
-            ))}
+            {/* Action buttons */}
+            <View className='flex-row gap-3'>
+              {isEditing && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsEditing(false);
+                    setEditingRequestId(null);
+                    setFormData({
+                      startDate: null,
+                      endDate: null,
+                      reason: ''
+                    });
+                  }}
+                  className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
+                  disabled={isSaving}
+                >
+                  <Text className='text-center font-semibold text-gray-900 dark:text-white'>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={handleSubmit}
+                className='flex-1 bg-blue-500 p-4 rounded-lg flex-row items-center justify-center'
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color='white' size='small' />
+                ) : (
+                  <>
+                    <Ionicons name='send' size={20} color='white' />
+                    <Text className='text-white font-semibold ml-2'>
+                      {isEditing ? 'Update' : 'Submit'}
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
-        )}
 
-        {/* Rejected Requests */}
-        {rejectedRequests.length > 0 && (
-          <View className="mb-6">
-            <Text className="text-lg font-bold text-gray-900 dark:text-white mb-4">
-              Rejected Requests ({rejectedRequests.length})
-            </Text>
-            {rejectedRequests.map((request) => (
-              <TimeOffRequestItem key={request.id} request={request} />
-            ))}
-          </View>
-        )}
+          {/* Requests List - Grouped by Status */}
 
-        {/* Empty state */}
-        {requests.length === 0 && (
-          <View className="bg-gray-100 dark:bg-gray-800 p-6 rounded-lg items-center">
-            <Ionicons name="calendar-outline" size={48} color="#999" />
-            <Text className="text-gray-600 dark:text-gray-400 text-center mt-4">
-              No time-off requests yet. Submit your first request above.
-            </Text>
-          </View>
-        )}
-        {/* Confirmation Modal */}
-        <ConfirmationModal
-          visible={showConfirmation}
-          title="Confirmation"
-          message={confirmationMessage}
-          onConfirm={() => confirmationAction?.()}
-          onClose={() => setShowConfirmation(false)}
-        />
-      </View>
+          {/* Pending Requests */}
+          {pendingRequests.length > 0 && (
+            <View className='mb-6'>
+              <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
+                Pending Requests ({pendingRequests.length})
+              </Text>
+              {pendingRequests.map((request) => (
+                <TimeOffRequestItem
+                  key={request.id}
+                  request={request}
+                  onEdit={handleEdit}
+                  onCancel={handleCancel}
+                />
+              ))}
+            </View>
+          )}
+
+          {/* Approved Requests */}
+          {approvedRequests.length > 0 && (
+            <View className='mb-6'>
+              <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
+                Approved Requests ({approvedRequests.length})
+              </Text>
+              {approvedRequests.map((request) => (
+                <TimeOffRequestItem key={request.id} request={request} />
+              ))}
+            </View>
+          )}
+
+          {/* Rejected Requests */}
+          {rejectedRequests.length > 0 && (
+            <View className='mb-6'>
+              <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
+                Rejected Requests ({rejectedRequests.length})
+              </Text>
+              {rejectedRequests.map((request) => (
+                <TimeOffRequestItem key={request.id} request={request} />
+              ))}
+            </View>
+          )}
+
+          {/* Empty state */}
+          {requests.length === 0 && (
+            <View className='bg-gray-100 dark:bg-gray-800 p-6 rounded-lg items-center'>
+              <Ionicons name='calendar-outline' size={48} color='#999' />
+              <Text className='text-gray-600 dark:text-gray-400 text-center mt-4'>
+                No time-off requests yet. Submit your first request above.
+              </Text>
+            </View>
+          )}
+          {/* Confirmation Modal */}
+          <ConfirmationModal
+            visible={showConfirmation}
+            title='Confirmation'
+            message={confirmationMessage}
+            onConfirm={() => confirmationAction?.()}
+            onClose={() => setShowConfirmation(false)}
+          />
+        </View>
       </ScrollView>
     </View>
   );

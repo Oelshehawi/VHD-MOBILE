@@ -21,9 +21,7 @@ export const showToast = (message: string) => {
   }
 };
 
-export const requestMediaPermission = async (
-  type: 'camera' | 'gallery'
-): Promise<boolean> => {
+export const requestMediaPermission = async (type: 'camera' | 'gallery'): Promise<boolean> => {
   if (Platform.OS !== 'web') {
     const permissionResult =
       type === 'camera'
@@ -33,9 +31,7 @@ export const requestMediaPermission = async (
     if (permissionResult.status !== 'granted') {
       Alert.alert(
         'Permission Required',
-        `${
-          type === 'camera' ? 'Camera' : 'Gallery'
-        } access is needed to take photos.`
+        `${type === 'camera' ? 'Camera' : 'Gallery'} access is needed to take photos.`
       );
       return false;
     }

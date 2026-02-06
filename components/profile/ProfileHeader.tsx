@@ -9,12 +9,7 @@ interface ProfileHeaderProps {
   email?: string | null;
 }
 
-export function ProfileHeader({
-  imageUrl,
-  fullName,
-  username,
-  email,
-}: ProfileHeaderProps) {
+export function ProfileHeader({ imageUrl, fullName, username, email }: ProfileHeaderProps) {
   return (
     <Card className='mb-4'>
       <CardContent className='items-center'>

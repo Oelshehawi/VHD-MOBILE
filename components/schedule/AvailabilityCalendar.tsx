@@ -1,6 +1,10 @@
 import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
-import { getDayName, formatTo12Hour, formatAvailabilityDisplay } from '../../utils/availabilityValidation';
+import {
+  getDayName,
+  formatTo12Hour,
+  formatAvailabilityDisplay
+} from '../../utils/availabilityValidation';
 import type { Availability } from '../../services/database/schema';
 
 interface AvailabilityCalendarProps {
@@ -34,8 +38,8 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({ avai
 
   if (availability.length === 0) {
     return (
-      <View className="bg-gray-50 dark:bg-gray-800 p-4 rounded-lg">
-        <Text className="text-gray-600 dark:text-gray-400 text-center">
+      <View className='bg-gray-50 dark:bg-gray-800 p-4 rounded-lg'>
+        <Text className='text-gray-600 dark:text-gray-400 text-center'>
           No availability set yet. Add your first availability block.
         </Text>
       </View>
@@ -43,11 +47,11 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({ avai
   }
 
   return (
-    <ScrollView className="space-y-4">
+    <ScrollView className='space-y-4'>
       {/* Recurring Availability */}
       {Object.keys(recurringByDay).length > 0 && (
-        <View className="bg-white dark:bg-gray-700 p-4 rounded-lg">
-          <Text className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+        <View className='bg-white dark:bg-gray-700 p-4 rounded-lg'>
+          <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
             Weekly Availability
           </Text>
 
@@ -56,24 +60,25 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({ avai
             if (!blocks || blocks.length === 0) return null;
 
             return (
-              <View key={`day-${dayNum}`} className="mb-4">
-                <Text className="font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              <View key={`day-${dayNum}`} className='mb-4'>
+                <Text className='font-semibold text-gray-800 dark:text-gray-100 mb-2'>
                   {getDayName(dayNum)}
                 </Text>
                 {blocks.map((block) => (
                   <View
                     key={block.id}
-                    className="bg-blue-50 dark:bg-blue-900 border-l-4 border-blue-500 p-3 mb-2 rounded"
+                    className='bg-blue-50 dark:bg-blue-900 border-l-4 border-blue-500 p-3 mb-2 rounded'
                   >
-                    <View className="flex-row justify-between items-start">
-                      <View className="flex-1">
+                    <View className='flex-row justify-between items-start'>
+                      <View className='flex-1'>
                         {block.isFullDay ? (
-                          <Text className="text-gray-800 dark:text-white font-semibold">
+                          <Text className='text-gray-800 dark:text-white font-semibold'>
                             Full Day Available
                           </Text>
                         ) : (
-                          <Text className="text-gray-800 dark:text-white font-semibold">
-                            {formatTo12Hour(block.startTime || '')} - {formatTo12Hour(block.endTime || '')}
+                          <Text className='text-gray-800 dark:text-white font-semibold'>
+                            {formatTo12Hour(block.startTime || '')} -{' '}
+                            {formatTo12Hour(block.endTime || '')}
                           </Text>
                         )}
                       </View>
@@ -88,17 +93,17 @@ export const AvailabilityCalendar: React.FC<AvailabilityCalendarProps> = ({ avai
 
       {/* One-Time Availability */}
       {oneTimeAvailability.length > 0 && (
-        <View className="bg-white dark:bg-gray-700 p-4 rounded-lg">
-          <Text className="text-lg font-bold text-gray-900 dark:text-white mb-4">
+        <View className='bg-white dark:bg-gray-700 p-4 rounded-lg'>
+          <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
             Specific Date Availability
           </Text>
 
           {oneTimeAvailability.map((block) => (
             <View
               key={block.id}
-              className="bg-green-50 dark:bg-green-900 border-l-4 border-green-500 p-3 mb-2 rounded"
+              className='bg-green-50 dark:bg-green-900 border-l-4 border-green-500 p-3 mb-2 rounded'
             >
-              <Text className="text-gray-800 dark:text-white font-semibold">
+              <Text className='text-gray-800 dark:text-white font-semibold'>
                 {formatAvailabilityDisplay(block)}
               </Text>
             </View>

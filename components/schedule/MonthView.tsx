@@ -1,11 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  ScrollView,
-  Dimensions,
-} from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
 import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
 import { AppointmentType } from '@/types';
 import { getMonthDays } from '@/utils/calendar';
@@ -29,7 +23,7 @@ const WEEKDAYS = [
   { key: 'wed', label: 'W' },
   { key: 'thu', label: 'T' },
   { key: 'fri', label: 'F' },
-  { key: 'sat', label: 'S' },
+  { key: 'sat', label: 'S' }
 ];
 
 interface MonthDayCellProps {
@@ -52,7 +46,7 @@ const MonthDayCell = React.memo(
     isToday,
     appointments,
     dayTextStyle,
-    onPress,
+    onPress
   }: MonthDayCellProps) => {
     const handlePress = useCallback(() => {
       onPress(date);
@@ -62,7 +56,7 @@ const MonthDayCell = React.memo(
       <TouchableOpacity
         style={{
           width: DAY_WIDTH,
-          height: DAY_HEIGHT,
+          height: DAY_HEIGHT
         }}
         className={`border-[0.5px] border-gray-200 dark:border-gray-800 p-1 ${
           isSelected ? 'bg-gray-100 dark:bg-gray-800' : ''
@@ -78,9 +72,7 @@ const MonthDayCell = React.memo(
                 <View key={apt.id} className='mb-0.5'>
                   <View
                     className={`h-1 rounded-full ${
-                      apt.status === 'confirmed'
-                        ? 'bg-darkGreen'
-                        : 'bg-blue-500'
+                      apt.status === 'confirmed' ? 'bg-darkGreen' : 'bg-blue-500'
                     }`}
                   />
                 </View>
@@ -93,12 +85,7 @@ const MonthDayCell = React.memo(
   }
 );
 
-export function MonthView({
-  currentDate,
-  onDateChange,
-  appointments,
-  onDayPress,
-}: MonthViewProps) {
+export function MonthView({ currentDate, onDateChange, appointments, onDayPress }: MonthViewProps) {
   const [selectedDate, setSelectedDate] = useState(() =>
     startOfDay(new Date(currentDate)).toISOString()
   );
@@ -106,10 +93,7 @@ export function MonthView({
     () => startOfDay(new Date(currentDate || selectedDate)),
     [currentDate, selectedDate]
   );
-  const selectedDateObj = useMemo(
-    () => startOfDay(new Date(selectedDate)),
-    [selectedDate]
-  );
+  const selectedDateObj = useMemo(() => startOfDay(new Date(selectedDate)), [selectedDate]);
   const allDays = useMemo(() => getMonthDays(currentDateObj), [currentDateObj]);
 
   useEffect(() => {
@@ -143,11 +127,7 @@ export function MonthView({
         }
         map.get(dateKey)!.push(appointment);
       } catch (error) {
-        console.error(
-          'Error grouping appointment',
-          appointment.startTime,
-          error
-        );
+        console.error('Error grouping appointment', appointment.startTime, error);
       }
     });
     return map;
@@ -206,24 +186,15 @@ export function MonthView({
 
   return (
     <View className='flex-1 bg-white dark:bg-gray-950'>
-      <MonthHeader
-        currentDate={currentDateObj}
-        onMonthChange={handleMonthChange}
-      />
+      <MonthHeader currentDate={currentDateObj} onMonthChange={handleMonthChange} />
 
       {/* Weekday Headers */}
       <View className='flex-row border-b border-gray-200 dark:border-gray-800'>
         {WEEKDAYS.map((day) => (
-          <View
-            key={day.key}
-            style={{ width: DAY_WIDTH }}
-            className='py-2 items-center'
-          >
+          <View key={day.key} style={{ width: DAY_WIDTH }} className='py-2 items-center'>
             <Text
               className={`text-sm font-medium ${
-                day.key === 'sun'
-                  ? 'text-red-500'
-                  : 'text-gray-600 dark:text-gray-400'
+                day.key === 'sun' ? 'text-red-500' : 'text-gray-600 dark:text-gray-400'
               }`}
             >
               {day.label}
@@ -241,12 +212,7 @@ export function MonthView({
             const isCurrentDay = isToday(date);
             const dayKey = format(date, 'yyyy-MM-dd');
             const appointmentsForDay = appointmentsByDate.get(dayKey) || [];
-            const dayTextStyle = getDayTextStyle(
-              date,
-              isCurrentMonth,
-              isCurrentDay,
-              isSelected
-            );
+            const dayTextStyle = getDayTextStyle(date, isCurrentMonth, isCurrentDay, isSelected);
 
             return (
               <MonthDayCell

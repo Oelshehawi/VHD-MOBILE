@@ -15,17 +15,15 @@ export function NotificationPreferences() {
   // Query the current user's push token preferences
   const { data: tokens, isLoading } = useQuery<ExpoPushToken>(
     `SELECT * FROM expopushtokens WHERE userId = ? LIMIT 1`,
-    [user?.id || ''],
+    [user?.id || '']
   );
 
   const currentToken = tokens?.[0];
 
   // Local state for preferences (synced with database)
-  const [notifyNewJobs, setNotifyNewJobs] = useState(
-    currentToken?.notifyNewJobs === 1,
-  );
+  const [notifyNewJobs, setNotifyNewJobs] = useState(currentToken?.notifyNewJobs === 1);
   const [notifyScheduleChanges, setNotifyScheduleChanges] = useState(
-    currentToken?.notifyScheduleChanges === 1,
+    currentToken?.notifyScheduleChanges === 1
   );
 
   // Update local state when token data changes
@@ -36,10 +34,7 @@ export function NotificationPreferences() {
     }
   }, [currentToken]);
 
-  const handleToggle = async (
-    field: 'notifyNewJobs' | 'notifyScheduleChanges',
-    value: boolean,
-  ) => {
+  const handleToggle = async (field: 'notifyNewJobs' | 'notifyScheduleChanges', value: boolean) => {
     if (!user?.id || !currentToken || !powerSync) {
       Alert.alert('Error', 'Unable to update preferences. Please try again.');
       return;
@@ -61,11 +56,11 @@ export function NotificationPreferences() {
 
       await powerSync.execute(
         `UPDATE expopushtokens SET ${field} = ?, updatedAt = ? WHERE id = ?`,
-        [numericValue, now, currentToken.id],
+        [numericValue, now, currentToken.id]
       );
 
       debugLogger.info('PUSH', `Updated ${field} preference`, {
-        value,
+        value
       });
     } catch (error) {
       // Revert on failure
@@ -90,8 +85,7 @@ export function NotificationPreferences() {
         </CardHeader>
         <CardContent>
           <Text className='text-sm text-gray-600 dark:text-gray-400'>
-            Push notifications will be enabled automatically when you restart
-            the app.
+            Push notifications will be enabled automatically when you restart the app.
           </Text>
         </CardContent>
       </Card>
@@ -148,17 +142,13 @@ function NotificationToggle({
   description,
   value,
   onToggle,
-  disabled,
+  disabled
 }: NotificationToggleProps) {
   return (
     <View className='flex-row items-center justify-between py-2'>
       <View className='flex-1 pr-4'>
-        <Text className='font-semibold text-gray-900 dark:text-white'>
-          {label}
-        </Text>
-        <Text className='text-sm text-gray-600 dark:text-gray-400'>
-          {description}
-        </Text>
+        <Text className='font-semibold text-gray-900 dark:text-white'>{label}</Text>
+        <Text className='text-sm text-gray-600 dark:text-gray-400'>{description}</Text>
       </View>
       <Switch
         value={value}

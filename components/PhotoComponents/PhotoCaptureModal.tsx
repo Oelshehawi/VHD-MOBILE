@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  Alert,
-} from 'react-native';
+import { View, Text, TouchableOpacity, Modal, Alert } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { requestMediaPermission } from '@/utils/photos';
@@ -22,7 +16,7 @@ export function PhotoCaptureModal({
   visible,
   onClose,
   onPhotoSelected,
-  onOpenCamera,
+  onOpenCamera
 }: PhotoCaptureModalProps) {
   const insets = useSafeAreaInsets();
 
@@ -47,16 +41,14 @@ export function PhotoCaptureModal({
         quality: 1,
         allowsEditing: false,
         exif: false,
-        allowsMultipleSelection: true,
+        allowsMultipleSelection: true
       };
 
       const result = await ImagePicker.launchImageLibraryAsync(options);
 
       console.log(
         'PhotoCaptureModal - Selection result:',
-        result.canceled
-          ? 'Canceled'
-          : `Selected ${result.assets?.length || 0} photos`
+        result.canceled ? 'Canceled' : `Selected ${result.assets?.length || 0} photos`
       );
 
       if (!result.canceled && result.assets) {
@@ -67,7 +59,7 @@ export function PhotoCaptureModal({
             uri: firstAsset.uri.split('/').pop(), // Just log filename part of URI for privacy
             width: firstAsset.width,
             height: firstAsset.height,
-            fileSize: firstAsset.fileSize || 'unknown',
+            fileSize: firstAsset.fileSize || 'unknown'
           });
         }
 
@@ -77,20 +69,12 @@ export function PhotoCaptureModal({
       onClose();
     } catch (error) {
       console.error('Photo selection error:', error);
-      Alert.alert(
-        'Error',
-        'Failed to process selected photos. Please try again.'
-      );
+      Alert.alert('Error', 'Failed to process selected photos. Please try again.');
     }
   };
 
   return (
-    <Modal
-      animationType='slide'
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType='slide' transparent={true} visible={visible} onRequestClose={onClose}>
       <View className='flex-1 justify-end bg-black/50'>
         <View
           style={{
@@ -99,14 +83,12 @@ export function PhotoCaptureModal({
             borderTopRightRadius: 24,
             paddingHorizontal: 24,
             paddingTop: 16,
-            paddingBottom: Math.max(insets.bottom, 36),
+            paddingBottom: Math.max(insets.bottom, 36)
           }}
         >
           <View className='w-10 h-1 bg-gray-300 rounded-full self-center mb-4' />
 
-          <Text className='text-xl font-bold text-center mb-6 text-gray-900'>
-            Add Photos
-          </Text>
+          <Text className='text-xl font-bold text-center mb-6 text-gray-900'>Add Photos</Text>
 
           <View className='mb-6'>
             <TouchableOpacity
@@ -118,9 +100,7 @@ export function PhotoCaptureModal({
                 <Ionicons name='camera-outline' size={24} color='#3B82F6' />
               </View>
               <View className='flex-1'>
-                <Text className='text-base font-semibold text-gray-900'>
-                  Take Photos
-                </Text>
+                <Text className='text-base font-semibold text-gray-900'>Take Photos</Text>
                 <Text className='text-xs text-gray-500 mt-0.5'>
                   Use your camera to take new photos
                 </Text>
@@ -136,9 +116,7 @@ export function PhotoCaptureModal({
                 <Ionicons name='images-outline' size={24} color='#10B981' />
               </View>
               <View className='flex-1'>
-                <Text className='text-base font-semibold text-gray-900'>
-                  Choose from Gallery
-                </Text>
+                <Text className='text-base font-semibold text-gray-900'>Choose from Gallery</Text>
                 <Text className='text-xs text-gray-500 mt-0.5'>
                   Select existing photos from your device
                 </Text>
@@ -150,9 +128,7 @@ export function PhotoCaptureModal({
             onPress={onClose}
             className='bg-gray-100 py-3.5 rounded-lg items-center'
           >
-            <Text className='text-base font-semibold text-gray-700'>
-              Cancel
-            </Text>
+            <Text className='text-base font-semibold text-gray-700'>Cancel</Text>
           </TouchableOpacity>
         </View>
       </View>

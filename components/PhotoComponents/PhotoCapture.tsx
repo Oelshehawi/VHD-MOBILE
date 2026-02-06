@@ -6,11 +6,7 @@ import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
 import { PhotoType, showToast } from '@/utils/photos';
-import {
-  usePowerSync,
-  useQuery,
-  DEFAULT_ROW_COMPARATOR,
-} from '@powersync/react-native';
+import { usePowerSync, useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import { useSystem } from '@/services/database/System';
 import { DeletePhotoModal } from './DeletePhotoModal';
 import { LoadingModal } from './LoadingModal';
@@ -37,7 +33,7 @@ export function PhotoCapture({
   jobTitle,
   startDate,
   isLoading: externalLoading = false,
-  allowAdd = true,
+  allowAdd = true
 }: PhotoCaptureProps) {
   const powerSync = usePowerSync();
   const system = useSystem();
@@ -45,9 +41,7 @@ export function PhotoCapture({
   const [showModal, setShowModal] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
-  const [photoToDelete, setPhotoToDelete] = useState<{ id: string } | null>(
-    null,
-  );
+  const [photoToDelete, setPhotoToDelete] = useState<{ id: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [galleryIndex, setGalleryIndex] = useState(0);
@@ -65,7 +59,7 @@ export function PhotoCapture({
          ORDER BY p.timestamp ASC`
       : `SELECT p.id FROM photos p WHERE 0`,
     [scheduleId || '', type],
-    { rowComparator: DEFAULT_ROW_COMPARATOR },
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
   const resolvePhotoUrl = useCallback(
@@ -82,14 +76,14 @@ export function PhotoCapture({
 
       return photo.cloudinaryUrl || '';
     },
-    [system?.attachmentQueue],
+    [system?.attachmentQueue]
   );
 
   const prepareGalleryImages = useCallback(() => {
     return photos.map((photo) => ({
       uri: resolvePhotoUrl(photo),
       title: `${type === 'before' ? 'Before' : 'After'} Photo`,
-      type: type,
+      type: type
     }));
   }, [photos, type, resolvePhotoUrl]);
 
@@ -105,11 +99,9 @@ export function PhotoCapture({
 
   const getGallerySubtitle = useCallback(
     (index: number) => {
-      return `${type === 'before' ? 'Before' : 'After'} Photo ${index + 1} of ${
-        photos.length
-      }`;
+      return `${type === 'before' ? 'Before' : 'After'} Photo ${index + 1} of ${photos.length}`;
     },
-    [type, photos.length],
+    [type, photos.length]
   );
 
   const checkFileSize = async (uri: string): Promise<boolean> => {
@@ -143,15 +135,11 @@ export function PhotoCapture({
         result.assets.map(async (asset) => {
           const isValidSize = await checkFileSize(asset.uri);
           return { asset, isValidSize };
-        }),
+        })
       );
 
-      const validAssets = validationResults
-        .filter((r) => r.isValidSize)
-        .map((r) => r.asset);
-      const invalidAssets = validationResults
-        .filter((r) => !r.isValidSize)
-        .map((r) => r.asset);
+      const validAssets = validationResults.filter((r) => r.isValidSize).map((r) => r.asset);
+      const invalidAssets = validationResults.filter((r) => !r.isValidSize).map((r) => r.asset);
 
       if (invalidAssets.length > 0) {
         Alert.alert(
@@ -159,14 +147,12 @@ export function PhotoCapture({
           `${invalidAssets.length} photo${
             invalidAssets.length > 1 ? 's' : ''
           } exceeds the 20MB size limit and will be skipped.`,
-          [{ text: 'OK' }],
+          [{ text: 'OK' }]
         );
       }
 
       if (validAssets.length === 0) {
-        showToast(
-          'No photos were added - all files exceeded the 20MB size limit',
-        );
+        showToast('No photos were added - all files exceeded the 20MB size limit');
         return;
       }
 
@@ -176,7 +162,7 @@ export function PhotoCapture({
         type: type,
         technicianId: technicianId,
         jobTitle: jobTitle,
-        startDate: startDate,
+        startDate: startDate
       }));
 
       const savedIds = await queue.queuePhotos(photoData);
@@ -184,14 +170,12 @@ export function PhotoCapture({
       showToast(
         `Added ${savedIds.length} ${type} photo${
           savedIds.length > 1 ? 's' : ''
-        } - uploading in background`,
+        } - uploading in background`
       );
     } catch (error) {
       Alert.alert(
         'Error',
-        error instanceof Error
-          ? error.message
-          : 'Failed to save photos. Please try again.',
+        error instanceof Error ? error.message : 'Failed to save photos. Please try again.'
       );
     } finally {
       setIsUploading(false);
@@ -225,14 +209,14 @@ export function PhotoCapture({
             exif: null,
             base64: null,
             duration: null,
-            mimeType: 'image/jpeg',
+            mimeType: 'image/jpeg'
           } as ImagePicker.ImagePickerAsset;
-        }),
+        })
       );
 
       const cameraResult: ImagePicker.ImagePickerResult = {
         canceled: false,
-        assets,
+        assets
       };
 
       await handlePhotoSelected(cameraResult);
@@ -255,7 +239,7 @@ export function PhotoCapture({
         if (system?.attachmentQueue) {
           const attachments = await tx.getAll<AttachmentRecord>(
             `SELECT * FROM attachments WHERE id = ?`,
-            [photoId],
+            [photoId]
           );
 
           if (attachments.length > 0) {
@@ -293,9 +277,7 @@ export function PhotoCapture({
       <View className='flex-row justify-between items-center mb-3'>
         <View className='flex-row items-center'>
           <View
-            className={`px-2 py-1 rounded-xl ${
-              type === 'before' ? 'bg-blue-100' : 'bg-green-100'
-            }`}
+            className={`px-2 py-1 rounded-xl ${type === 'before' ? 'bg-blue-100' : 'bg-green-100'}`}
           >
             <Text
               className={`text-xs font-semibold ${
@@ -318,9 +300,7 @@ export function PhotoCapture({
               setGalleryVisible(false);
               setShowModal(true);
             }}
-            className={`px-4 py-2 rounded-lg ${
-              type === 'before' ? 'bg-blue-500' : 'bg-green-500'
-            }`}
+            className={`px-4 py-2 rounded-lg ${type === 'before' ? 'bg-blue-500' : 'bg-green-500'}`}
             disabled={isLoading}
           >
             <Text className='text-white font-semibold text-sm'>

@@ -17,7 +17,12 @@ class DebugLogger {
     this.logFilePath = new File(Paths.document, 'debug_logs.json').uri;
   }
 
-  async log(level: 'info' | 'warn' | 'error' | 'debug', category: string, message: string, data?: any) {
+  async log(
+    level: 'info' | 'warn' | 'error' | 'debug',
+    category: string,
+    message: string,
+    data?: any
+  ) {
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
@@ -115,7 +120,7 @@ class DebugLogger {
 
   async getLogsByCategory(category: string): Promise<LogEntry[]> {
     const logs = await this.getLogs();
-    return logs.filter(log => log.category === category);
+    return logs.filter((log) => log.category === category);
   }
 
   async clearLogs(): Promise<void> {
@@ -161,8 +166,12 @@ export const debugLogger = new DebugLogger();
 
 // Convenience functions
 export const logPhoto = (message: string, data?: any) => debugLogger.info('PHOTO', message, data);
-export const logPhotoError = (message: string, data?: any) => debugLogger.error('PHOTO', message, data);
+export const logPhotoError = (message: string, data?: any) =>
+  debugLogger.error('PHOTO', message, data);
 export const logUpload = (message: string, data?: any) => debugLogger.info('UPLOAD', message, data);
-export const logUploadError = (message: string, data?: any) => debugLogger.error('UPLOAD', message, data);
-export const logDatabase = (message: string, data?: any) => debugLogger.info('DATABASE', message, data);
-export const logDatabaseError = (message: string, data?: any) => debugLogger.error('DATABASE', message, data);
+export const logUploadError = (message: string, data?: any) =>
+  debugLogger.error('UPLOAD', message, data);
+export const logDatabase = (message: string, data?: any) =>
+  debugLogger.info('DATABASE', message, data);
+export const logDatabaseError = (message: string, data?: any) =>
+  debugLogger.error('DATABASE', message, data);

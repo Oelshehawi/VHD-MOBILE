@@ -8,7 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Image,
+  Image
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSignIn, isClerkRuntimeError } from '@clerk/clerk-expo';
@@ -19,8 +19,7 @@ import { debugLogger } from '@/utils/DebugLogger';
 export default function Page() {
   const router = useRouter();
   const { signIn, setActive, isLoaded } = useSignIn();
-  const { hasCredentials, setCredentials, authenticate, biometricType } =
-    useLocalCredentials();
+  const { hasCredentials, setCredentials, authenticate, biometricType } = useLocalCredentials();
 
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
@@ -38,9 +37,7 @@ export default function Page() {
       debugLogger.error('AUTH', 'Biometric authentication failed', {
         error: err instanceof Error ? err.message : String(err)
       });
-      setError(
-        'Biometric authentication failed. Please try again or use email/password.',
-      );
+      setError('Biometric authentication failed. Please try again or use email/password.');
     } finally {
       setIsLoading(false);
     }
@@ -67,7 +64,7 @@ export default function Page() {
           ? await authenticate()
           : await signIn.create({
               identifier: emailAddress,
-              password,
+              password
             });
       debugLogger.info('AUTH', 'Sign-in attempt result', { status: signInAttempt?.status });
 
@@ -77,7 +74,7 @@ export default function Page() {
         if (!useLocal) {
           await setCredentials({
             identifier: emailAddress,
-            password,
+            password
           });
         }
 
@@ -93,11 +90,12 @@ export default function Page() {
       if (isClerkRuntimeError(err)) {
         if (err.code === 'network_error') {
           debugLogger.error('AUTH', 'Network error during sign-in');
-          setError(
-            'Network error occurred. Please check your connection and try again.',
-          );
+          setError('Network error occurred. Please check your connection and try again.');
         } else {
-          debugLogger.error('AUTH', 'Clerk runtime error', { code: err.code, message: err.message });
+          debugLogger.error('AUTH', 'Clerk runtime error', {
+            code: err.code,
+            message: err.message
+          });
           setError(err.message || 'An error occurred during sign in');
         }
       } else {
@@ -106,9 +104,7 @@ export default function Page() {
           code: err?.code,
           errors: err?.errors
         });
-        setError(
-          err.errors?.[0]?.message || 'Sign-in failed. Please try again.',
-        );
+        setError(err.errors?.[0]?.message || 'Sign-in failed. Please try again.');
       }
     } finally {
       setIsLoading(false);
@@ -120,10 +116,7 @@ export default function Page() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       className='flex-1'
     >
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        className='bg-white dark:bg-gray-900'
-      >
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }} className='bg-white dark:bg-gray-900'>
         <View className='flex-1 mt-36 p-8'>
           <View className='mb-8 items-center'>
             <Image
@@ -152,15 +145,12 @@ export default function Page() {
             >
               <Ionicons name='finger-print' size={24} color='white' />
               <Text className='text-white font-bold ml-2'>
-                Sign in with{' '}
-                {biometricType === 'fingerprint' ? 'Fingerprint' : 'Face ID'}
+                Sign in with {biometricType === 'fingerprint' ? 'Fingerprint' : 'Face ID'}
               </Text>
             </TouchableOpacity>
           )}
 
-          <Text className='text-gray-600 dark:text-gray-300 mb-2'>
-            Email Address
-          </Text>
+          <Text className='text-gray-600 dark:text-gray-300 mb-2'>Email Address</Text>
           <TextInput
             autoCapitalize='none'
             value={emailAddress}
@@ -168,9 +158,7 @@ export default function Page() {
             className='bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-white py-3 px-4 rounded-lg mb-4'
           />
 
-          <Text className='text-gray-600 dark:text-gray-300 mb-2'>
-            Password
-          </Text>
+          <Text className='text-gray-600 dark:text-gray-300 mb-2'>Password</Text>
           <TextInput
             value={password}
             onChangeText={setPassword}

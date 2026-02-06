@@ -1,10 +1,7 @@
 import { useQuery } from '@powersync/react-native';
 import { Schedule, InvoiceType } from '@/types';
 
-export function useSchedules(
-  isManager: boolean,
-  userId: string | null | undefined
-) {
+export function useSchedules(isManager: boolean, userId: string | null | undefined) {
   return useQuery<Schedule>(
     `SELECT * FROM schedules 
      WHERE (? = true OR assignedTechnicians LIKE ?)
@@ -15,9 +12,7 @@ export function useSchedules(
 
 export function useInvoiceById(invoiceId: string | null) {
   return useQuery<InvoiceType>(
-    invoiceId
-      ? `SELECT * FROM invoices WHERE id = ?`
-      : `SELECT * FROM invoices WHERE 0`,
+    invoiceId ? `SELECT * FROM invoices WHERE id = ?` : `SELECT * FROM invoices WHERE 0`,
     [invoiceId || '']
   );
 }

@@ -34,23 +34,14 @@ export function ConfirmationModal({
   confirmText = 'Confirm',
   cancelText = 'Cancel',
   isLoading = false,
-  showCancelButton = true,
+  showCancelButton = true
 }: ConfirmationModalProps) {
   return (
-    <Modal
-      animationType='fade'
-      transparent={true}
-      visible={visible}
-      onRequestClose={onClose}
-    >
+    <Modal animationType='fade' transparent={true} visible={visible} onRequestClose={onClose}>
       <View className='flex-1 justify-center items-center bg-black/50'>
         <View className='bg-white dark:bg-gray-800 rounded-xl w-[90%] max-w-md p-5'>
-          <Text className='text-xl font-bold text-gray-900 dark:text-white mb-2'>
-            {title}
-          </Text>
-          <Text className='text-gray-700 dark:text-gray-300 mb-5'>
-            {message}
-          </Text>
+          <Text className='text-xl font-bold text-gray-900 dark:text-white mb-2'>{title}</Text>
+          <Text className='text-gray-700 dark:text-gray-300 mb-5'>{message}</Text>
           <View className='flex-row justify-end gap-3'>
             {showCancelButton && (
               <TouchableOpacity
@@ -58,9 +49,7 @@ export function ConfirmationModal({
                 className='px-4 py-2 bg-gray-200 dark:bg-gray-700 rounded-lg'
                 disabled={isLoading}
               >
-                <Text className='text-gray-700 dark:text-gray-300 font-medium'>
-                  {cancelText}
-                </Text>
+                <Text className='text-gray-700 dark:text-gray-300 font-medium'>{cancelText}</Text>
               </TouchableOpacity>
             )}
             <TouchableOpacity

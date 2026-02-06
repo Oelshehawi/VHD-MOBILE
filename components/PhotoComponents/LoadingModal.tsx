@@ -14,10 +14,7 @@ export function LoadingModal({ visible, type }: LoadingModalProps) {
   return (
     <View pointerEvents='auto' style={styles.overlay}>
       <View style={styles.content}>
-        <ActivityIndicator
-          size='large'
-          color={type === 'before' ? '#3b82f6' : '#10b981'}
-        />
+        <ActivityIndicator size='large' color={type === 'before' ? '#3b82f6' : '#10b981'} />
         <Text className='text-base font-semibold mt-3 mb-1'>Processing...</Text>
         <Text className='text-sm text-gray-500 text-center'>
           Please wait while we process your photos.
@@ -33,7 +30,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(0, 0, 0, 0.3)',
-    zIndex: 10,
+    zIndex: 10
   },
   content: {
     backgroundColor: '#ffffff',
@@ -45,6 +42,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowOffset: { width: 0, height: 6 },
     shadowRadius: 12,
-    elevation: 10,
-  },
+    elevation: 10
+  }
 });

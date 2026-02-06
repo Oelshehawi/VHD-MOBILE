@@ -18,7 +18,7 @@ interface TimeOffRequestItemProps {
 export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
   request,
   onEdit,
-  onCancel,
+  onCancel
 }) => {
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -62,47 +62,58 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
   return (
     <View className={`${getStatusColor(request.status || '')} p-4 rounded-lg mb-3`}>
       {/* Header with status */}
-      <View className="flex-row items-center justify-between mb-3">
-        <View className="flex-row items-center flex-1">
+      <View className='flex-row items-center justify-between mb-3'>
+        <View className='flex-row items-center flex-1'>
           <Ionicons
             name={getStatusIcon(request.status || '') as any}
             size={20}
-            color={request.status === 'approved' ? '#16a34a' : request.status === 'rejected' ? '#dc2626' : '#ca8a04'}
+            color={
+              request.status === 'approved'
+                ? '#16a34a'
+                : request.status === 'rejected'
+                  ? '#dc2626'
+                  : '#ca8a04'
+            }
           />
-          <Text className={`ml-2 font-semibold capitalize ${getStatusTextColor(request.status || '')}`}>
+          <Text
+            className={`ml-2 font-semibold capitalize ${getStatusTextColor(request.status || '')}`}
+          >
             {request.status}
           </Text>
         </View>
       </View>
 
       {/* Date range */}
-      <View className="flex-row items-center mb-2">
-        <Ionicons name="calendar-outline" size={16} color="#666" />
-        <Text className="ml-2 text-gray-800 dark:text-gray-200 font-semibold">{dateRange}</Text>
+      <View className='flex-row items-center mb-2'>
+        <Ionicons name='calendar-outline' size={16} color='#666' />
+        <Text className='ml-2 text-gray-800 dark:text-gray-200 font-semibold'>{dateRange}</Text>
       </View>
 
       {/* Reason */}
-      <View className="mb-3">
-        <Text className="text-gray-600 dark:text-gray-400 text-sm mb-1">Reason:</Text>
-        <Text className="text-gray-800 dark:text-gray-100">{request.reason}</Text>
+      <View className='mb-3'>
+        <Text className='text-gray-600 dark:text-gray-400 text-sm mb-1'>Reason:</Text>
+        <Text className='text-gray-800 dark:text-gray-100'>{request.reason}</Text>
       </View>
 
       {/* Request date */}
-      <Text className="text-xs text-gray-600 dark:text-gray-400 mb-3">
-        Requested on {request.requestedAt ? format(parseISODateToLocalDate(request.requestedAt), 'MMM d, yyyy') : 'Unknown'}
+      <Text className='text-xs text-gray-600 dark:text-gray-400 mb-3'>
+        Requested on{' '}
+        {request.requestedAt
+          ? format(parseISODateToLocalDate(request.requestedAt), 'MMM d, yyyy')
+          : 'Unknown'}
       </Text>
 
       {/* Admin notes if available */}
       {request.notes && (
-        <View className="bg-white/50 dark:bg-black/20 p-2 rounded mb-3">
-          <Text className="text-xs text-gray-600 dark:text-gray-400 mb-1">Admin Notes:</Text>
-          <Text className="text-gray-800 dark:text-gray-200 text-sm">{request.notes}</Text>
+        <View className='bg-white/50 dark:bg-black/20 p-2 rounded mb-3'>
+          <Text className='text-xs text-gray-600 dark:text-gray-400 mb-1'>Admin Notes:</Text>
+          <Text className='text-gray-800 dark:text-gray-200 text-sm'>{request.notes}</Text>
         </View>
       )}
 
       {/* Action buttons for pending requests */}
       {isPending && (onEdit || onCancel) && (
-        <View className="flex-row gap-2">
+        <View className='flex-row gap-2'>
           {/* {onEdit && (
             <TouchableOpacity
               onPress={() => onEdit(request)}
@@ -115,10 +126,10 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
           {onCancel && (
             <TouchableOpacity
               onPress={() => onCancel(request.id!)}
-              className="flex-1 bg-red-500 p-3 rounded flex-row items-center justify-center"
+              className='flex-1 bg-red-500 p-3 rounded flex-row items-center justify-center'
             >
-              <Ionicons name="trash" size={16} color="white" />
-              <Text className="text-white font-semibold ml-2">Cancel</Text>
+              <Ionicons name='trash' size={16} color='white' />
+              <Text className='text-white font-semibold ml-2'>Cancel</Text>
             </TouchableOpacity>
           )}
         </View>

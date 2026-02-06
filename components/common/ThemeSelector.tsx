@@ -31,9 +31,7 @@ export function ThemeSelector({ onClose }: ThemeSelectorProps) {
 
   return (
     <View className='p-4 bg-white dark:bg-gray-800 rounded-lg'>
-      <Text className='text-lg font-semibold text-gray-900 dark:text-white mb-4'>
-        Select Theme
-      </Text>
+      <Text className='text-lg font-semibold text-gray-900 dark:text-white mb-4'>Select Theme</Text>
 
       <TouchableOpacity
         className={`flex-row items-center p-3 rounded-lg mb-2 ${
@@ -45,12 +43,8 @@ export function ThemeSelector({ onClose }: ThemeSelectorProps) {
           <Ionicons name='sunny' size={22} color='#FFB700' />
         </View>
         <View>
-          <Text className='font-medium text-gray-900 dark:text-white'>
-            Light Mode
-          </Text>
-          <Text className='text-sm text-gray-500 dark:text-gray-400'>
-            Light appearance
-          </Text>
+          <Text className='font-medium text-gray-900 dark:text-white'>Light Mode</Text>
+          <Text className='text-sm text-gray-500 dark:text-gray-400'>Light appearance</Text>
         </View>
         {theme === 'light' && (
           <View className='ml-auto'>
@@ -69,12 +63,8 @@ export function ThemeSelector({ onClose }: ThemeSelectorProps) {
           <Ionicons name='moon' size={22} color='#6366F1' />
         </View>
         <View>
-          <Text className='font-medium text-gray-900 dark:text-white'>
-            Dark Mode
-          </Text>
-          <Text className='text-sm text-gray-500 dark:text-gray-400'>
-            Dark appearance
-          </Text>
+          <Text className='font-medium text-gray-900 dark:text-white'>Dark Mode</Text>
+          <Text className='text-sm text-gray-500 dark:text-gray-400'>Dark appearance</Text>
         </View>
         {theme === 'dark' && (
           <View className='ml-auto'>
@@ -93,9 +83,7 @@ export function ThemeSelector({ onClose }: ThemeSelectorProps) {
           <Ionicons name='settings' size={22} color='#8B5CF6' />
         </View>
         <View>
-          <Text className='font-medium text-gray-900 dark:text-white'>
-            System Default
-          </Text>
+          <Text className='font-medium text-gray-900 dark:text-white'>System Default</Text>
           <Text className='text-sm text-gray-500 dark:text-gray-400'>
             Current system theme: {systemTheme || 'light'}
           </Text>

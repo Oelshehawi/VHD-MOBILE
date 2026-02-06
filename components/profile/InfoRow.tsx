@@ -10,11 +10,10 @@ interface InfoRowProps {
 export function InfoRow({ label, value, className }: InfoRowProps) {
   return (
     <View className={className}>
-      <Text variant="small" className="text-gray-600 dark:text-gray-400">
+      <Text variant='small' className='text-gray-600 dark:text-gray-400'>
         {label}
       </Text>
-      <Text className="text-gray-800 dark:text-gray-200">{value}</Text>
+      <Text className='text-gray-800 dark:text-gray-200'>{value}</Text>
     </View>
   );
 }
-

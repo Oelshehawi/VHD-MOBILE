@@ -25,7 +25,7 @@ export const THEME = {
     chart2: 'hsl(173 58% 39%)',
     chart3: 'hsl(197 37% 24%)',
     chart4: 'hsl(43 74% 66%)',
-    chart5: 'hsl(27 87% 67%)',
+    chart5: 'hsl(27 87% 67%)'
   },
   dark: {
     background: 'hsl(0 0% 3.9%)',
@@ -51,8 +51,8 @@ export const THEME = {
     chart2: 'hsl(160 60% 45%)',
     chart3: 'hsl(30 80% 55%)',
     chart4: 'hsl(280 65% 60%)',
-    chart5: 'hsl(340 75% 55%)',
-  },
+    chart5: 'hsl(340 75% 55%)'
+  }
 };
 
 export const NAV_THEME: Record<'light' | 'dark', Theme> = {
@@ -64,8 +64,8 @@ export const NAV_THEME: Record<'light' | 'dark', Theme> = {
       card: THEME.light.card,
       notification: THEME.light.destructive,
       primary: THEME.light.primary,
-      text: THEME.light.foreground,
-    },
+      text: THEME.light.foreground
+    }
   },
   dark: {
     ...DarkTheme,
@@ -75,8 +75,7 @@ export const NAV_THEME: Record<'light' | 'dark', Theme> = {
       card: THEME.dark.card,
       notification: THEME.dark.destructive,
       primary: THEME.dark.primary,
-      text: THEME.dark.foreground,
-    },
-  },
+      text: THEME.dark.foreground
+    }
+  }
 };
-

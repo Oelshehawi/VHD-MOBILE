@@ -11,11 +11,7 @@ interface DebugButtonProps {
   visible?: boolean;
 }
 
-export function DebugButton({
-  bottom = 100,
-  right = 20,
-  visible = true
-}: DebugButtonProps) {
+export function DebugButton({ bottom = 100, right = 20, visible = true }: DebugButtonProps) {
   const [showPanel, setShowPanel] = useState(false);
   const [taps, setTaps] = useState(0);
   const [lastTapTime, setLastTapTime] = useState(0);
@@ -47,11 +43,9 @@ export function DebugButton({
     } else {
       // Show hint after 2 taps
       if (newTapCount === 2) {
-        Alert.alert(
-          'Debug Mode',
-          `Tap ${5 - newTapCount} more times to open debug panel`,
-          [{ text: 'OK' }]
-        );
+        Alert.alert('Debug Mode', `Tap ${5 - newTapCount} more times to open debug panel`, [
+          { text: 'OK' }
+        ]);
       }
     }
   };
@@ -92,15 +86,13 @@ export function DebugButton({
       >
         <TouchableOpacity
           onPress={handlePress}
-          className="bg-purple-600 rounded-full w-12 h-12 items-center justify-center shadow-lg"
+          className='bg-purple-600 rounded-full w-12 h-12 items-center justify-center shadow-lg'
           activeOpacity={0.7}
         >
-          <Text className="text-white font-bold text-xs">
-            DBG
-          </Text>
+          <Text className='text-white font-bold text-xs'>DBG</Text>
           {logCount > 0 && (
-            <View className="absolute -top-1 -right-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center">
-              <Text className="text-white text-xs font-bold">
+            <View className='absolute -top-1 -right-1 bg-red-500 rounded-full w-5 h-5 items-center justify-center'>
+              <Text className='text-white text-xs font-bold'>
                 {logCount > 99 ? '99+' : logCount}
               </Text>
             </View>
@@ -108,10 +100,7 @@ export function DebugButton({
         </TouchableOpacity>
       </View>
 
-      <DebugPanel
-        visible={showPanel}
-        onClose={() => setShowPanel(false)}
-      />
+      <DebugPanel visible={showPanel} onClose={() => setShowPanel(false)} />
     </>
   );
 }

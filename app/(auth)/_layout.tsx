@@ -15,7 +15,7 @@ export default function AuthRoutesLayout() {
     <SafeAreaView style={{ flex: 1 }}>
       <Stack
         screenOptions={{
-          headerShown: false,
+          headerShown: false
         }}
       />
     </SafeAreaView>

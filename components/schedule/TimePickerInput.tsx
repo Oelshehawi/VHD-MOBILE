@@ -1,11 +1,5 @@
 import React, { useState } from 'react';
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  Modal,
-  ScrollView,
-} from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { formatTo12Hour } from '../../utils/availabilityValidation';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -28,7 +22,7 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
   onChange,
   label,
   placeholder = 'Select time',
-  error,
+  error
 }) => {
   const [showPicker, setShowPicker] = useState(false);
 
@@ -72,9 +66,7 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
   return (
     <View className='mb-4'>
       {label && (
-        <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>
-          {label}
-        </Text>
+        <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>{label}</Text>
       )}
 
       <TouchableOpacity
@@ -83,18 +75,10 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
           error ? 'border-red-500' : 'border-gray-200 dark:border-gray-600'
         }`}
       >
-        <Text
-          className={`${
-            value ? 'text-gray-900 dark:text-white' : 'text-gray-500'
-          }`}
-        >
+        <Text className={`${value ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
           {displayValue}
         </Text>
-        <Ionicons
-          name='time-outline'
-          size={20}
-          color={error ? '#ef4444' : '#666'}
-        />
+        <Ionicons name='time-outline' size={20} color={error ? '#ef4444' : '#666'} />
       </TouchableOpacity>
 
       {error && <Text className='text-red-500 text-sm mt-2'>{error}</Text>}
@@ -108,9 +92,7 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
         <SafeAreaView className='flex-1 bg-black/50 justify-end'>
           <View className='bg-white dark:bg-gray-800 rounded-t-xl p-6'>
             <View className='flex-row justify-between items-center mb-6'>
-              <Text className='text-lg font-bold text-gray-900 dark:text-white'>
-                Select Time
-              </Text>
+              <Text className='text-lg font-bold text-gray-900 dark:text-white'>Select Time</Text>
               <TouchableOpacity onPress={() => setShowPicker(false)}>
                 <Ionicons name='close' size={24} color='#666' />
               </TouchableOpacity>
@@ -132,16 +114,12 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
                       key={h}
                       onPress={() => setHour12(h)}
                       className={`p-3 rounded ${
-                        hour12 === h
-                          ? 'bg-blue-500'
-                          : 'bg-gray-100 dark:bg-gray-700'
+                        hour12 === h ? 'bg-blue-500' : 'bg-gray-100 dark:bg-gray-700'
                       }`}
                     >
                       <Text
                         className={`text-lg font-semibold text-center ${
-                          hour12 === h
-                            ? 'text-white'
-                            : 'text-gray-900 dark:text-white'
+                          hour12 === h ? 'text-white' : 'text-gray-900 dark:text-white'
                         }`}
                       >
                         {String(h).padStart(2, '0')}
@@ -151,9 +129,7 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
                 </ScrollView>
               </View>
 
-              <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
-                :
-              </Text>
+              <Text className='text-2xl font-bold text-gray-900 dark:text-white'>:</Text>
 
               {/* Minutes */}
               <View className='flex-col items-center flex-1'>
@@ -170,16 +146,12 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
                       key={m}
                       onPress={() => setMinute(m)}
                       className={`p-3 rounded ${
-                        minute === m
-                          ? 'bg-blue-500'
-                          : 'bg-gray-100 dark:bg-gray-700'
+                        minute === m ? 'bg-blue-500' : 'bg-gray-100 dark:bg-gray-700'
                       }`}
                     >
                       <Text
                         className={`text-lg font-semibold text-center ${
-                          minute === m
-                            ? 'text-white'
-                            : 'text-gray-900 dark:text-white'
+                          minute === m ? 'text-white' : 'text-gray-900 dark:text-white'
                         }`}
                       >
                         {String(m).padStart(2, '0')}
@@ -197,16 +169,12 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
                 <TouchableOpacity
                   onPress={() => setIsPM(false)}
                   className={`py-2 px-3 rounded ${
-                    !isPM
-                      ? 'bg-blue-500'
-                      : 'bg-gray-100 dark:bg-gray-700'
+                    !isPM ? 'bg-blue-500' : 'bg-gray-100 dark:bg-gray-700'
                   }`}
                 >
                   <Text
                     className={`font-semibold text-center ${
-                      !isPM
-                        ? 'text-white'
-                        : 'text-gray-900 dark:text-white'
+                      !isPM ? 'text-white' : 'text-gray-900 dark:text-white'
                     }`}
                   >
                     AM
@@ -215,16 +183,12 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
                 <TouchableOpacity
                   onPress={() => setIsPM(true)}
                   className={`py-2 px-3 rounded ${
-                    isPM
-                      ? 'bg-blue-500'
-                      : 'bg-gray-100 dark:bg-gray-700'
+                    isPM ? 'bg-blue-500' : 'bg-gray-100 dark:bg-gray-700'
                   }`}
                 >
                   <Text
                     className={`font-semibold text-center ${
-                      isPM
-                        ? 'text-white'
-                        : 'text-gray-900 dark:text-white'
+                      isPM ? 'text-white' : 'text-gray-900 dark:text-white'
                     }`}
                   >
                     PM
@@ -246,9 +210,7 @@ export const TimePickerInput: React.FC<TimePickerInputProps> = ({
                 onPress={handleTimeSelect}
                 className='flex-1 bg-blue-500 p-4 rounded-lg'
               >
-                <Text className='text-center font-semibold text-white'>
-                  Select
-                </Text>
+                <Text className='text-center font-semibold text-white'>Select</Text>
               </TouchableOpacity>
             </View>
           </View>

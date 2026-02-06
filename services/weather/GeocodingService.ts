@@ -36,7 +36,7 @@ export class GeocodingService {
 
       const coords = {
         latitude: results[0].lat,
-        longitude: results[0].lon,
+        longitude: results[0].lon
       };
 
       // Cache permanently (addresses don't move)

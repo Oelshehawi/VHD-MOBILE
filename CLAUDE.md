@@ -72,6 +72,7 @@ Providers (Global State)
 **Key Pattern**: All data flows through PowerSync's local SQLite database first, then syncs to backend.
 
 **Sync Flow**:
+
 1. **Local Operations**: App writes to local PowerSync tables
 2. **Operation Tracking**: `add_photo_operations` and `delete_photo_operations` tables track mutations
 3. **BackendConnector**: Implements `uploadData()` to push mutations to the server
@@ -79,6 +80,7 @@ Providers (Global State)
 5. **Attachment Sync**: `PhotoAttachmentQueue` handles concurrent file uploads to Cloudinary with retry logic
 
 **Key Tables** (defined in `services/database/schema.ts`):
+
 - `schedules` - Job assignments with assigned technicians
 - `invoices` - Invoice records
 - `payrollperiods` - Payroll period configuration
@@ -88,6 +90,7 @@ Providers (Global State)
 - `add_photo_operations` / `delete_photo_operations` - Sync operation tracking
 
 **Query Pattern**:
+
 ```typescript
 // Reactive subscriptions using PowerSync hooks
 const { data: schedules } = useQuery<Schedule>(
@@ -101,11 +104,13 @@ await ApiClient.from('schedules').upsert({ id, ...data });
 ### Authentication & Authorization
 
 **Clerk Integration**:
+
 - Token caching via `tokenCache` for persistent sessions
 - Custom PowerSync token template for backend authentication
 - User metadata: `user.publicMetadata.isManager` determines role
 
 **Protected Routes**:
+
 - Unauthenticated users redirected to `(auth)/sign-in`
 - PowerSync initializes after Clerk loads (checks `isLoaded` flag)
 - Technician name mapping in `PowerSyncProvider.tsx` for user display
@@ -113,6 +118,7 @@ await ApiClient.from('schedules').upsert({ id, ...data });
 ### Component Organization
 
 **Directory Structure**:
+
 - `app/` - Expo Router page structure (follows file-based routing)
   - `(auth)/` - Authentication screens
   - `(tabs)/` - Main app with bottom tab navigation
@@ -132,6 +138,7 @@ await ApiClient.from('schedules').upsert({ id, ...data });
 - `types/` - TypeScript type definitions
 
 **Component Patterns**:
+
 - **Container Components**: Manage state and logic (DashboardView, ScheduleView)
 - **Presentational Components**: Display data (PhotoItem, Card)
 - **Custom Hooks**: Data fetching and state management (useSchedules, useQuery)
@@ -141,12 +148,14 @@ await ApiClient.from('schedules').upsert({ id, ...data });
 ### Feature Breakdown
 
 **Dashboard Tab** (`app/(tabs)/index.tsx`):
+
 - Real-time job metrics and summaries
 - Current payroll period display
 - Weather data integration
 - Quick access to scheduled work
 
 **Schedule Tab** (`app/(tabs)/schedule.tsx`):
+
 - Calendar views (Month, Week, Daily)
 - Job assignment and detail view
 - **Photo Documentation**: Capture before/after photos with metadata
@@ -155,12 +164,14 @@ await ApiClient.from('schedules').upsert({ id, ...data });
 - **Signature Capture**: Digital signature for job sign-off
 
 **Profile Tab** (`app/(tabs)/profile.tsx`):
+
 - User profile management
 - **Availability Management**: Set working hours/availability windows
 - **Time-Off Requests**: Request and track time-off periods
 - **Theme Selection**: Switch between light/dark themes
 
 **Background Services**:
+
 - Photo upload queue with retry logic
 - OTA update checking and notification
 - Network status monitoring
@@ -168,6 +179,7 @@ await ApiClient.from('schedules').upsert({ id, ...data });
 ### Database Connection Pattern
 
 **Reading Data**:
+
 ```typescript
 // From data hooks (services/data/*.ts)
 const { data, isLoading } = useSchedules(userId, isManager);
@@ -175,6 +187,7 @@ const { data, isLoading } = useSchedules(userId, isManager);
 ```
 
 **Writing Data**:
+
 ```typescript
 // Direct API writes
 await ApiClient.from('schedules').upsert(scheduleData);
@@ -189,22 +202,26 @@ await updateAvailability(technicianId, availability);
 ### Key Services
 
 **ApiClient** (`services/ApiClient.ts`):
+
 - Wrapper around REST API endpoints
 - Methods: `.from(table).select()`, `.upsert()`, `.update()`, `.delete()`
 - Handles authentication headers and error responses
 
 **BackendConnector** (`services/database/BackendConnector.ts`):
+
 - Implements PowerSync's `PowerSyncBackendConnector` interface
 - `uploadData()` - Pushes local mutations to server
 - `downloadData()` - Fetches server state for given tables
 - Token renewal via Clerk
 
 **PhotoAttachmentQueue** (`services/database/PhotoAttachmentQueue.ts`):
+
 - Manages concurrent photo uploads to Cloudinary
 - Retry logic for failed uploads
 - Tracks operation state (pending, completed, failed)
 
 **CloudinaryStorageAdapter** (`services/storage/CloudinaryStorageAdapter.ts`):
+
 - File upload/download handling
 - Signed URL generation
 - Part of PowerSync's attachment sync
@@ -214,6 +231,7 @@ await updateAvailability(technicianId, availability);
 ### Offline-First Design
 
 The app is designed to work offline:
+
 1. All data reads go through local PowerSync database
 2. Writes are queued if offline
 3. When reconnected, `BackendConnector.uploadData()` syncs pending changes
@@ -224,6 +242,7 @@ The app is designed to work offline:
 ### Photo System
 
 Photos are stored as attachments:
+
 - Metadata in `add_photo_operations` / `delete_photo_operations` tables
 - Files in Cloudinary CDN
 - `PhotoAttachmentQueue` handles async upload with retry
@@ -244,6 +263,7 @@ Photos are stored as attachments:
 ### Environment Variables
 
 Defined in `.env`:
+
 - `EXPO_PUBLIC_API_URL` - Backend API endpoint
 - `EXPO_PUBLIC_POWERSYNC_URL` - PowerSync service endpoint
 - `EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY` - Clerk public key
@@ -259,6 +279,7 @@ All public values must be prefixed with `EXPO_PUBLIC_`.
 ### Building for Production
 
 Use EAS (Expo Application Services):
+
 ```bash
 eas build --platform android  # For Android
 eas build --platform ios      # For iOS
@@ -292,17 +313,20 @@ Configuration in `eas.json`.
 ## Debugging
 
 **DebugLogger** (`utils/DebugLogger.ts`):
+
 ```typescript
 import { debugLog } from '@/utils/DebugLogger';
 debugLog('feature', 'message', data); // Conditional logging
 ```
 
 **OTA Updates**:
+
 - Handled in root `_layout.tsx`
 - Shows update modal when available
 - User can apply immediately or on next launch
 
 **Network Status**:
+
 - Monitor via `@react-native-community/netinfo`
 - PowerSync queues operations when offline
 

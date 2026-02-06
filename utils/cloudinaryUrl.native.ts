@@ -32,7 +32,7 @@ export function buildCloudinaryUrlMobile({
   width,
   quality = 'q_auto',
   format = 'f_auto',
-  crop = 'c_limit',
+  crop = 'c_limit'
 }: CloudinaryTransformOptions): string {
   // Skip transformation for non-Cloudinary URLs
   if (!urlOrPublicId || typeof urlOrPublicId !== 'string') {

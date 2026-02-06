@@ -10,16 +10,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import './global.css';
 import { ClerkProvider, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
-import {
-  SafeAreaProvider,
-  useSafeAreaInsets,
-} from 'react-native-safe-area-context';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
-import {
-  PowerSyncProvider,
-  usePowerSyncStatus,
-} from '../providers/PowerSyncProvider';
+import { PowerSyncProvider, usePowerSyncStatus } from '../providers/PowerSyncProvider';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
@@ -30,12 +24,12 @@ import { PortalHost } from '@rn-primitives/portal';
 
 export {
   // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+  ErrorBoundary
 } from 'expo-router';
 
 export const unstable_settings = {
   // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
+  initialRouteName: '(tabs)'
 };
 
 // Prevent the splash screen from auto-hiding before asset loading is complete.
@@ -133,7 +127,7 @@ function PowerSyncStatusBanner() {
       style={{
         paddingTop: Math.max(insets.top, 8),
         paddingBottom: 8,
-        paddingHorizontal: 16,
+        paddingHorizontal: 16
       }}
     >
       <View className='flex-row items-center justify-between'>
@@ -160,7 +154,7 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
 
   const [fontsLoaded] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
+    ...FontAwesome.font
   });
 
   useEffect(() => {
@@ -187,7 +181,7 @@ const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!CLERK_PUBLISHABLE_KEY) {
   throw new Error(
-    'Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env',
+    'Missing Publishable Key. Please set EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY in your .env'
   );
 }
 
@@ -208,16 +202,13 @@ export default function RootLayout() {
                   <PowerSyncStatusBanner />
                   <BottomSheetModalProvider>
                     <Stack screenOptions={{ headerShown: false }}>
-                      <Stack.Screen
-                        name='(tabs)'
-                        options={{ headerShown: false }}
-                      />
+                      <Stack.Screen name='(tabs)' options={{ headerShown: false }} />
                       <Stack.Screen
                         name='report'
                         options={{
                           headerShown: true,
                           presentation: 'card',
-                          title: 'Report Essentials',
+                          title: 'Report Essentials'
                         }}
                       />
                       <Stack.Screen
@@ -225,7 +216,7 @@ export default function RootLayout() {
                         options={{
                           headerShown: true,
                           presentation: 'card',
-                          title: 'Debug Logs',
+                          title: 'Debug Logs'
                         }}
                       />
                       <Stack.Screen
@@ -233,7 +224,7 @@ export default function RootLayout() {
                         options={{
                           headerShown: true,
                           presentation: 'card',
-                          title: 'Environment Tools',
+                          title: 'Environment Tools'
                         }}
                       />
                     </Stack>
