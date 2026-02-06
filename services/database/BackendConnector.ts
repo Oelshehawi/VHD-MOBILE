@@ -4,20 +4,29 @@ import {
   CrudEntry,
   UpdateType
 } from '@powersync/react-native';
-import { ApiClient } from '../ApiClient';
+import { ApiClient, SyncOperationResult } from '../ApiClient';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import { System } from './System';
 import { debugLogger } from '@/utils/DebugLogger';
 
-/// HTTP status codes that indicate non-retryable errors
-const FATAL_HTTP_STATUS_PATTERN = /: (401|403|404|422) -/;
+type SyncMetricName =
+  | 'sync_ack_success'
+  | 'sync_ack_business_reject'
+  | 'sync_retry_transient'
+  | 'sync_auth_pause';
 
 export class BackendConnector implements PowerSyncBackendConnector {
   private apiClient: ApiClient;
   storage: CloudinaryStorageAdapter;
   private endpoint: string = '';
   private readonly PHOTO_BATCH_SIZE = 10;
+  private syncMetrics: Record<SyncMetricName, number> = {
+    sync_ack_success: 0,
+    sync_ack_business_reject: 0,
+    sync_retry_transient: 0,
+    sync_auth_pause: 0
+  };
 
   constructor(protected system: System) {
     this.apiClient = new ApiClient();
@@ -126,6 +135,66 @@ export class BackendConnector implements PowerSyncBackendConnector {
     return result as T;
   }
 
+  private incrementSyncMetric(
+    metric: SyncMetricName,
+    amount = 1,
+    context?: Record<string, unknown>
+  ) {
+    this.syncMetrics[metric] += amount;
+    debugLogger.debug('SYNC', 'Sync metric incremented', {
+      metric,
+      amount,
+      total: this.syncMetrics[metric],
+      ...context
+    });
+  }
+
+  private async handleSyncResult(
+    result: SyncOperationResult,
+    context: { table: string; id?: string },
+    opCount = 1
+  ) {
+    const table = context.table;
+    const id = context.id;
+
+    if (result.outcome === 'success') {
+      this.incrementSyncMetric('sync_ack_success', opCount, { table, id });
+      return;
+    }
+
+    if (result.outcome === 'business_reject') {
+      this.incrementSyncMetric('sync_ack_business_reject', opCount, { table, id });
+      debugLogger.warn('SYNC', 'Sync business rejection (dropping op)', {
+        table,
+        id,
+        error: result.error,
+        message: result.message
+      });
+      return;
+    }
+
+    if (result.outcome === 'auth_pause') {
+      this.incrementSyncMetric('sync_auth_pause', 1, { table, id });
+      const refreshed = await this.fetchCredentials();
+      debugLogger.warn('AUTH', 'Sync paused due to auth failure; will retry later', {
+        table,
+        id,
+        httpStatus: result.httpStatus,
+        refreshed: !!refreshed
+      });
+      throw new Error(
+        `Sync auth pause: ${result.httpStatus} - ${
+          result.error || result.message || 'Unauthorized'
+        }`
+      );
+    }
+
+    this.incrementSyncMetric('sync_retry_transient', 1, { table, id });
+    throw new Error(
+      `Sync transient failure: ${result.httpStatus} - ${result.error || result.message || 'Retry'}`
+    );
+  }
+
   async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
     const transaction = await database.getNextCrudTransaction();
     if (!transaction) return;
@@ -157,24 +226,28 @@ export class BackendConnector implements PowerSyncBackendConnector {
           data
         };
 
+        let result: SyncOperationResult;
         switch (op.op) {
           case UpdateType.PUT:
-            await this.apiClient.upsert(record);
+            result = await this.apiClient.upsert(record);
             break;
           case UpdateType.PATCH:
-            await this.apiClient.update(record);
+            result = await this.apiClient.update(record);
             break;
           case UpdateType.DELETE:
-            await this.apiClient.delete({
+            result = await this.apiClient.delete({
               table: op.table,
               data: { id: op.id }
             });
             break;
         }
 
-        debugLogger.info('SYNC', `Synced ${op.table} record`, {
-          id: op.id
-        });
+        await this.handleSyncResult(result!, { table: op.table, id: op.id });
+        if (result!.outcome === 'success') {
+          debugLogger.info('SYNC', `Synced ${op.table} record`, {
+            id: op.id
+          });
+        }
       }
 
       if (photoPutOps.length > 0) {
@@ -186,10 +259,14 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
         for (let i = 0; i < records.length; i += this.PHOTO_BATCH_SIZE) {
           const chunk = records.slice(i, i + this.PHOTO_BATCH_SIZE);
-          await this.apiClient.batchUpsert('photos', chunk);
-          debugLogger.info('SYNC', 'Batch synced photo records', {
-            count: chunk.length
-          });
+          const result = await this.apiClient.batchUpsert('photos', chunk);
+          const firstId = typeof chunk[0]?.id === 'string' ? chunk[0].id : undefined;
+          await this.handleSyncResult(result, { table: 'photos', id: firstId }, chunk.length);
+          if (result.outcome === 'success') {
+            debugLogger.info('SYNC', 'Batch synced photo records', {
+              count: chunk.length
+            });
+          }
         }
       }
 
@@ -202,10 +279,14 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
         for (let i = 0; i < records.length; i += this.PHOTO_BATCH_SIZE) {
           const chunk = records.slice(i, i + this.PHOTO_BATCH_SIZE);
-          await this.apiClient.batchPatch('photos', chunk);
-          debugLogger.info('SYNC', 'Batch patched photo records', {
-            count: chunk.length
-          });
+          const result = await this.apiClient.batchPatch('photos', chunk);
+          const firstId = typeof chunk[0]?.id === 'string' ? chunk[0].id : undefined;
+          await this.handleSyncResult(result, { table: 'photos', id: firstId }, chunk.length);
+          if (result.outcome === 'success') {
+            debugLogger.info('SYNC', 'Batch patched photo records', {
+              count: chunk.length
+            });
+          }
         }
       }
 
@@ -216,15 +297,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
         op: lastOp,
         error: errorMessage
       });
-
-      // Check for fatal HTTP errors that shouldn't retry (400, 401, 403, 404, 422)
-      if (FATAL_HTTP_STATUS_PATTERN.test(errorMessage)) {
-        debugLogger.error('SYNC', 'Fatal HTTP error - discarding transaction');
-        await transaction.complete();
-      } else {
-        // Retryable error (network issues, 500s, etc.)
-        throw ex;
-      }
+      throw ex;
     }
   }
 }

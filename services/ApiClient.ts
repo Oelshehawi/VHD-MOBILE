@@ -8,6 +8,28 @@ export interface ApiResponse<T> {
   statusCode?: number;
 }
 
+interface SyncResponseBody {
+  success?: boolean;
+  error?: string;
+  message?: string;
+  data?: Record<string, unknown>;
+}
+
+type SyncHttpMethod = 'PUT' | 'PATCH' | 'DELETE' | 'POST';
+
+export type SyncOutcome = 'success' | 'business_reject' | 'retryable_error' | 'auth_pause';
+
+export interface SyncOperationResult {
+  outcome: SyncOutcome;
+  method: SyncHttpMethod;
+  table: string;
+  id?: string;
+  httpStatus: number;
+  success?: boolean;
+  error?: string;
+  message?: string;
+}
+
 const PROD_URL = process.env.EXPO_PUBLIC_API_URL || '';
 
 export function getApiUrl() {
@@ -63,77 +85,143 @@ export class ApiClient {
 
   // ============ SYNC OPERATIONS (PowerSync canonical pattern) ============
 
-  async upsert(record: { table: string; data: any }): Promise<void> {
-    const headers = await this.ensureAuthHeaders();
-    const response = await fetch(`${this.baseUrl}/api/sync`, {
-      method: 'PUT',
-      headers,
-      body: JSON.stringify(record)
-    });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Sync upsert failed: ${response.status} - ${error}`);
+  private parseSyncBody(text: string): SyncResponseBody {
+    if (!text) return {};
+
+    try {
+      const parsed = JSON.parse(text) as SyncResponseBody;
+      return typeof parsed === 'object' && parsed !== null ? parsed : {};
+    } catch {
+      return { message: text };
     }
   }
 
-  async update(record: { table: string; data: any }): Promise<void> {
-    const headers = await this.ensureAuthHeaders();
-    const response = await fetch(`${this.baseUrl}/api/sync`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify(record)
-    });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Sync update failed: ${response.status} - ${error}`);
+  private getSyncId(payload: { data?: any }): string | undefined {
+    if (payload?.data && typeof payload.data === 'object' && !Array.isArray(payload.data)) {
+      return typeof payload.data.id === 'string' ? payload.data.id : undefined;
     }
+
+    if (Array.isArray(payload?.data) && payload.data.length > 0) {
+      const firstId = payload.data[0]?.id;
+      return typeof firstId === 'string' ? firstId : undefined;
+    }
+
+    return undefined;
   }
 
-  async delete(record: { table: string; data: { id: string } }): Promise<void> {
-    const headers = await this.ensureAuthHeaders();
-    const response = await fetch(`${this.baseUrl}/api/sync`, {
-      method: 'DELETE',
-      headers,
-      body: JSON.stringify(record)
+  private logSyncFailure(result: SyncOperationResult) {
+    debugLogger.warn('SYNC', 'Sync API non-success response', {
+      method: result.method,
+      table: result.table,
+      id: result.id,
+      httpStatus: result.httpStatus,
+      success: result.success,
+      error: result.error,
+      message: result.message
     });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Sync delete failed: ${response.status} - ${error}`);
-    }
   }
 
-  async batchUpsert(table: string, records: Record<string, unknown>[]): Promise<void> {
-    const headers = await this.ensureAuthHeaders();
-    const response = await fetch(`${this.baseUrl}/api/sync`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
+  private async requestSync(
+    method: SyncHttpMethod,
+    payload: {
+      table: string;
+      data: any;
+      operation?: string;
+    }
+  ): Promise<SyncOperationResult> {
+    const table = payload.table;
+    const id = this.getSyncId(payload);
+
+    try {
+      const headers = await this.ensureAuthHeaders();
+      const response = await fetch(`${this.baseUrl}/api/sync`, {
+        method,
+        headers,
+        body: JSON.stringify(payload)
+      });
+
+      const rawBody = await response.text();
+      const parsedBody = this.parseSyncBody(rawBody);
+      const success = parsedBody.success;
+      const error = parsedBody.error;
+      const message = parsedBody.message;
+
+      let outcome: SyncOutcome = 'success';
+      if (response.status === 401 || response.status === 403) {
+        outcome = 'auth_pause';
+      } else if (response.status === 429 || response.status >= 500) {
+        outcome = 'retryable_error';
+      } else if (response.ok) {
+        outcome = success === false ? 'business_reject' : 'success';
+      } else if (response.status >= 400 && response.status < 500) {
+        outcome = 'business_reject';
+      } else {
+        outcome = 'retryable_error';
+      }
+
+      const result: SyncOperationResult = {
+        outcome,
+        method,
         table,
-        operation: 'batchPut',
-        data: records
-      })
-    });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Sync batchUpsert failed: ${response.status} - ${error}`);
+        id,
+        httpStatus: response.status,
+        success,
+        error: error || (!response.ok ? `HTTP ${response.status}` : undefined),
+        message: message || (!response.ok ? rawBody || 'Request failed' : undefined)
+      };
+
+      if (result.outcome !== 'success') {
+        this.logSyncFailure(result);
+      }
+
+      return result;
+    } catch (error) {
+      const result: SyncOperationResult = {
+        outcome: 'retryable_error',
+        method,
+        table,
+        id,
+        httpStatus: 0,
+        error: error instanceof Error ? error.message : 'Unknown error',
+        message: 'Network or transport failure'
+      };
+      this.logSyncFailure(result);
+      return result;
     }
   }
 
-  async batchPatch(table: string, records: Record<string, unknown>[]): Promise<void> {
-    const headers = await this.ensureAuthHeaders();
-    const response = await fetch(`${this.baseUrl}/api/sync`, {
-      method: 'PATCH',
-      headers,
-      body: JSON.stringify({
-        table,
-        operation: 'batchPatch',
-        data: records
-      })
+  async upsert(record: { table: string; data: any }): Promise<SyncOperationResult> {
+    return this.requestSync('PUT', record);
+  }
+
+  async update(record: { table: string; data: any }): Promise<SyncOperationResult> {
+    return this.requestSync('PATCH', record);
+  }
+
+  async delete(record: { table: string; data: { id: string } }): Promise<SyncOperationResult> {
+    return this.requestSync('DELETE', record);
+  }
+
+  async batchUpsert(
+    table: string,
+    records: Record<string, unknown>[]
+  ): Promise<SyncOperationResult> {
+    return this.requestSync('POST', {
+      table,
+      operation: 'batchPut',
+      data: records
     });
-    if (!response.ok) {
-      const error = await response.text();
-      throw new Error(`Sync batchPatch failed: ${response.status} - ${error}`);
-    }
+  }
+
+  async batchPatch(
+    table: string,
+    records: Record<string, unknown>[]
+  ): Promise<SyncOperationResult> {
+    return this.requestSync('PATCH', {
+      table,
+      operation: 'batchPatch',
+      data: records
+    });
   }
 
   // ============ CLOUDINARY UPLOAD URL ============
