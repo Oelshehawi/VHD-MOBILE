@@ -6,20 +6,22 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Switch,
+  Switch
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, usePowerSync } from '@powersync/react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { TimePickerInput } from './TimePickerInput';
+import { DatePickerInput } from './DatePickerInput';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { generateObjectId } from '@/utils/objectId';
 import {
   validateTimeRange,
   validateNoConflicts,
   formatAvailabilityDisplay,
-  getDayName,
+  getDayName
 } from '../../utils/availabilityValidation';
 import type { Availability } from '../../services/database/schema';
 
@@ -38,7 +40,7 @@ interface AvailabilityFormData {
  * Main screen for managing technician availability
  */
 export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
-  onNavigateBack,
+  onNavigateBack
 }) => {
   const { user } = useUser();
   const insets = useSafeAreaInsets();
@@ -47,9 +49,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
   const [confirmationMessage, setConfirmationMessage] = useState('');
-  const [confirmationAction, setConfirmationAction] = useState<
-    (() => void) | null
-  >(null);
+  const [confirmationAction, setConfirmationAction] = useState<(() => void) | null>(null);
 
   // Form state
   const [formData, setFormData] = useState<AvailabilityFormData>({
@@ -58,7 +58,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     endTime: '17:00',
     isFullDay: false,
     isRecurring: true,
-    specificDate: undefined,
+    specificDate: undefined
   });
 
   // Fetch availability from PowerSync
@@ -72,7 +72,16 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   const handleFieldChange = (field: keyof AvailabilityFormData, value: any) => {
     setFormData((prev) => ({
       ...prev,
-      [field]: value,
+      [field]: value
+    }));
+  };
+
+  const handleRecurringChange = (isRecurring: boolean) => {
+    setFormData((prev) => ({
+      ...prev,
+      isRecurring,
+      dayOfWeek: isRecurring ? (prev.dayOfWeek ?? 1) : undefined,
+      specificDate: isRecurring ? undefined : prev.specificDate
     }));
   };
 
@@ -112,9 +121,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
     setConfirmationMessage(
       `Save availability: ${
-        formData.isRecurring
-          ? getDayName(formData.dayOfWeek!)
-          : formData.specificDate
+        formData.isRecurring ? getDayName(formData.dayOfWeek!) : formData.specificDate
       } ${startTime12} - ${endTime12}?`
     );
     setConfirmationAction(() => submitAvailability);
@@ -136,7 +143,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
     setIsSaving(true);
     try {
-      const availabilityId = formData.availabilityId || Math.random().toString();
+      const availabilityId = formData.availabilityId || generateObjectId();
 
       // Insert or update in PowerSync
       await powerSync.execute(
@@ -145,14 +152,14 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
         [
           availabilityId,
           user.id,
-          formData.dayOfWeek || null,
+          formData.isRecurring ? (formData.dayOfWeek ?? null) : null,
           formData.startTime,
           formData.endTime,
           formData.isFullDay ? 1 : 0,
           formData.isRecurring ? 1 : 0,
-          formData.specificDate || null,
+          formData.isRecurring ? null : (formData.specificDate ?? null),
           new Date().toISOString(),
-          new Date().toISOString(),
+          new Date().toISOString()
         ]
       );
 
@@ -162,7 +169,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
         startTime: '09:00',
         endTime: '17:00',
         isFullDay: false,
-        isRecurring: true,
+        isRecurring: true
       });
       setIsEditing(false);
       setShowConfirmation(false);
@@ -181,9 +188,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     setConfirmationAction(() => async () => {
       try {
         setIsSaving(true);
-        await powerSync.execute(`DELETE FROM availabilities WHERE id = ?`, [
-          availabilityId,
-        ]);
+        await powerSync.execute(`DELETE FROM availabilities WHERE id = ?`, [availabilityId]);
         Alert.alert('Success', 'Availability deleted successfully');
       } catch (error) {
         showError(error instanceof Error ? error.message : 'Failed to delete');
@@ -199,12 +204,12 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   const handleEdit = (av: Availability) => {
     setFormData({
       availabilityId: av.id,
-      dayOfWeek: av.dayOfWeek || undefined,
+      dayOfWeek: av.dayOfWeek ?? undefined,
       startTime: av.startTime || 'null',
       endTime: av.endTime || 'null',
       isFullDay: av.isFullDay === 1,
       isRecurring: av.isRecurring === 1,
-      specificDate: av.specificDate || undefined,
+      specificDate: av.specificDate || undefined
     });
     setIsEditing(true);
   };
@@ -214,60 +219,55 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   };
 
   return (
-    <View 
+    <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
       className='flex-1 bg-gray-50 dark:bg-gray-900'
     >
       <ScrollView className='flex-1 bg-gray-50 dark:bg-gray-900'>
-      <View className='p-4'>
-        {/* Header */}
-        <View className='flex-row items-center justify-between mb-6'>
-          <View>
-            <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
-              Manage Availability
-            </Text>
-            <Text className='text-gray-600 dark:text-gray-400 mt-1'>
-              Set your work availability
-            </Text>
-          </View>
-          {onNavigateBack && (
-            <TouchableOpacity onPress={onNavigateBack}>
-              <Ionicons name='close' size={24} color='#666' />
-            </TouchableOpacity>
-          )}
-        </View>
-
-        {/* Form Section */}
-        <View className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-6'>
-          <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
-            {isEditing ? 'Edit Availability' : 'Add Availability Block'}
-          </Text>
-
-          {/* Recurring toggle */}
-          <View className='flex-row items-center justify-between mb-4'>
-            <Text className='text-gray-700 dark:text-gray-300 font-semibold'>
-              Recurring Pattern
-            </Text>
-            <Switch
-              value={formData.isRecurring}
-              onValueChange={(value) => handleFieldChange('isRecurring', value)}
-              trackColor={{ false: '#767577', true: '#81c784' }}
-            />
-          </View>
-
-          {/* Day of week selector (for recurring) */}
-          {formData.isRecurring && (
-            <View className='mb-4'>
-              <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>
-                Day of Week
+        <View className='p-4'>
+          {/* Header */}
+          <View className='flex-row items-center justify-between mb-6'>
+            <View>
+              <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
+                Manage Availability
               </Text>
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                className='mb-4'
-              >
-                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(
-                  (day, index) => (
+              <Text className='text-gray-600 dark:text-gray-400 mt-1'>
+                Set your work availability
+              </Text>
+            </View>
+            {onNavigateBack && (
+              <TouchableOpacity onPress={onNavigateBack}>
+                <Ionicons name='close' size={24} color='#666' />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Form Section */}
+          <View className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-6'>
+            <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
+              {isEditing ? 'Edit Availability' : 'Add Availability Block'}
+            </Text>
+
+            {/* Recurring toggle */}
+            <View className='flex-row items-center justify-between mb-4'>
+              <Text className='text-gray-700 dark:text-gray-300 font-semibold'>
+                Recurring Pattern
+              </Text>
+              <Switch
+                value={formData.isRecurring}
+                onValueChange={handleRecurringChange}
+                trackColor={{ false: '#767577', true: '#81c784' }}
+              />
+            </View>
+
+            {/* Day of week selector (for recurring) */}
+            {formData.isRecurring && (
+              <View className='mb-4'>
+                <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>
+                  Day of Week
+                </Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} className='mb-4'>
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
                     <TouchableOpacity
                       key={day}
                       onPress={() => handleFieldChange('dayOfWeek', index)}
@@ -287,130 +287,134 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
                         {day}
                       </Text>
                     </TouchableOpacity>
-                  )
-                )}
-              </ScrollView>
+                  ))}
+                </ScrollView>
+              </View>
+            )}
+
+            {!formData.isRecurring && (
+              <DatePickerInput
+                label='Specific Date'
+                value={formData.specificDate}
+                onChange={(date) => handleFieldChange('specificDate', date)}
+              />
+            )}
+
+            {/* Full day toggle */}
+            <View className='flex-row items-center justify-between mb-4'>
+              <Text className='text-gray-700 dark:text-gray-300 font-semibold'>Full Day</Text>
+              <Switch
+                value={formData.isFullDay}
+                onValueChange={(value) => handleFieldChange('isFullDay', value)}
+                trackColor={{ false: '#767577', true: '#81c784' }}
+              />
             </View>
-          )}
 
-          {/* Full day toggle */}
-          <View className='flex-row items-center justify-between mb-4'>
-            <Text className='text-gray-700 dark:text-gray-300 font-semibold'>
-              Full Day
-            </Text>
-            <Switch
-              value={formData.isFullDay}
-              onValueChange={(value) => handleFieldChange('isFullDay', value)}
-              trackColor={{ false: '#767577', true: '#81c784' }}
-            />
-          </View>
+            {/* Time pickers */}
+            {!formData.isFullDay && (
+              <>
+                <TimePickerInput
+                  label='Start Time'
+                  value={formData.startTime}
+                  onChange={(time) => handleFieldChange('startTime', time)}
+                />
+                <TimePickerInput
+                  label='End Time'
+                  value={formData.endTime}
+                  onChange={(time) => handleFieldChange('endTime', time)}
+                />
+              </>
+            )}
 
-          {/* Time pickers */}
-          {!formData.isFullDay && (
-            <>
-              <TimePickerInput
-                label='Start Time'
-                value={formData.startTime}
-                onChange={(time) => handleFieldChange('startTime', time)}
-              />
-              <TimePickerInput
-                label='End Time'
-                value={formData.endTime}
-                onChange={(time) => handleFieldChange('endTime', time)}
-              />
-            </>
-          )}
-
-          {/* Action buttons */}
-          <View className='flex-row gap-3 mt-6'>
-            {isEditing && (
+            {/* Action buttons */}
+            <View className='flex-row gap-3 mt-6'>
+              {isEditing && (
+                <TouchableOpacity
+                  onPress={() => {
+                    setIsEditing(false);
+                    setFormData({
+                      dayOfWeek: 1,
+                      startTime: '09:00',
+                      endTime: '17:00',
+                      isFullDay: false,
+                      isRecurring: true
+                    });
+                  }}
+                  className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
+                  disabled={isSaving}
+                >
+                  <Text className='text-center font-semibold text-gray-900 dark:text-white'>
+                    Cancel
+                  </Text>
+                </TouchableOpacity>
+              )}
               <TouchableOpacity
-                onPress={() => {
-                  setIsEditing(false);
-                  setFormData({
-                    dayOfWeek: 1,
-                    startTime: '09:00',
-                    endTime: '17:00',
-                    isFullDay: false,
-                    isRecurring: true,
-                  });
-                }}
-                className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
+                onPress={handleSave}
+                className='flex-1 bg-blue-500 p-4 rounded-lg flex-row items-center justify-center'
                 disabled={isSaving}
               >
-                <Text className='text-center font-semibold text-gray-900 dark:text-white'>
-                  Cancel
-                </Text>
+                {isSaving ? (
+                  <ActivityIndicator color='white' size='small' />
+                ) : (
+                  <>
+                    <Ionicons name='checkmark' size={20} color='white' />
+                    <Text className='text-white font-semibold ml-2'>
+                      {isEditing ? 'Update' : 'Add'}
+                    </Text>
+                  </>
+                )}
               </TouchableOpacity>
-            )}
-            <TouchableOpacity
-              onPress={handleSave}
-              className='flex-1 bg-blue-500 p-4 rounded-lg flex-row items-center justify-center'
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator color='white' size='small' />
-              ) : (
-                <>
-                  <Ionicons name='checkmark' size={20} color='white' />
-                  <Text className='text-white font-semibold ml-2'>
-                    {isEditing ? 'Update' : 'Add'}
-                  </Text>
-                </>
-              )}
-            </TouchableOpacity>
+            </View>
           </View>
-        </View>
 
-        {/* Calendar View */}
-        <View className='mb-6'>
-          <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
-            Your Availability
-          </Text>
-          <AvailabilityCalendar availability={availability} />
-        </View>
-
-        {/* Availability List */}
-        {availability.length > 0 && (
+          {/* Calendar View */}
           <View className='mb-6'>
             <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
-              Manage Blocks
+              Your Availability
             </Text>
-            {availability.map((av) => (
-              <View
-                key={av.id}
-                className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-3 flex-row items-center justify-between'
-              >
-                <View className='flex-1'>
-                  <Text className='text-gray-900 dark:text-white font-semibold'>
-                    {formatAvailabilityDisplay(av)}
-                  </Text>
-                </View>
-                <View className='flex-row gap-2'>
-          
-                  <TouchableOpacity
-                    onPress={() => handleDelete(av.id!)}
-                    className='p-2 bg-red-100 dark:bg-red-900 rounded-lg'
-                    disabled={isSaving}
-                  >
-                    <Ionicons name='trash' size={16} color='#ef4444' />
-                  </TouchableOpacity>
-                </View>
-              </View>
-            ))}
+            <AvailabilityCalendar availability={availability} />
           </View>
-        )}
-      </View>
 
-      {/* Confirmation Modal */}
-      <ConfirmationModal
-        visible={showConfirmation}
-        title='Confirmation'
-        message={confirmationMessage}
-        onConfirm={() => confirmationAction?.()}
-        onClose={() => setShowConfirmation(false)}
-      />
-    </ScrollView>
+          {/* Availability List */}
+          {availability.length > 0 && (
+            <View className='mb-6'>
+              <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
+                Manage Blocks
+              </Text>
+              {availability.map((av) => (
+                <View
+                  key={av.id}
+                  className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-3 flex-row items-center justify-between'
+                >
+                  <View className='flex-1'>
+                    <Text className='text-gray-900 dark:text-white font-semibold'>
+                      {formatAvailabilityDisplay(av)}
+                    </Text>
+                  </View>
+                  <View className='flex-row gap-2'>
+                    <TouchableOpacity
+                      onPress={() => handleDelete(av.id!)}
+                      className='p-2 bg-red-100 dark:bg-red-900 rounded-lg'
+                      disabled={isSaving}
+                    >
+                      <Ionicons name='trash' size={16} color='#ef4444' />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        {/* Confirmation Modal */}
+        <ConfirmationModal
+          visible={showConfirmation}
+          title='Confirmation'
+          message={confirmationMessage}
+          onConfirm={() => confirmationAction?.()}
+          onClose={() => setShowConfirmation(false)}
+        />
+      </ScrollView>
     </View>
   );
 };

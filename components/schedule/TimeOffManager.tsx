@@ -16,6 +16,7 @@ import { DateRangeSelector } from './DateRangeSelector';
 import { TimeOffRequestItem } from './TimeOffRequestItem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { validateTimeOffDateRange, formatDateRange } from '../../utils/availabilityValidation';
+import { generateObjectId } from '@/utils/objectId';
 import type { TimeOffRequest } from '../../services/database/schema';
 
 interface TimeOffFormData {
@@ -107,7 +108,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
     setIsSaving(true);
     try {
-      const requestId = Math.random().toString();
+      const requestId = editingRequestId || generateObjectId();
 
       // Insert only to PowerSync - BackendConnector will handle the API sync
       await powerSync.execute(
