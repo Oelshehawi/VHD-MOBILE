@@ -65,7 +65,27 @@ function calculateActualServiceDurationMinutes(
 ): number | null {
   if (!startDateTime) return null;
 
-  const startMs = new Date(startDateTime).getTime();
+  // DB stores "fake-UTC" timestamps: wall-clock local time serialized with a UTC suffix.
+  // Example: "2026-02-11T10:00:00Z" means 10:00 local, not 10:00 UTC.
+  const parsedStart = new Date(startDateTime);
+  if (!Number.isFinite(parsedStart.getTime())) return null;
+
+  const hasTimezoneSuffix =
+    /(?:Z|[+-]\d{2}:?\d{2})$/i.test(startDateTime) || /GMT/i.test(startDateTime);
+
+  const normalizedStart = hasTimezoneSuffix
+    ? new Date(
+        parsedStart.getUTCFullYear(),
+        parsedStart.getUTCMonth(),
+        parsedStart.getUTCDate(),
+        parsedStart.getUTCHours(),
+        parsedStart.getUTCMinutes(),
+        parsedStart.getUTCSeconds(),
+        parsedStart.getUTCMilliseconds()
+      )
+    : parsedStart;
+
+  const startMs = normalizedStart.getTime();
   if (!Number.isFinite(startMs)) return null;
 
   const elapsedMs = completedAt.getTime() - startMs;
