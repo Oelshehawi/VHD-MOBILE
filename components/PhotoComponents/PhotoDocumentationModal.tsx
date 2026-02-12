@@ -61,6 +61,7 @@ export function PhotoDocumentationModal({
   const beforeCount = Number(photoCounts[0]?.beforeCount ?? 0);
   const afterCount = Number(photoCounts[0]?.afterCount ?? 0);
   const reportStatus = reportStatusRows[0]?.reportStatus ?? null;
+  const isReportCompleteState = reportStatus === 'in_progress' || reportStatus === 'completed';
 
   // Handle close with logging
   const handleClose = () => {
@@ -71,8 +72,6 @@ export function PhotoDocumentationModal({
   const handleTabChange = (tab: TabType) => {
     setActiveTab(tab);
   };
-
-  const canAddAfterPhotos = reportStatus === 'in_progress' || reportStatus === 'completed';
 
   const handleGoToReport = () => {
     handleClose();
@@ -144,35 +143,42 @@ export function PhotoDocumentationModal({
               paddingBottom: insets.bottom + 16
             }}
           >
-            {activeTab === 'after' && !canAddAfterPhotos && afterCount === 0 ? (
-              <View className='items-center justify-center gap-3 rounded-2xl border border-gray-200 bg-white p-5'>
+            {activeTab === 'after' && (
+              <View
+                className={cn(
+                  'mb-4 gap-3 rounded-2xl border p-5',
+                  isReportCompleteState
+                    ? 'border-emerald-200 bg-emerald-50'
+                    : 'border-gray-200 bg-white'
+                )}
+              >
                 <Text className='text-lg font-bold text-gray-900'>
-                  Submit report to add After photos
+                  {isReportCompleteState ? 'Report Completed' : 'Complete Report'}
                 </Text>
-                <Text className='text-center text-sm text-gray-500'>
-                  Submit the report for admin review to unlock After photos.
+                <Text className='text-sm text-gray-500'>
+                  {isReportCompleteState
+                    ? 'Report submitted and pending admin review.'
+                    : 'Submit your report after photos are uploaded.'}
                 </Text>
-                <Pressable
-                  onPress={handleGoToReport}
-                  className='w-full rounded-xl bg-emerald-700 px-4 py-3 active:bg-emerald-800'
-                >
-                  <Text className='text-center font-semibold text-white'>Go to Report</Text>
-                </Pressable>
+                {!isReportCompleteState && (
+                  <Pressable
+                    onPress={handleGoToReport}
+                    className='w-full rounded-xl bg-emerald-700 px-4 py-3 active:bg-emerald-800'
+                  >
+                    <Text className='text-center font-semibold text-white'>Go to Report</Text>
+                  </Pressable>
+                )}
               </View>
-            ) : (
-              <PhotoCapture
-                technicianId={technicianId}
-                type={activeTab}
-                jobTitle={jobTitle}
-                startDate={startDateTime}
-                scheduleId={scheduleId}
-                allowAdd={
-                  activeTab === 'before' ||
-                  canAddAfterPhotos ||
-                  (activeTab === 'after' && afterCount > 0)
-                }
-              />
             )}
+
+            <PhotoCapture
+              technicianId={technicianId}
+              type={activeTab}
+              jobTitle={jobTitle}
+              startDate={startDateTime}
+              scheduleId={scheduleId}
+              allowAdd
+            />
           </ScrollView>
         ) : (
           <View className='flex-1 px-4 pt-4' style={{ paddingBottom: insets.bottom + 16 }}>

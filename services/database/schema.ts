@@ -37,6 +37,7 @@ const schedules = new Table(
     payrollPeriod: column.text,
     shifts: column.text,
     startDateTime: column.text,
+    actualServiceDurationMinutes: column.integer,
     technicianNotes: column.text, // Notes from technicians
     // Site access info
     onSiteContact: column.text, // JSON: { name, phone, email }

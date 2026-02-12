@@ -4,6 +4,7 @@ export interface Schedule {
   jobTitle: string;
   location: string;
   startDateTime: string;
+  actualServiceDurationMinutes?: number;
   assignedTechnicians: string[];
   confirmed: boolean;
   hours: number;

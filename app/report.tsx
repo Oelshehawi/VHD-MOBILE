@@ -59,6 +59,20 @@ function mapCookingVolumeToScale(volume: string | null): number {
   return 5;
 }
 
+function calculateActualServiceDurationMinutes(
+  startDateTime: string | undefined,
+  completedAt: Date
+): number | null {
+  if (!startDateTime) return null;
+
+  const startMs = new Date(startDateTime).getTime();
+  if (!Number.isFinite(startMs)) return null;
+
+  const elapsedMs = completedAt.getTime() - startMs;
+  const elapsedMinutes = Math.round(elapsedMs / (1000 * 60));
+  return Math.max(0, elapsedMinutes);
+}
+
 type ReportRow = {
   id: string;
   scheduleId: string;
@@ -108,6 +122,8 @@ export default function ReportScreen() {
   const jobTitle =
     schedule?.jobTitle || (typeof params.jobTitle === 'string' ? params.jobTitle : '');
   const location = schedule?.location || '';
+  const fallbackStartDateTime =
+    typeof params.startDateTime === 'string' ? params.startDateTime : '';
 
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -196,13 +212,16 @@ export default function ReportScreen() {
     [watchedValues?.dirtyScale]
   );
 
-  const buildPayload = (status: ReportSavePayload['reportStatus']): ReportSavePayload => {
+  const buildPayload = (
+    status: ReportSavePayload['reportStatus'],
+    dateCompleted: string
+  ): ReportSavePayload => {
     const values = getValues();
     return {
       scheduleId,
       invoiceId,
       technicianId,
-      dateCompleted: new Date().toISOString(),
+      dateCompleted,
       reportStatus: status,
       jobTitle,
       location,
@@ -256,11 +275,17 @@ export default function ReportScreen() {
 
     setIsSaving(true);
     try {
-      const payload = buildPayload(status);
+      const completedAt = new Date();
+      const payload = buildPayload(status, completedAt.toISOString());
+      const actualServiceDurationMinutes = calculateActualServiceDurationMinutes(
+        schedule?.startDateTime || fallbackStartDateTime,
+        completedAt
+      );
 
       const reportId = scheduleId;
-      await powerSync.execute(
-        `INSERT OR REPLACE INTO reports (
+      await powerSync.writeTransaction(async (tx) => {
+        await tx.execute(
+          `INSERT OR REPLACE INTO reports (
                     id,
                     scheduleId,
                     invoiceId,
@@ -275,22 +300,36 @@ export default function ReportScreen() {
                     cleaningDetails,
                     inspectionItems
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          reportId,
-          payload.scheduleId,
-          payload.invoiceId,
-          payload.technicianId,
-          payload.dateCompleted,
-          payload.reportStatus,
-          payload.jobTitle ?? null,
-          payload.location ?? null,
-          payload.cookingVolume,
-          payload.recommendedCleaningFrequency ?? null,
-          payload.comments ?? null,
-          JSON.stringify(payload.cleaningDetails),
-          JSON.stringify(payload.inspectionItems)
-        ]
-      );
+          [
+            reportId,
+            payload.scheduleId,
+            payload.invoiceId,
+            payload.technicianId,
+            payload.dateCompleted,
+            payload.reportStatus,
+            payload.jobTitle ?? null,
+            payload.location ?? null,
+            payload.cookingVolume,
+            payload.recommendedCleaningFrequency ?? null,
+            payload.comments ?? null,
+            JSON.stringify(payload.cleaningDetails),
+            JSON.stringify(payload.inspectionItems)
+          ]
+        );
+
+        if (
+          (status === 'in_progress' || status === 'completed') &&
+          actualServiceDurationMinutes !== null
+        ) {
+          await tx.execute(
+            `UPDATE schedules
+             SET actualServiceDurationMinutes = ?
+             WHERE id = ?
+             AND actualServiceDurationMinutes IS NULL`,
+            [actualServiceDurationMinutes, scheduleId]
+          );
+        }
+      });
       Alert.alert(
         status === 'draft' ? 'Draft saved' : 'Submitted',
         status === 'draft' ? 'Report draft saved.' : 'Report submitted for admin review.'
