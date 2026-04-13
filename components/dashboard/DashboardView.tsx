@@ -15,6 +15,7 @@ import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
 import { useTheme } from '@/providers/ThemeProvider';
 import { AvailabilityManager } from '@/components/schedule/AvailabilityManager';
 import { TimeOffManager } from '@/components/schedule/TimeOffManager';
+import { ReviewQRCodeModal } from '@/components/dashboard/ReviewQRCodeModal';
 
 interface DashboardViewProps {
   userId: string;
@@ -26,6 +27,8 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
   const [showTimeOffModal, setShowTimeOffModal] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const googleReviewUrl = 'https://g.page/r/CRLDtlapvtO3EAE/review';
   const { colorScheme } = useTheme();
   const { data: todaySchedules = [] } = useTodaySchedules();
   const { data: currentPayroll = [] } = useCurrentPayrollPeriod();
@@ -140,16 +143,24 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
       />
       <View className='flex-row justify-between items-center p-4 bg-white dark:bg-gray-800 shadow-sm'>
         <Text className='text-2xl font-bold text-gray-800 dark:text-white'>Dashboard</Text>
-        <TouchableOpacity
-          onPress={() => setShowThemeModal(true)}
-          className='p-2 rounded-full bg-gray-100 dark:bg-gray-700'
-        >
-          <Ionicons
-            name='color-palette'
-            size={24}
-            color={colorScheme === 'dark' ? '#E5E7EB' : '#4B5563'}
-          />
-        </TouchableOpacity>
+        <View className='flex-row items-center gap-2'>
+          <TouchableOpacity
+            onPress={() => setShowReviewModal(true)}
+            className='p-2 rounded-full bg-amber-100 dark:bg-amber-800/40'
+          >
+            <Ionicons name='star' size={22} color='#D97706' />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => setShowThemeModal(true)}
+            className='p-2 rounded-full bg-gray-100 dark:bg-gray-700'
+          >
+            <Ionicons
+              name='color-palette'
+              size={24}
+              color={colorScheme === 'dark' ? '#E5E7EB' : '#4B5563'}
+            />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <ScrollView className='flex-1'>
@@ -278,6 +289,12 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
 
       {/* Theme Selector Modal */}
       <ThemeSelectorModal visible={showThemeModal} onClose={() => setShowThemeModal(false)} />
+
+      <ReviewQRCodeModal
+        visible={showReviewModal}
+        onClose={() => setShowReviewModal(false)}
+        reviewUrl={googleReviewUrl}
+      />
 
       {/* Availability Manager Modal */}
       <Modal
