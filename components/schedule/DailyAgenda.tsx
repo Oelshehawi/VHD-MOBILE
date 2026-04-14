@@ -30,17 +30,6 @@ interface DailyAgendaProps {
   onInvoicePress?: (schedule: Schedule) => void; // Callback when invoice is pressed
 }
 
-// Helper function to safely extract technician ID
-const getTechnicianId = (technicians: any): string => {
-  if (typeof technicians === 'string') {
-    return technicians.split(',')[0] || '';
-  }
-  if (Array.isArray(technicians) && technicians.length > 0) {
-    return technicians[0];
-  }
-  return '';
-};
-
 const TIME_SLOTS: Array<'Morning' | 'Afternoon' | 'Evening'> = ['Morning', 'Afternoon', 'Evening'];
 
 interface ScheduleCardProps {
@@ -91,11 +80,9 @@ const ScheduleCard = React.memo(
       { rowComparator: DEFAULT_ROW_COMPARATOR }
     );
 
-    const totalCount = Number(photoCounts[0]?.totalCount ?? 0);
     const beforeAfterCount = Number(photoCounts[0]?.beforeAfterCount ?? 0);
 
-    const { hasPhotos, showNotificationBadge, photoIcon } = useMemo(() => {
-      const parsedHasPhotos = totalCount > 0;
+    const { showNotificationBadge, photoIcon } = useMemo(() => {
       const iconName: 'camera' | 'images' = beforeAfterCount > 0 ? 'images' : 'camera';
 
       const hasTechnicianNotes =
@@ -104,11 +91,10 @@ const ScheduleCard = React.memo(
         schedule.technicianNotes.trim().length > 0;
 
       return {
-        hasPhotos: parsedHasPhotos,
         showNotificationBadge: hasTechnicianNotes,
         photoIcon: iconName
       };
-    }, [beforeAfterCount, schedule, totalCount]);
+    }, [beforeAfterCount, schedule]);
 
     const handleCardPress = useCallback(() => {
       if (schedule.invoiceRef) {
@@ -209,7 +195,7 @@ const ScheduleCard = React.memo(
 export function DailyAgenda({
   selectedDate,
   schedules,
-  isManager,
+  isManager: _isManager,
   userId,
   onDateChange,
   showSevereWeatherAlert = true, // Default to true for backward compatibility

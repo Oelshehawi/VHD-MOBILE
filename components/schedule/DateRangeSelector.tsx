@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDateRange, isWithin14Days } from '../../utils/availabilityValidation';
-import { format, parseISO, addDays, getDaysInMonth, startOfMonth, getDay } from 'date-fns';
+import { format, getDaysInMonth, startOfMonth, getDay } from 'date-fns';
 
 interface DateRangeSelectorProps {
   startDate: string | null;
@@ -33,8 +33,6 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
 
   // Generate calendar days for the current month
   const generateCalendarDays = (date: Date) => {
-    const year = date.getFullYear();
-    const month = date.getMonth();
     const firstDay = startOfMonth(date);
     const daysInMonth = getDaysInMonth(date);
     const startingDayOfWeek = getDay(firstDay); // 0 = Sunday

@@ -69,7 +69,7 @@ class DebugLogger {
         const fileContent = await logFile.text();
         try {
           logs = JSON.parse(fileContent) || [];
-        } catch (parseError) {
+        } catch {
           // If parsing fails, start with empty array
           logs = [];
         }
@@ -94,7 +94,7 @@ class DebugLogger {
         const trimmedLogs = logs.slice(-Math.floor(this.maxLogEntries / 2));
         await updatedFile.write(JSON.stringify(trimmedLogs, null, 2));
       }
-    } catch (error) {
+    } catch {
       // Silent failure
     }
   }
@@ -108,7 +108,7 @@ class DebugLogger {
 
       const fileContent = await logFile.text();
       return JSON.parse(fileContent) || [];
-    } catch (error) {
+    } catch {
       return [];
     }
   }
@@ -129,7 +129,7 @@ class DebugLogger {
       if (logFile.exists) {
         logFile.delete();
       }
-    } catch (error) {
+    } catch {
       // Silent failure
     }
   }
@@ -138,7 +138,7 @@ class DebugLogger {
     try {
       const logs = await this.getLogs();
       return JSON.stringify(logs, null, 2);
-    } catch (error) {
+    } catch {
       return '[]';
     }
   }

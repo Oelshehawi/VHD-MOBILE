@@ -11,6 +11,7 @@ import { KVStorage } from '../storage/KVStorage';
 import { OPSqliteOpenFactory } from '@powersync/op-sqlite';
 import { debugLogger } from '@/utils/DebugLogger';
 
+// eslint-disable-next-line react-hooks/rules-of-hooks -- js-logger API, not a React Hook.
 Logger.useDefaults();
 Logger.setLevel(Logger.DEBUG);
 

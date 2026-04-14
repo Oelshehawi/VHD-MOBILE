@@ -1,4 +1,4 @@
-import { startOfMonth, endOfMonth, eachDayOfInterval, subMonths, addMonths } from 'date-fns';
+import { startOfMonth, endOfMonth, eachDayOfInterval, subMonths } from 'date-fns';
 import { AppointmentType } from '@/types';
 
 // Helper function to get current date in PT

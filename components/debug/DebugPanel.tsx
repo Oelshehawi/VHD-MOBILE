@@ -7,8 +7,7 @@ import {
   Alert,
   Modal,
   TextInput,
-  Share,
-  Dimensions
+  Share
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { debugLogger } from '@/utils/DebugLogger';
@@ -32,9 +31,6 @@ export function DebugPanel({ visible, onClose }: DebugPanelProps) {
   const [selectedLevel, setSelectedLevel] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-
-  // Get screen dimensions
-  const { width, height } = Dimensions.get('window');
 
   // Load logs when panel opens
   useEffect(() => {
@@ -77,7 +73,7 @@ export function DebugPanel({ visible, onClose }: DebugPanelProps) {
         message: logsString,
         title: 'Debug Logs Export'
       });
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to export logs');
     }
   };

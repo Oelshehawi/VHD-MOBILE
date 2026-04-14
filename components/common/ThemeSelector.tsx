@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useColorScheme as _useColorScheme } from 'react-native';
@@ -15,7 +15,7 @@ interface ThemeSelectorProps {
  */
 export function ThemeSelector({ onClose }: ThemeSelectorProps) {
   const systemTheme = _useColorScheme();
-  const { colorScheme, setColorScheme, theme } = useTheme();
+  const { setColorScheme, theme } = useTheme();
 
   // Select theme function
   const selectTheme = async (newTheme: ColorSchemeType) => {

@@ -3,12 +3,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { Text } from '../components/ui/text';
 import { Ionicons } from '@expo/vector-icons';
-import { useSystem } from '../services/database/System';
 import Constants from 'expo-constants';
 import { usePowerSync } from '@powersync/react-native';
 
 export default function DebugEnvScreen() {
-  const system = useSystem();
   const powerSync = usePowerSync();
 
   const envVars = [

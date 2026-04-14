@@ -15,8 +15,6 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import * as Updates from 'expo-updates';
-// Import functions to get URLs
-import { getPowerSyncUrl, getApiUrl } from '../../services/ApiClient';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -31,10 +29,6 @@ export default function ProfileScreen() {
   const lastTapTimeRef = useRef(0);
   const SECRET_TAP_COUNT = 7;
   const TAP_TIMEOUT = 2000; // Reset after 2 seconds of no taps
-
-  // Get URLs for display
-  const powerSyncUrl = getPowerSyncUrl();
-  const apiUrl = getApiUrl();
 
   // Handle secret tap gesture on Version
   const handleVersionTap = useCallback(() => {
@@ -94,7 +88,7 @@ export default function ProfileScreen() {
         })
       ).catch((error) => console.error('Error caching user data:', error));
     }
-  }, [user]);
+  }, [user, isOffline]);
 
   const handleSignOut = async () => {
     try {

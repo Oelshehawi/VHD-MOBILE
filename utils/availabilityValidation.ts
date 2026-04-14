@@ -124,7 +124,7 @@ export function validateNoConflicts(
     }
 
     return null;
-  } catch (error) {
+  } catch {
     return 'Error validating availability';
   }
 }

@@ -40,8 +40,8 @@ interface MonthDayCellProps {
 const MonthDayCell = React.memo(
   ({
     date,
-    dayKey,
-    isCurrentMonth,
+    dayKey: _dayKey,
+    isCurrentMonth: _isCurrentMonth,
     isSelected,
     isToday,
     appointments,

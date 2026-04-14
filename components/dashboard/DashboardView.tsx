@@ -52,7 +52,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
         return typeof schedule.assignedTechnicians === 'string'
           ? JSON.parse(schedule.assignedTechnicians)
           : schedule.assignedTechnicians;
-      } catch (error) {
+      } catch {
         return [];
       }
     })();

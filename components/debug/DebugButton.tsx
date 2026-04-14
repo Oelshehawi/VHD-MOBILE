@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, TouchableOpacity, Text, Alert } from 'react-native';
 import { DebugPanel } from './DebugPanel';
 import { debugLogger } from '@/utils/DebugLogger';
@@ -15,8 +15,7 @@ export function DebugButton({ bottom = 100, right = 20, visible = true }: DebugB
   const [showPanel, setShowPanel] = useState(false);
   const [taps, setTaps] = useState(0);
   const [lastTapTime, setLastTapTime] = useState(0);
-
-  if (!visible) return null;
+  const [logCount, setLogCount] = useState(0);
 
   const handlePress = async () => {
     const now = Date.now();
@@ -59,20 +58,29 @@ export function DebugButton({ bottom = 100, right = 20, visible = true }: DebugB
     }
   };
 
-  const [logCount, setLogCount] = useState(0);
-
   // Update log count periodically
-  React.useEffect(() => {
+  useEffect(() => {
+    if (!visible) return;
+
+    let cancelled = false;
+
     const updateCount = async () => {
       const count = await getLogCount();
-      setLogCount(count);
+      if (!cancelled) {
+        setLogCount(count);
+      }
     };
 
-    updateCount();
+    void updateCount();
     const interval = setInterval(updateCount, 5000); // Update every 5 seconds
 
-    return () => clearInterval(interval);
-  }, []);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [visible]);
+
+  if (!visible) return null;
 
   return (
     <>

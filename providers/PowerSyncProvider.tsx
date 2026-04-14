@@ -51,7 +51,7 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
 
     const initializePowerSync = async () => {
       debugLogger.debug('SYNC', 'PowerSync init check', {
-        isSignedIn,
+        isSignedIn: signedIn,
         isInitialized
       });
 
@@ -84,7 +84,7 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
     };
 
     initializePowerSync();
-  }, [signedIn, isLoaded, isInitialized]);
+  }, [signedIn, isLoaded, isInitialized, system]);
 
   useEffect(() => {
     if (!isLoaded) {

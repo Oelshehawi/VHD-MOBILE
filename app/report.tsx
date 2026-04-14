@@ -129,7 +129,7 @@ export default function ReportScreen() {
 
   const schedule = (scheduleQuery.data?.[0] as Schedule | undefined) ?? null;
 
-  const { data: existingReports = [], isLoading: isLoadingReport } = useQuery<ReportRow>(
+  const { data: existingReports = [], isLoading: _isLoadingReport } = useQuery<ReportRow>(
     scheduleId
       ? `SELECT * FROM reports WHERE scheduleId = ? LIMIT 1`
       : `SELECT * FROM reports WHERE 0`,

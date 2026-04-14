@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -201,7 +201,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   };
 
   // Edit availability
-  const handleEdit = (av: Availability) => {
+  const _handleEdit = (av: Availability) => {
     setFormData({
       availabilityId: av.id,
       dayOfWeek: av.dayOfWeek ?? undefined,

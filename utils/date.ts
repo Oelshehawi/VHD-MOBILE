@@ -33,7 +33,7 @@ export const formatDateReadable = (date: string | Date | undefined | null): stri
       return '';
     }
     return formatInTimeZone(parsedDate, 'UTC', 'EEEE, MMM d, yyyy');
-  } catch (error) {
+  } catch {
     return '';
   }
 };
@@ -49,7 +49,7 @@ export const formatDateShort = (date: string | Date | undefined | null): string 
       return '';
     }
     return formatInTimeZone(parsedDate, 'UTC', 'MMM d, yyyy');
-  } catch (error) {
+  } catch {
     return '';
   }
 };

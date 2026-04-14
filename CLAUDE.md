@@ -17,25 +17,25 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ```bash
 # Start development server
-npm start
+pnpm start
 
 # Run on specific platform
-npm run android
-npm run ios
-npm run web
+pnpm run android
+pnpm run ios
+pnpm run web
 
 # Linting & Type Checking
-npm run lint:types           # Run TypeScript type check (no emit)
+pnpm run lint:types           # Run TypeScript type check (no emit)
 
 # Testing
-npm test                     # Run Jest with watch mode
-npm test -- --no-coverage   # Run tests without coverage
+pnpm test                     # Run Jest with watch mode
+pnpm test -- --no-coverage   # Run tests without coverage
 
 # Analysis & Build
-npm run analyze              # Generate sourcemap and analyze bundle
+pnpm run analyze              # Generate sourcemap and analyze bundle
 ```
 
-**Important**: Always run both `npm run lint:types` and `npm run lint:eslint` after making changes to catch type errors and linting issues before committing.
+**Important**: Always run both `pnpm run lint:types` and `pnpm run lint:eslint` after making changes to catch type errors and linting issues before committing.
 
 ## Project Architecture
 
@@ -273,8 +273,8 @@ All public values must be prefixed with `EXPO_PUBLIC_`.
 ### Testing
 
 - Jest preset: `jest-expo`
-- Run: `npm test`
-- For a single test file: `npm test -- path/to/test.ts`
+- Run: `pnpm test`
+- For a single test file: `pnpm test -- path/to/test.ts`
 
 ### Building for Production
 
@@ -335,4 +335,4 @@ debugLog('feature', 'message', data); // Conditional logging
 - **Image Caching**: Use `imageCache.ts` utilities to cache downloaded images
 - **Query Optimization**: PowerSync queries are subscriptions; filter in WHERE clause
 - **Modal Performance**: BottomSheetModalProvider manages modal lifecycle
-- **Bundle Analysis**: Run `npm run analyze` to check bundle size
+- **Bundle Analysis**: Run `pnpm run analyze` to check bundle size

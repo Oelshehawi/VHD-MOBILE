@@ -5,7 +5,7 @@ export class KVStorage {
     try {
       const session = await getItemAsync(key);
       return session ?? null;
-    } catch (error) {
+    } catch {
       // There was an error on the native side
       return null;
     }

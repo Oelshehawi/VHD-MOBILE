@@ -1,4 +1,4 @@
-import { Schedule, PayrollSchedule } from '@/types';
+import { Schedule } from '@/types';
 import { Linking } from 'react-native';
 
 export const sortSchedulesByTime = (schedules: Schedule[]) => {

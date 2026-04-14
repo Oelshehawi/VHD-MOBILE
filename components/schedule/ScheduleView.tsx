@@ -54,7 +54,10 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
       : [selectedDateParam, selectedDateParam, `%${userId}%`],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
-  const monthSchedules: ReadonlyArray<Schedule> = monthQuery.data ?? [];
+  const monthSchedules = useMemo<ReadonlyArray<Schedule>>(
+    () => monthQuery.data ?? [],
+    [monthQuery.data]
+  );
 
   // Get schedules for the week view (current week +/- 1 week for smooth navigation)
   const weekStart = startOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
@@ -68,7 +71,10 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
       : [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'), `%${userId}%`],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
-  const weekSchedules: ReadonlyArray<Schedule> = weekQuery.data ?? [];
+  const weekSchedules = useMemo<ReadonlyArray<Schedule>>(
+    () => weekQuery.data ?? [],
+    [weekQuery.data]
+  );
 
   // Convert schedules to appointments format for MonthView
   const appointments: AppointmentType[] = useMemo(

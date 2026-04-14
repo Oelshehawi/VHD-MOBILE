@@ -138,21 +138,21 @@ export function InvoiceModal({
   const signature = signaturePhotos[0] || null;
   const hasSignature = !!signature;
   const isSignatureUploading = !!signature && signature.cloudinaryUrl === null;
+  const onSiteContactRaw = schedule?.onSiteContact as unknown;
 
   // Parse onSiteContact from JSON string if needed
   const onSiteContact = useMemo(() => {
     try {
-      const contact = (schedule as any)?.onSiteContact;
-      if (!contact) {
+      if (!onSiteContactRaw) {
         return null;
       }
 
-      return typeof contact === 'string' ? JSON.parse(contact) : contact;
+      return typeof onSiteContactRaw === 'string' ? JSON.parse(onSiteContactRaw) : onSiteContactRaw;
     } catch (error) {
       console.error('Error parsing onSiteContact:', error);
       return null;
     }
-  }, [(schedule as any)?.onSiteContact]);
+  }, [onSiteContactRaw]);
 
   const items: InvoiceItem[] = useMemo(() => {
     if (!invoice?.items) return [];

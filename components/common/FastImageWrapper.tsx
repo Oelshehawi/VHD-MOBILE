@@ -36,7 +36,6 @@ export const FastImageWrapper = ({
   ...props
 }: FastImageWrapperProps) => {
   const [isLoading, setIsLoading] = useState(true);
-  const [hasError, setHasError] = useState(false);
 
   // Apply Cloudinary transformation if provided
   const transformedUri = useMemo(() => {
@@ -83,7 +82,6 @@ export const FastImageWrapper = ({
         onLoadStart={() => setIsLoading(true)}
         onLoadEnd={() => setIsLoading(false)}
         onError={() => {
-          setHasError(true);
           setIsLoading(false);
           if (onError) onError();
         }}

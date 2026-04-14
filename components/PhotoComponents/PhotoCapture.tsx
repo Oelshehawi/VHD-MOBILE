@@ -250,7 +250,7 @@ export function PhotoCapture({
 
       showToast('Photo deleted successfully');
       setPhotoToDelete(null);
-    } catch (error) {
+    } catch {
       Alert.alert('Error', 'Failed to delete photo. Please try again.');
     } finally {
       setIsDeleting(false);

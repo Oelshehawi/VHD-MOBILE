@@ -6,7 +6,6 @@ import {
   Text,
   Dimensions,
   ActivityIndicator,
-  Platform,
   StyleSheet
 } from 'react-native';
 import { Image } from 'expo-image';
@@ -74,7 +73,7 @@ const FastImageViewerComponent: React.FC<FastImageViewerProps> = ({
   imageIndex = 0,
   visible,
   onRequestClose,
-  swipeToCloseEnabled = true,
+  swipeToCloseEnabled: _swipeToCloseEnabled = true,
   doubleTapToZoomEnabled = true,
   title,
   getSubtitle,

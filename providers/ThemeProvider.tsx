@@ -27,7 +27,6 @@ export const useTheme = () => useContext(ThemeContext);
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const deviceColorScheme = useDeviceColorScheme();
   const [userColorScheme, setUserColorScheme] = useState<ColorSchemeType>('system');
-  const [isLoaded, setIsLoaded] = useState(false);
   const { setColorScheme: setNativeWindColorScheme } = useColorScheme();
 
   // Load user preference from AsyncStorage on mount
@@ -40,8 +39,6 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (error) {
         console.error('Failed to load color scheme preference:', error);
-      } finally {
-        setIsLoaded(true);
       }
     }
 
