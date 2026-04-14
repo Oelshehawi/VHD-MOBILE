@@ -1,8 +1,14 @@
 import { File } from 'expo-file-system';
-import { AbstractAttachmentQueue, AttachmentRecord, AttachmentState } from '@powersync/attachments';
+import {
+  AbstractAttachmentQueue,
+  AttachmentQueueOptions,
+  AttachmentRecord,
+  AttachmentState
+} from '@powersync/attachments';
 import { prepareImageForUpload } from '@/utils/imagePrep';
 import { generateObjectId } from '@/utils/objectId';
 import { getClerkInstance } from '@clerk/clerk-expo';
+import type { FetchLike, TokenProvider } from '../network/types';
 
 interface QueuePhotoInput {
   sourceUri: string;
@@ -35,9 +41,22 @@ type UploadResult =
   | { id: string; markSynced: true }
   | { id: string; removed: true };
 
-export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
+export interface PhotoAttachmentQueueOptions extends AttachmentQueueOptions {
+  fetchImpl?: FetchLike;
+  tokenProvider?: TokenProvider;
+}
+
+export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmentQueueOptions> {
   private readonly CONCURRENT_UPLOADS = 10;
+  private readonly fetchImpl: FetchLike;
+  private readonly tokenProvider?: TokenProvider;
   private isProcessing = false;
+
+  constructor(options: PhotoAttachmentQueueOptions) {
+    super(options);
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.tokenProvider = options.tokenProvider;
+  }
 
   async init() {
     await super.init();
@@ -276,7 +295,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     formData.append('signature', signedUrl.signature);
     formData.append('folder', signedUrl.folderPath);
 
-    const uploadResponse = await fetch(
+    const uploadResponse = await this.fetchImpl(
       `https://api.cloudinary.com/v1_1/${signedUrl.cloudName}/image/upload`,
       { method: 'POST', body: formData }
     );
@@ -328,22 +347,12 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
-    try {
-      const clerk = getClerkInstance({
-        publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-      });
-      const token = await clerk?.session?.getToken({
-        template: 'Powersync',
-        skipCache: false
-      });
-      if (token) {
-        headers.Authorization = `Bearer ${token}`;
-      }
-    } catch {
-      // Proceed without auth header if token fetch fails.
+    const token = await this.getAuthToken();
+    if (token) {
+      headers.Authorization = `Bearer ${token}`;
     }
 
-    const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/cloudinaryUpload`, {
+    const response = await this.fetchImpl(`${process.env.EXPO_PUBLIC_API_URL}/api/cloudinaryUpload`, {
       method: 'POST',
       headers,
       body: JSON.stringify({ files })
@@ -353,5 +362,32 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue {
     }
     const data = await response.json();
     return data.signedUrls;
+  }
+
+  private async getAuthToken(): Promise<string | null> {
+    if (this.tokenProvider) {
+      try {
+        const providedToken = await this.tokenProvider();
+        if (providedToken) {
+          return providedToken;
+        }
+      } catch {
+        // Fall back to Clerk below.
+      }
+    }
+
+    try {
+      const clerk = getClerkInstance({
+        publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
+      });
+      const token = await clerk?.session?.getToken({
+        template: 'Powersync',
+        skipCache: false
+      });
+      return token ?? null;
+    } catch {
+      // Proceed without auth header if token fetch fails.
+      return null;
+    }
   }
 }

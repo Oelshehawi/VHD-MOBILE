@@ -1,5 +1,6 @@
 import { debugLogger } from '@/utils/DebugLogger';
 import { getClerkInstance } from '@clerk/clerk-expo';
+import type { FetchLike, TokenProvider } from './network/types';
 
 // API Response interface
 export interface ApiResponse<T> {
@@ -42,10 +43,20 @@ export function getPowerSyncUrl() {
 
 export class ApiClient {
   private readonly baseUrl: string;
+  private readonly fetchImpl: FetchLike;
+  private readonly tokenProvider?: TokenProvider;
   private headers: Record<string, string>;
 
-  constructor(token: string = '') {
+  constructor(
+    token: string = '',
+    options?: {
+      fetchImpl?: FetchLike;
+      tokenProvider?: TokenProvider;
+    }
+  ) {
     this.baseUrl = getApiUrl();
+    this.fetchImpl = options?.fetchImpl ?? fetch;
+    this.tokenProvider = options?.tokenProvider;
     this.headers = {
       'Content-Type': 'application/json',
       ...(token && { Authorization: `Bearer ${token}` })
@@ -61,6 +72,19 @@ export class ApiClient {
   }
 
   private async ensureAuthHeaders(): Promise<Record<string, string>> {
+    if (this.tokenProvider) {
+      try {
+        const providedToken = await this.tokenProvider();
+        if (providedToken) {
+          this.headers.Authorization = `Bearer ${providedToken}`;
+          debugLogger.debug('AUTH', 'ApiClient auth header set from token provider');
+          return this.headers;
+        }
+      } catch {
+        debugLogger.warn('AUTH', 'ApiClient token provider failed');
+      }
+    }
+
     try {
       const clerk = getClerkInstance({
         publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
@@ -134,7 +158,7 @@ export class ApiClient {
 
     try {
       const headers = await this.ensureAuthHeaders();
-      const response = await fetch(`${this.baseUrl}/api/sync`, {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/sync`, {
         method,
         headers,
         body: JSON.stringify(payload)
@@ -240,7 +264,7 @@ export class ApiClient {
   ): Promise<ApiResponse<T>> {
     try {
       const headers = await this.ensureAuthHeaders();
-      const response = await fetch(`${this.baseUrl}/api/cloudinaryUpload`, {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/cloudinaryUpload`, {
         method: 'POST',
         headers,
         body: JSON.stringify(options.body)
@@ -277,7 +301,7 @@ export class ApiClient {
       }
 
       const headers = await this.ensureAuthHeaders();
-      const response = await fetch(`${this.baseUrl}/api/send-invoice`, {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/send-invoice`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
