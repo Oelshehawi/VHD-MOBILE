@@ -17,6 +17,10 @@ type SyncMetricName =
   | 'sync_retry_transient'
   | 'sync_auth_pause';
 
+type PendingCrudTransaction = NonNullable<
+  Awaited<ReturnType<AbstractPowerSyncDatabase['getNextCrudTransaction']>>
+>;
+
 export class BackendConnector implements PowerSyncBackendConnector {
   private apiClient: ApiClient;
   storage: CloudinaryStorageAdapter;
@@ -198,10 +202,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
     );
   }
 
-  async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
-    const transaction = await database.getNextCrudTransaction();
-    if (!transaction) return;
-
+  private async processCrudTransaction(transaction: PendingCrudTransaction): Promise<void> {
     let lastOp: CrudEntry | null = null;
     const photoPutOps: CrudEntry[] = [];
     const photoPatchOps: CrudEntry[] = [];
@@ -302,5 +303,40 @@ export class BackendConnector implements PowerSyncBackendConnector {
       });
       throw ex;
     }
+  }
+
+  async uploadData(database: AbstractPowerSyncDatabase): Promise<void> {
+    const transaction = await database.getNextCrudTransaction();
+    if (!transaction) return;
+
+    await this.processCrudTransaction(transaction);
+  }
+
+  async uploadPendingTransactions(
+    database: AbstractPowerSyncDatabase,
+    deadlineMs: number
+  ): Promise<number> {
+    let drainedTransactions = 0;
+
+    while (Date.now() < deadlineMs) {
+      const transaction = await database.getNextCrudTransaction();
+      if (!transaction) {
+        debugLogger.info('SYNC', 'Upload drain completed', {
+          drainedTransactions,
+          stopReason: 'empty_queue'
+        });
+        return drainedTransactions;
+      }
+
+      await this.processCrudTransaction(transaction);
+      drainedTransactions += 1;
+    }
+
+    debugLogger.info('SYNC', 'Upload drain stopped', {
+      drainedTransactions,
+      stopReason: 'deadline'
+    });
+
+    return drainedTransactions;
   }
 }
