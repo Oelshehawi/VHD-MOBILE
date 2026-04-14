@@ -9,6 +9,7 @@ import { getClerkInstance } from '@clerk/clerk-expo';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import { System } from './System';
 import { debugLogger } from '@/utils/DebugLogger';
+import { cacheBackgroundToken } from '@/services/background/BackgroundAuth';
 
 type SyncMetricName =
   | 'sync_ack_success'
@@ -82,6 +83,8 @@ export class BackendConnector implements PowerSyncBackendConnector {
       if (__DEV__) {
         debugLogger.debug('AUTH', 'Clerk token', { token });
       }
+
+      await cacheBackgroundToken(token);
 
       if (!this.endpoint) {
         debugLogger.error('AUTH', 'No endpoint configured');

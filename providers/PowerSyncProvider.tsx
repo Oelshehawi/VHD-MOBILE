@@ -5,6 +5,7 @@ import { useAuth } from '@clerk/clerk-expo';
 import * as SplashScreen from 'expo-splash-screen';
 import { System, useSystem } from '../services/database/System';
 import { debugLogger } from '@/utils/DebugLogger';
+import { clearBackgroundToken } from '@/services/background/BackgroundAuth';
 
 const TECHNICIAN_MAP: Record<string, string> = {
   user_38Ghu2yPVPlTmB3D9UxbPj0okJN: 'Mohnad Elkeliny',
@@ -85,6 +86,22 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
 
     initializePowerSync();
   }, [signedIn, isLoaded, isInitialized, system]);
+
+  useEffect(() => {
+    if (!isLoaded || signedIn) {
+      return;
+    }
+
+    clearBackgroundToken()
+      .then(() => {
+        debugLogger.info('AUTH', 'Cleared background token cache for signed-out session');
+      })
+      .catch((error) => {
+        debugLogger.warn('AUTH', 'Failed to clear background token cache on sign-out', {
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
+  }, [isLoaded, signedIn]);
 
   useEffect(() => {
     if (!isLoaded) {
