@@ -7,6 +7,7 @@ import {
 } from '@powersync/attachments';
 import { prepareImageForUpload } from '@/utils/imagePrep';
 import { generateObjectId } from '@/utils/objectId';
+import { debugLogger } from '@/utils/DebugLogger';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import type { FetchLike, TokenProvider } from '../network/types';
 
@@ -44,6 +45,18 @@ type UploadResult =
 export interface PhotoAttachmentQueueOptions extends AttachmentQueueOptions {
   fetchImpl?: FetchLike;
   tokenProvider?: TokenProvider;
+}
+
+interface ProcessQueueOptions {
+  deadlineMs?: number;
+  maxBatches?: number;
+}
+
+interface ProcessQueueResult {
+  attempted: number;
+  succeeded: number;
+  failed: number;
+  stoppedBecause: 'empty' | 'deadline' | 'max-batches';
 }
 
 export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmentQueueOptions> {
@@ -178,12 +191,38 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     return preparedFiles.map((file) => file.id);
   }
 
-  async processQueue(): Promise<void> {
-    if (this.isProcessing) return;
+  async processQueue(options?: ProcessQueueOptions): Promise<ProcessQueueResult> {
+    if (this.isProcessing) {
+      return {
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        stoppedBecause: 'empty'
+      };
+    }
+
+    const deadlineMs = options?.deadlineMs;
+    const maxBatches = options?.maxBatches;
+    let attempted = 0;
+    let succeeded = 0;
+    let failed = 0;
+    let processedBatches = 0;
+    let stoppedBecause: ProcessQueueResult['stoppedBecause'] = 'empty';
+
     this.isProcessing = true;
 
     try {
       while (true) {
+        if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
+          stoppedBecause = 'deadline';
+          break;
+        }
+
+        if (maxBatches !== undefined && processedBatches >= maxBatches) {
+          stoppedBecause = 'max-batches';
+          break;
+        }
+
         const queued = await this.powersync.getAll<QueuedAttachmentRecord>(
           `SELECT id, filename, local_uri, media_type, photoType, jobTitle, startDate
                      FROM ${this.table}
@@ -192,7 +231,13 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
           [AttachmentState.QUEUED_UPLOAD, AttachmentState.QUEUED_SYNC, this.CONCURRENT_UPLOADS]
         );
 
-        if (queued.length === 0) break;
+        if (queued.length === 0) {
+          stoppedBecause = 'empty';
+          break;
+        }
+
+        processedBatches += 1;
+        attempted += queued.length;
 
         // Get all signed URLs in one batch request
         const signedUrls = await this.getBatchSignedUploadUrls(
@@ -223,7 +268,10 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         const syncedIds: string[] = [];
 
         for (const result of uploadResults) {
-          if (result.status !== 'fulfilled') continue;
+          if (result.status !== 'fulfilled') {
+            failed += 1;
+            continue;
+          }
           const value = result.value;
           if ('secureUrl' in value) {
             photoUpdates.push({
@@ -231,8 +279,12 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
               secureUrl: value.secureUrl
             });
             syncedIds.push(value.id);
+            succeeded += 1;
           } else if ('markSynced' in value) {
             syncedIds.push(value.id);
+            succeeded += 1;
+          } else if ('removed' in value) {
+            succeeded += 1;
           }
         }
 
@@ -255,7 +307,21 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       }
     } finally {
       this.isProcessing = false;
+
+      void debugLogger.info('UPLOAD', 'Photo queue processing complete', {
+        attempted,
+        succeeded,
+        failed,
+        stoppedBecause
+      });
     }
+
+    return {
+      attempted,
+      succeeded,
+      failed,
+      stoppedBecause
+    };
   }
 
   private async uploadToCloudinary(
