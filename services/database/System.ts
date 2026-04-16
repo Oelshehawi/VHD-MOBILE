@@ -1,15 +1,17 @@
 import '@azure/core-asynciterator-polyfill';
 import React from 'react';
+import { fetch as expoFetch } from 'expo/fetch';
 import { PowerSyncDatabase } from '@powersync/react-native';
 import { BackendConnector } from './BackendConnector';
 import { AppSchema } from './schema';
-import { getPowerSyncUrl } from '../ApiClient';
+import { ApiClient, getPowerSyncUrl } from '../ApiClient';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import { PhotoAttachmentQueue } from './PhotoAttachmentQueue';
 import Logger from 'js-logger';
 import { KVStorage } from '../storage/KVStorage';
 import { OPSqliteOpenFactory } from '@powersync/op-sqlite';
 import { debugLogger } from '@/utils/DebugLogger';
+import type { FetchLike } from '../network/types';
 
 // eslint-disable-next-line react-hooks/rules-of-hooks -- js-logger API, not a React Hook.
 Logger.useDefaults();
@@ -20,6 +22,9 @@ const CONNECTION_TIMEOUT_MS = 30000;
 const opSqlite = new OPSqliteOpenFactory({
   dbFilename: 'powersync.db'
 });
+
+const foregroundFetch = expoFetch as unknown as FetchLike;
+
 export class System {
   KVstorage: KVStorage;
   storage: CloudinaryStorageAdapter;
@@ -29,7 +34,11 @@ export class System {
 
   constructor() {
     this.KVstorage = new KVStorage();
-    this.backendConnector = new BackendConnector(this);
+    this.backendConnector = new BackendConnector(this, {
+      apiClient: new ApiClient('', {
+        fetchImpl: foregroundFetch
+      })
+    });
     this.storage = this.backendConnector.storage;
 
     this.powersync = new PowerSyncDatabase({
@@ -43,6 +52,7 @@ export class System {
       performInitialSync: true,
       syncInterval: 30000,
       downloadAttachments: false,
+      fetchImpl: foregroundFetch,
       instanceLabel: 'foreground-system'
     });
   }

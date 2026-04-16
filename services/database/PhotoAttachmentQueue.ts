@@ -19,6 +19,11 @@ interface QueuePhotoInput {
   signerName?: string;
   jobTitle: string;
   startDate: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  sourceSize?: number;
+  mediaType?: string | null;
+  fileName?: string | null;
 }
 
 interface SignedUploadUrl {
@@ -52,14 +57,43 @@ export interface PhotoAttachmentQueueOptions extends AttachmentQueueOptions {
 interface ProcessQueueOptions {
   deadlineMs?: number;
   maxBatches?: number;
+  triggerSource?: QueueTriggerSource;
+  workerRunId?: string;
 }
+
+type QueueTriggerSource =
+  | 'watch'
+  | 'interval/manual-trigger'
+  | 'bounded-background-worker'
+  | 'unspecified';
 
 interface ProcessQueueResult {
   attempted: number;
   succeeded: number;
   failed: number;
-  stoppedBecause: 'empty' | 'deadline' | 'max-batches';
+  stoppedBecause: 'empty' | 'deadline' | 'max-batches' | 'already-attempted';
+  batchesProcessed: number;
+  uniqueAttachmentCount: number;
+  repeatAttemptCount: number;
 }
+
+export interface QueuePhotoProgress {
+  phase: 'preparing' | 'saving';
+  current: number;
+  total: number;
+  action?: 'copy' | 'resize' | 'convert';
+}
+
+interface QueuePhotosOptions {
+  onProgress?: (progress: QueuePhotoProgress) => void;
+}
+
+const MAX_IMAGE_DIMENSION = 2560;
+const COPY_AS_IS_MAX_BYTES = 4 * 1024 * 1024;
+const HUGE_IMAGE_BYTES = 10 * 1024 * 1024;
+const HUGE_IMAGE_DIMENSION = 4000;
+const JPEG_NORMAL_QUALITY = 0.9;
+const JPEG_HUGE_QUALITY = 0.85;
 
 export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmentQueueOptions> {
   private readonly CONCURRENT_UPLOADS = 10;
@@ -100,7 +134,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
           queueInstance: this.instanceLabel,
           queuedIds: ids.length
         });
-        void this.processQueue();
+        void this.processQueue({ triggerSource: 'watch' });
       }
     });
   }
@@ -109,7 +143,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     void debugLogger.debug('UPLOAD', 'Photo queue triggered by interval/manual trigger', {
       queueInstance: this.instanceLabel
     });
-    void this.processQueue();
+    void this.processQueue({ triggerSource: 'interval/manual-trigger' });
     void this.expireCache();
   }
 
@@ -127,10 +161,12 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     };
   }
 
-  async queuePhotos(photos: QueuePhotoInput[]): Promise<string[]> {
+  async queuePhotos(photos: QueuePhotoInput[], options?: QueuePhotosOptions): Promise<string[]> {
     if (!photos || photos.length === 0) return [];
 
+    const startedAt = Date.now();
     const timestamp = new Date().toISOString();
+    const total = photos.length;
     const preparedFiles: Array<{
       id: string;
       filename: string;
@@ -140,22 +176,43 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       photo: QueuePhotoInput;
     }> = [];
 
-    for (const photo of photos) {
+    for (const [index, photo] of photos.entries()) {
+      const photoStartedAt = Date.now();
       const id = generateObjectId();
+      const shouldCopyOriginal = this.shouldCopyOriginal(photo);
       const ext = photo.type === 'signature' ? 'png' : 'jpg';
       const filename = `${id}.${ext}`;
       const localPath = this.getLocalFilePathSuffix(filename);
       const destinationUri = this.getLocalUri(localPath);
 
-      const prepared = await prepareImageForUpload(photo.sourceUri, {
-        format: photo.type === 'signature' ? 'png' : 'jpeg'
+      options?.onProgress?.({
+        phase: 'preparing',
+        current: index + 1,
+        total,
+        action: shouldCopyOriginal ? 'copy' : this.getPreparationAction(photo)
       });
 
-      await this.storage.copyFile(prepared.uri, destinationUri);
+      let sourceToCopy = photo.sourceUri;
+      let size = photo.sourceSize;
 
-      if (prepared.uri !== photo.sourceUri) {
+      if (!shouldCopyOriginal) {
+        const prepared = await prepareImageForUpload(photo.sourceUri, {
+          format: photo.type === 'signature' ? 'png' : 'jpeg',
+          sourceWidth: photo.sourceWidth,
+          sourceHeight: photo.sourceHeight,
+          maxDimension: MAX_IMAGE_DIMENSION,
+          compress: photo.type === 'signature' ? 1.0 : this.getJpegQuality(photo)
+        });
+
+        sourceToCopy = prepared.uri;
+        size = prepared.size;
+      }
+
+      await this.storage.copyFile(sourceToCopy, destinationUri);
+
+      if (sourceToCopy !== photo.sourceUri) {
         try {
-          const tempFile = new File(prepared.uri);
+          const tempFile = new File(sourceToCopy);
           if (tempFile.exists) {
             tempFile.delete();
           }
@@ -169,10 +226,26 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         filename,
         localPath,
         mediaType: photo.type === 'signature' ? 'image/png' : 'image/jpeg',
-        size: prepared.size,
+        size,
         photo
       });
+
+      void debugLogger.debug('UPLOAD', 'Prepared photo for queue', {
+        id,
+        action: shouldCopyOriginal ? 'copy' : this.getPreparationAction(photo),
+        elapsedMs: Date.now() - photoStartedAt,
+        sourceSize: photo.sourceSize,
+        queuedSize: size,
+        sourceWidth: photo.sourceWidth,
+        sourceHeight: photo.sourceHeight
+      });
     }
+
+    options?.onProgress?.({
+      phase: 'saving',
+      current: total,
+      total
+    });
 
     await this.powersync.writeTransaction(async (tx) => {
       for (const { id, filename, localPath, mediaType, size, photo } of preparedFiles) {
@@ -209,16 +282,85 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       }
     });
 
+    void debugLogger.info('UPLOAD', 'Queued photos for upload', {
+      count: preparedFiles.length,
+      elapsedMs: Date.now() - startedAt
+    });
+
     return preparedFiles.map((file) => file.id);
   }
 
+  private shouldCopyOriginal(photo: QueuePhotoInput): boolean {
+    if (photo.type === 'signature') {
+      return false;
+    }
+
+    if (!photo.sourceWidth || !photo.sourceHeight) {
+      return false;
+    }
+
+    const maxDimension = Math.max(photo.sourceWidth, photo.sourceHeight);
+    const size = photo.sourceSize ?? Number.POSITIVE_INFINITY;
+
+    return (
+      this.isJpegSource(photo) &&
+      size <= COPY_AS_IS_MAX_BYTES &&
+      maxDimension <= MAX_IMAGE_DIMENSION
+    );
+  }
+
+  private getPreparationAction(photo: QueuePhotoInput): QueuePhotoProgress['action'] {
+    if (!this.isJpegSource(photo) || photo.type === 'signature') {
+      return 'convert';
+    }
+
+    return 'resize';
+  }
+
+  private getJpegQuality(photo: QueuePhotoInput): number {
+    const maxDimension = Math.max(photo.sourceWidth ?? 0, photo.sourceHeight ?? 0);
+    const size = photo.sourceSize ?? 0;
+
+    if (size > HUGE_IMAGE_BYTES || maxDimension > HUGE_IMAGE_DIMENSION) {
+      return JPEG_HUGE_QUALITY;
+    }
+
+    return JPEG_NORMAL_QUALITY;
+  }
+
+  private isJpegSource(photo: QueuePhotoInput): boolean {
+    const mediaType = photo.mediaType?.toLowerCase() ?? '';
+    const fileName = photo.fileName?.toLowerCase() ?? '';
+    const sourceUri = photo.sourceUri.toLowerCase();
+
+    return (
+      mediaType === 'image/jpeg' ||
+      mediaType === 'image/jpg' ||
+      fileName.endsWith('.jpg') ||
+      fileName.endsWith('.jpeg') ||
+      sourceUri.endsWith('.jpg') ||
+      sourceUri.endsWith('.jpeg')
+    );
+  }
+
   async processQueue(options?: ProcessQueueOptions): Promise<ProcessQueueResult> {
+    const triggerSource = options?.triggerSource ?? 'unspecified';
+    const workerRunId = options?.workerRunId;
+
     if (this.isProcessing) {
+      void debugLogger.debug('UPLOAD', 'Photo queue process skipped because another run is active', {
+        queueInstance: this.instanceLabel,
+        triggerSource,
+        workerRunId
+      });
       return {
         attempted: 0,
         succeeded: 0,
         failed: 0,
-        stoppedBecause: 'empty'
+        stoppedBecause: 'empty',
+        batchesProcessed: 0,
+        uniqueAttachmentCount: 0,
+        repeatAttemptCount: 0
       };
     }
 
@@ -229,10 +371,21 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     let failed = 0;
     let processedBatches = 0;
     let stoppedBecause: ProcessQueueResult['stoppedBecause'] = 'empty';
+    let repeatAttemptCount = 0;
+    const uniqueAttachmentIds = new Set<string>();
+    const attachmentAttemptCounts = new Map<string, number>();
 
     this.isProcessing = true;
 
     try {
+      void debugLogger.info('UPLOAD', 'Photo queue processing started', {
+        queueInstance: this.instanceLabel,
+        triggerSource,
+        workerRunId,
+        deadlineMs,
+        maxBatches
+      });
+
       while (true) {
         if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
           stoppedBecause = 'deadline';
@@ -244,21 +397,70 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
           break;
         }
 
+        const attemptedIds = Array.from(attachmentAttemptCounts.keys());
+        const excludeAttemptedClause =
+          attemptedIds.length > 0 ? ` AND id NOT IN (${attemptedIds.map(() => '?').join(', ')})` : '';
         const queued = await this.powersync.getAll<QueuedAttachmentRecord>(
           `SELECT id, filename, local_uri, media_type, photoType, jobTitle, startDate
                      FROM ${this.table}
-                     WHERE state = ? OR state = ?
+                     WHERE (state = ? OR state = ?)${excludeAttemptedClause}
                      LIMIT ?`,
-          [AttachmentState.QUEUED_UPLOAD, AttachmentState.QUEUED_SYNC, this.CONCURRENT_UPLOADS]
+          [
+            AttachmentState.QUEUED_UPLOAD,
+            AttachmentState.QUEUED_SYNC,
+            ...attemptedIds,
+            this.CONCURRENT_UPLOADS
+          ]
         );
 
         if (queued.length === 0) {
+          if (attemptedIds.length > 0) {
+            const remainingQueuedRows = await this.powersync.getAll<{ count: number }>(
+              `SELECT COUNT(*) as count
+                         FROM ${this.table}
+                         WHERE state = ? OR state = ?`,
+              [AttachmentState.QUEUED_UPLOAD, AttachmentState.QUEUED_SYNC]
+            );
+            const remainingQueuedCount = Number(remainingQueuedRows[0]?.count ?? 0);
+
+            if (remainingQueuedCount > 0) {
+              stoppedBecause = 'already-attempted';
+              void debugLogger.info('UPLOAD', 'Photo queue stopped after exhausting unique attempts for this run', {
+                queueInstance: this.instanceLabel,
+                triggerSource,
+                workerRunId,
+                attemptedAttachmentCount: attemptedIds.length,
+                remainingQueuedCount
+              });
+              break;
+            }
+          }
+
           stoppedBecause = 'empty';
           break;
         }
 
         processedBatches += 1;
         attempted += queued.length;
+        const batchQueuedIds = queued.map((attachment) => attachment.id);
+
+        for (const attachment of queued) {
+          const previousAttempts = attachmentAttemptCounts.get(attachment.id) ?? 0;
+          repeatAttemptCount += previousAttempts;
+
+          uniqueAttachmentIds.add(attachment.id);
+          attachmentAttemptCounts.set(attachment.id, previousAttempts + 1);
+        }
+
+        void debugLogger.debug('UPLOAD', 'Photo queue batch selected queued attachments', {
+          queueInstance: this.instanceLabel,
+          triggerSource,
+          workerRunId,
+          batchNumber: processedBatches,
+          queuedCount: queued.length,
+          queuedIds: batchQueuedIds,
+          excludedAttemptedIdsCount: attemptedIds.length
+        });
 
         // Get all signed URLs in one batch request
         const signedUrls = await this.getBatchSignedUploadUrls(
@@ -294,6 +496,10 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
             const reason =
               result.reason instanceof Error ? result.reason.message : String(result.reason);
             void debugLogger.warn('UPLOAD', 'Photo upload attempt failed; leaving queued for retry', {
+              queueInstance: this.instanceLabel,
+              triggerSource,
+              workerRunId,
+              batchNumber: processedBatches,
               id: attachment?.id,
               filename: attachment?.filename,
               reason
@@ -333,16 +539,31 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
             }
           });
         }
+
+        void debugLogger.debug('UPLOAD', 'Photo queue batch processed', {
+          queueInstance: this.instanceLabel,
+          triggerSource,
+          workerRunId,
+          batchNumber: processedBatches,
+          attemptedThisBatch: queued.length,
+          succeededThisBatch: syncedIds.length,
+          failedThisBatch: queued.length - syncedIds.length
+        });
       }
     } finally {
       this.isProcessing = false;
 
       void debugLogger.info('UPLOAD', 'Photo queue processing complete', {
         queueInstance: this.instanceLabel,
+        triggerSource,
+        workerRunId,
         attempted,
         succeeded,
         failed,
-        stoppedBecause
+        stoppedBecause,
+        batchesProcessed: processedBatches,
+        uniqueAttachmentCount: uniqueAttachmentIds.size,
+        repeatAttemptCount
       });
     }
 
@@ -350,7 +571,10 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       attempted,
       succeeded,
       failed,
-      stoppedBecause
+      stoppedBecause,
+      batchesProcessed: processedBatches,
+      uniqueAttachmentCount: uniqueAttachmentIds.size,
+      repeatAttemptCount
     };
   }
 
@@ -358,6 +582,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     attachment: AttachmentRecord,
     signedUrl: SignedUploadUrl
   ): Promise<UploadResult> {
+    const startedAt = Date.now();
     const [photo] = await this.powersync.getAll<{
       cloudinaryUrl: string | null;
     }>(`SELECT cloudinaryUrl FROM photos WHERE id = ?`, [attachment.id]);
@@ -380,12 +605,9 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       throw new Error(`Local file missing for ${attachment.id}`);
     }
 
+    const uploadFile = new File(localUri);
     const formData = new FormData();
-    formData.append('file', {
-      uri: localUri,
-      type: attachment.media_type || 'image/jpeg',
-      name: attachment.filename
-    } as any);
+    formData.append('file', uploadFile, attachment.filename);
     formData.append('api_key', signedUrl.apiKey);
     formData.append('timestamp', signedUrl.timestamp);
     formData.append('signature', signedUrl.signature);
@@ -406,6 +628,12 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     if (!secureUrl) {
       throw new Error('Cloudinary response missing secure_url');
     }
+
+    void debugLogger.debug('UPLOAD', 'Cloudinary upload completed', {
+      id: attachment.id,
+      filename: attachment.filename,
+      elapsedMs: Date.now() - startedAt
+    });
 
     return { id: attachment.id, secureUrl };
   }
@@ -440,6 +668,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       startDate: string;
     }>
   ): Promise<SignedUploadUrl[]> {
+    const startedAt = Date.now();
     const headers: Record<string, string> = {
       'Content-Type': 'application/json'
     };
@@ -457,6 +686,10 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       throw new Error('Failed to get batch signed URLs');
     }
     const data = await response.json();
+    void debugLogger.debug('UPLOAD', 'Fetched Cloudinary signed upload URLs', {
+      count: files.length,
+      elapsedMs: Date.now() - startedAt
+    });
     return data.signedUrls;
   }
 

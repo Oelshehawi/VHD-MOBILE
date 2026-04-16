@@ -13,6 +13,11 @@ import { debugLogger } from '@/utils/DebugLogger';
 interface PhotoUploadStats {
   attempted: number;
   succeeded: number;
+  failed: number;
+  stoppedBecause: 'empty' | 'deadline' | 'max-batches' | 'already-attempted';
+  batchesProcessed: number;
+  uniqueAttachmentCount: number;
+  repeatAttemptCount: number;
 }
 
 function hasReachedDeadline(deadlineMs: number): boolean {
@@ -99,6 +104,26 @@ export class BackgroundSystem {
     return true;
   }
 
+  async getPendingPhotoCount(deadlineMs: number): Promise<number> {
+    if (hasReachedDeadline(deadlineMs)) {
+      return 0;
+    }
+
+    if (!this.hasPowerSyncInit) {
+      await this.init(deadlineMs);
+    }
+
+    if (!this.hasPowerSyncInit) {
+      return 0;
+    }
+
+    const rows = await this.powersync.getAll<{ count: number }>(
+      `SELECT COUNT(*) as count FROM photos WHERE cloudinaryUrl IS NULL`
+    );
+
+    return Number(rows[0]?.count ?? 0);
+  }
+
   async uploadPendingPowerSyncOps(deadlineMs: number): Promise<number> {
     if (hasReachedDeadline(deadlineMs)) {
       return 0;
@@ -115,9 +140,17 @@ export class BackgroundSystem {
     return this.backendConnector.uploadPendingTransactions(this.powersync, deadlineMs);
   }
 
-  async processQueuedPhotoUploads(deadlineMs: number): Promise<PhotoUploadStats> {
+  async processQueuedPhotoUploads(deadlineMs: number, workerRunId: string): Promise<PhotoUploadStats> {
     if (hasReachedDeadline(deadlineMs)) {
-      return { attempted: 0, succeeded: 0 };
+      return {
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        stoppedBecause: 'deadline',
+        batchesProcessed: 0,
+        uniqueAttachmentCount: 0,
+        repeatAttemptCount: 0
+      };
     }
 
     if (!this.hasAttachmentQueueInit) {
@@ -125,13 +158,30 @@ export class BackgroundSystem {
     }
 
     if (!this.hasAttachmentQueueInit || hasReachedDeadline(deadlineMs)) {
-      return { attempted: 0, succeeded: 0 };
+      return {
+        attempted: 0,
+        succeeded: 0,
+        failed: 0,
+        stoppedBecause: 'deadline',
+        batchesProcessed: 0,
+        uniqueAttachmentCount: 0,
+        repeatAttemptCount: 0
+      };
     }
 
-    const result = await this.attachmentQueue.processQueue({ deadlineMs });
+    const result = await this.attachmentQueue.processQueue({
+      deadlineMs,
+      triggerSource: 'bounded-background-worker',
+      workerRunId
+    });
     return {
       attempted: result.attempted,
-      succeeded: result.succeeded
+      succeeded: result.succeeded,
+      failed: result.failed,
+      stoppedBecause: result.stoppedBecause,
+      batchesProcessed: result.batchesProcessed,
+      uniqueAttachmentCount: result.uniqueAttachmentCount,
+      repeatAttemptCount: result.repeatAttemptCount
     };
   }
 

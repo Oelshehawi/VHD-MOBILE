@@ -13,6 +13,7 @@ import { LoadingModal } from './LoadingModal';
 import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { File, Paths } from 'expo-file-system';
 import { AttachmentRecord } from '@powersync/attachments';
+import type { QueuePhotoProgress } from '@/services/database/PhotoAttachmentQueue';
 
 interface PhotoCaptureProps {
   technicianId: string;
@@ -25,6 +26,14 @@ interface PhotoCaptureProps {
 }
 
 const MAX_FILE_SIZE = 30 * 1024 * 1024; // 30MB
+const MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024);
+
+interface ProcessingStatus {
+  title: string;
+  detail: string;
+  current?: number;
+  total?: number;
+}
 
 export function PhotoCapture({
   technicianId,
@@ -41,6 +50,7 @@ export function PhotoCapture({
   const [showModal, setShowModal] = useState(false);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [processingStatus, setProcessingStatus] = useState<ProcessingStatus | null>(null);
   const [photoToDelete, setPhotoToDelete] = useState<{ id: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -104,14 +114,34 @@ export function PhotoCapture({
     [type, photos.length]
   );
 
-  const checkFileSize = async (uri: string): Promise<boolean> => {
+  const checkFileSize = async (uri: string): Promise<{ isValidSize: boolean; size?: number }> => {
     try {
       const file = new File(uri);
       const size = file.size ?? 0;
-      return file.exists && size <= MAX_FILE_SIZE;
+      return {
+        isValidSize: file.exists && size <= MAX_FILE_SIZE,
+        size
+      };
     } catch (error) {
       console.error('Error checking file size:', error);
-      return false;
+      return { isValidSize: false };
+    }
+  };
+
+  const getProgressDetail = (progress: QueuePhotoProgress): string => {
+    if (progress.phase === 'saving') {
+      return 'Saving photo records for background upload.';
+    }
+
+    switch (progress.action) {
+      case 'copy':
+        return 'Copying an already-optimized photo without re-encoding.';
+      case 'convert':
+        return 'Converting photo format for reliable upload.';
+      case 'resize':
+        return 'Resizing a large photo before upload.';
+      default:
+        return 'Preparing photo for background upload.';
     }
   };
 
@@ -128,13 +158,21 @@ export function PhotoCapture({
 
     try {
       setIsUploading(true);
+      setProcessingStatus({
+        title: 'Checking photos',
+        detail: `Reviewing ${result.assets.length} selected photo${
+          result.assets.length === 1 ? '' : 's'
+        }.`,
+        current: 0,
+        total: result.assets.length
+      });
       const queue = system.attachmentQueue;
       setShowModal(false);
 
       const validationResults = await Promise.all(
         result.assets.map(async (asset) => {
-          const isValidSize = await checkFileSize(asset.uri);
-          return { asset, isValidSize };
+          const fileSize = await checkFileSize(asset.uri);
+          return { asset, ...fileSize };
         })
       );
 
@@ -146,26 +184,42 @@ export function PhotoCapture({
           'Files Too Large',
           `${invalidAssets.length} photo${
             invalidAssets.length > 1 ? 's' : ''
-          } exceeds the 20MB size limit and will be skipped.`,
+          } exceeds the ${MAX_FILE_SIZE_MB}MB size limit and will be skipped.`,
           [{ text: 'OK' }]
         );
       }
 
       if (validAssets.length === 0) {
-        showToast('No photos were added - all files exceeded the 20MB size limit');
+        showToast(`No photos were added - all files exceeded the ${MAX_FILE_SIZE_MB}MB size limit`);
         return;
       }
 
-      const photoData = validAssets.map((asset) => ({
-        sourceUri: asset.uri,
-        scheduleId: scheduleId,
-        type: type,
-        technicianId: technicianId,
-        jobTitle: jobTitle,
-        startDate: startDate
-      }));
+      const photoData = validationResults
+        .filter((result) => result.isValidSize)
+        .map(({ asset, size }) => ({
+          sourceUri: asset.uri,
+          scheduleId: scheduleId,
+          type: type,
+          technicianId: technicianId,
+          jobTitle: jobTitle,
+          startDate: startDate,
+          sourceWidth: asset.width,
+          sourceHeight: asset.height,
+          sourceSize: asset.fileSize ?? size,
+          mediaType: asset.mimeType,
+          fileName: asset.fileName
+        }));
 
-      const savedIds = await queue.queuePhotos(photoData);
+      const savedIds = await queue.queuePhotos(photoData, {
+        onProgress: (progress) => {
+          setProcessingStatus({
+            title: progress.phase === 'saving' ? 'Saving photos' : 'Preparing photos',
+            detail: getProgressDetail(progress),
+            current: progress.current,
+            total: progress.total
+          });
+        }
+      });
 
       showToast(
         `Added ${savedIds.length} ${type} photo${
@@ -179,6 +233,7 @@ export function PhotoCapture({
       );
     } finally {
       setIsUploading(false);
+      setProcessingStatus(null);
     }
   };
 
@@ -271,6 +326,7 @@ export function PhotoCapture({
   };
 
   const isLoading = externalLoading || isUploading || isQueryLoading;
+  const showProcessingModal = externalLoading || isUploading;
 
   return (
     <View className='flex-1 mb-6'>
@@ -358,7 +414,16 @@ export function PhotoCapture({
         />
       )}
 
-      {isLoading && <LoadingModal visible={isLoading} type={type} />}
+      {showProcessingModal && (
+        <LoadingModal
+          visible={showProcessingModal}
+          type={type}
+          title={processingStatus?.title}
+          detail={processingStatus?.detail}
+          current={processingStatus?.current}
+          total={processingStatus?.total}
+        />
+      )}
     </View>
   );
 }

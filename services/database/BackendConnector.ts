@@ -234,10 +234,11 @@ export class BackendConnector implements PowerSyncBackendConnector {
     );
   }
 
-  private async processCrudTransaction(transaction: PendingCrudTransaction): Promise<void> {
+  private async processCrudTransaction(transaction: PendingCrudTransaction): Promise<number> {
     let lastOp: CrudEntry | null = null;
     const photoPutOps: CrudEntry[] = [];
     const photoPatchOps: CrudEntry[] = [];
+    const transactionOpCount = transaction.crud.length;
 
     try {
       for (const op of transaction.crud) {
@@ -327,11 +328,13 @@ export class BackendConnector implements PowerSyncBackendConnector {
       }
 
       await transaction.complete();
+      return transactionOpCount;
     } catch (ex: any) {
       const errorMessage = ex?.message || '';
       debugLogger.error('SYNC', 'Upload error', {
         op: lastOp,
-        error: errorMessage
+        error: errorMessage,
+        transactionOpCount
       });
       throw ex;
     }
@@ -349,26 +352,36 @@ export class BackendConnector implements PowerSyncBackendConnector {
     deadlineMs: number
   ): Promise<number> {
     let drainedTransactions = 0;
+    let uploadedOps = 0;
 
     while (Date.now() < deadlineMs) {
       const transaction = await database.getNextCrudTransaction();
       if (!transaction) {
         debugLogger.info('SYNC', 'Upload drain completed', {
           drainedTransactions,
+          uploadedOps,
           stopReason: 'empty_queue'
         });
-        return drainedTransactions;
+        return uploadedOps;
       }
 
-      await this.processCrudTransaction(transaction);
+      const transactionOpCount = await this.processCrudTransaction(transaction);
       drainedTransactions += 1;
+      uploadedOps += transactionOpCount;
+
+      debugLogger.debug('SYNC', 'Upload drain processed transaction', {
+        drainedTransactions,
+        uploadedOps,
+        transactionOpCount
+      });
     }
 
     debugLogger.info('SYNC', 'Upload drain stopped', {
       drainedTransactions,
+      uploadedOps,
       stopReason: 'deadline'
     });
 
-    return drainedTransactions;
+    return uploadedOps;
   }
 }

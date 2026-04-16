@@ -24,6 +24,7 @@ import { PushNotificationInitializer } from '@/components/notifications/PushNoti
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
+import { debugLogger } from '@/utils/DebugLogger';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -184,10 +185,15 @@ function BackgroundSyncLifecycle() {
   const { isLoaded, isSignedIn } = useAuth();
   const { isInitialized } = usePowerSyncStatus();
   const startupRecoveryRunRef = useRef(false);
+  const appStateRef = useRef(AppState.currentState);
 
   useEffect(() => {
     if (!isLoaded || !isSignedIn) {
       startupRecoveryRunRef.current = false;
+      void debugLogger.debug('SYNC', 'Background sync lifecycle reset startup recovery gate', {
+        isLoaded,
+        isSignedIn
+      });
       return;
     }
 
@@ -196,6 +202,10 @@ function BackgroundSyncLifecycle() {
     }
 
     startupRecoveryRunRef.current = true;
+    void debugLogger.info('SYNC', 'Background sync lifecycle triggering startup recovery run', {
+      reason: 'app-startup',
+      maxMs: 8000
+    });
     void runBoundedBackgroundSync({ reason: 'app-startup', maxMs: 8000 });
   }, [isLoaded, isSignedIn, isInitialized]);
 
@@ -205,19 +215,49 @@ function BackgroundSyncLifecycle() {
     }
 
     const subscription = AppState.addEventListener('change', (nextState) => {
+      const previousState = appStateRef.current;
+      appStateRef.current = nextState;
+
+      const lifecycleAction =
+        nextState === 'background' || nextState === 'inactive'
+          ? 'register-background-task'
+          : nextState === 'active'
+            ? 'unregister-background-task'
+            : 'none';
+
+      void debugLogger.info('SYNC', 'Background sync lifecycle observed AppState transition', {
+        previousState,
+        nextState,
+        lifecycleAction
+      });
+
       if (nextState === 'background' || nextState === 'inactive') {
-        void registerBackgroundSyncTask();
+        void registerBackgroundSyncTask({
+          source: 'appstate-change',
+          previousAppState: previousState,
+          nextAppState: nextState
+        });
         return;
       }
 
       if (nextState === 'active') {
-        void unregisterBackgroundSyncTask();
+        void unregisterBackgroundSyncTask({
+          source: 'appstate-change',
+          previousAppState: previousState,
+          nextAppState: nextState
+        });
       }
     });
 
     return () => {
       subscription.remove();
-      void unregisterBackgroundSyncTask();
+      void debugLogger.debug('SYNC', 'Background sync lifecycle cleanup', {
+        lastKnownAppState: appStateRef.current
+      });
+      void unregisterBackgroundSyncTask({
+        source: 'effect-cleanup',
+        previousAppState: appStateRef.current
+      });
     };
   }, [isLoaded, isSignedIn]);
 

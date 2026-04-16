@@ -14,6 +14,9 @@ export interface PreparedImage {
 
 export interface PrepareImageOptions {
   format?: PreparedImageFormat;
+  sourceWidth?: number;
+  sourceHeight?: number;
+  maxDimension?: number;
   /**
    * Compression factor for JPEG output (0-1). Ignored for PNG.
    * Defaults to 1.0 when not provided.
@@ -30,12 +33,15 @@ export async function prepareImageForUpload(
   options: PrepareImageOptions = {}
 ): Promise<PreparedImage> {
   const targetFormat: PreparedImageFormat = options.format ?? 'jpeg';
+  const maxDimension = options.maxDimension ?? MAX_DIMENSION;
 
-  // Determine original dimensions without applying transformations.
-  const dimensions = await getImageDimensions(sourceUri);
+  const dimensions =
+    options.sourceWidth && options.sourceHeight
+      ? { width: options.sourceWidth, height: options.sourceHeight }
+      : await getImageDimensions(sourceUri);
 
   // Calculate resize scale (never upscale).
-  const scale = Math.min(MAX_DIMENSION / dimensions.width, MAX_DIMENSION / dimensions.height, 1);
+  const scale = Math.min(maxDimension / dimensions.width, maxDimension / dimensions.height, 1);
 
   const newWidth = Math.round(dimensions.width * scale);
   const newHeight = Math.round(dimensions.height * scale);
@@ -47,10 +53,16 @@ export async function prepareImageForUpload(
   }
 
   const imageRef = await context.renderAsync();
-  const manipulated = await imageRef.saveAsync({
-    compress: targetFormat === 'jpeg' ? (options.compress ?? 1.0) : 1.0,
-    format: targetFormat === 'png' ? SaveFormat.PNG : SaveFormat.JPEG
-  });
+  let manipulated;
+  try {
+    manipulated = await imageRef.saveAsync({
+      compress: targetFormat === 'jpeg' ? (options.compress ?? 1.0) : 1.0,
+      format: targetFormat === 'png' ? SaveFormat.PNG : SaveFormat.JPEG
+    });
+  } finally {
+    imageRef.release();
+    context.release();
+  }
 
   const file = new File(manipulated.uri);
   const size = file.size ?? 0;
@@ -69,5 +81,10 @@ export async function prepareImageForUpload(
 async function getImageDimensions(uri: string): Promise<{ width: number; height: number }> {
   const context = ImageManipulator.manipulate(uri);
   const imageRef = await context.renderAsync();
-  return { width: imageRef.width, height: imageRef.height };
+  try {
+    return { width: imageRef.width, height: imageRef.height };
+  } finally {
+    imageRef.release();
+    context.release();
+  }
 }

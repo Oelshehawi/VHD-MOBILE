@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { requestMediaPermission } from '@/utils/photos';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { debugLogger } from '@/utils/DebugLogger';
 
 interface PhotoCaptureModalProps {
   visible: boolean;
@@ -44,7 +45,18 @@ export function PhotoCaptureModal({
         allowsMultipleSelection: true
       };
 
+      void debugLogger.info('PHOTO', 'Photo picker launch requested', {
+        source,
+        allowsMultipleSelection: options.allowsMultipleSelection
+      });
+
       const result = await ImagePicker.launchImageLibraryAsync(options);
+
+      void debugLogger.info('PHOTO', 'Photo picker returned result', {
+        source,
+        canceled: result.canceled,
+        assetCount: result.assets?.length ?? 0
+      });
 
       console.log(
         'PhotoCaptureModal - Selection result:',
