@@ -57,6 +57,15 @@ export function UploadDiagnosticsPanel({
   onClearAttachments
 }: UploadDiagnosticsPanelProps) {
   const [expanded, setExpanded] = useState(true);
+  const queuedAttachmentCount = attachmentCounts.reduce((total, item) => {
+    if (
+      item.state === AttachmentState.QUEUED_UPLOAD ||
+      item.state === AttachmentState.QUEUED_SYNC
+    ) {
+      return total + item.count;
+    }
+    return total;
+  }, 0);
 
   return (
     <View className='mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800'>
@@ -72,7 +81,7 @@ export function UploadDiagnosticsPanel({
         <View className='px-4 pb-4'>
           <View className='flex-row items-center justify-between mb-2'>
             <Text className='text-gray-600 dark:text-gray-300 text-xs'>
-              Live snapshot of local upload state
+              Live snapshot of local upload queue state
             </Text>
             <View className='flex-row gap-2'>
               <TouchableOpacity
@@ -89,14 +98,21 @@ export function UploadDiagnosticsPanel({
                 className='px-3 py-1 rounded-full bg-red-600'
                 disabled={loading}
               >
-                <Text className='text-white text-xs font-semibold'>Clear Attachments</Text>
+                <Text className='text-white text-xs font-semibold'>Clear Queued Attachments</Text>
               </TouchableOpacity>
             </View>
           </View>
+          <Text className='text-amber-700 dark:text-amber-300 text-[11px] mb-2'>
+            Clear removes rows in QUEUED_UPLOAD/QUEUED_SYNC. It does not delete uploaded photo
+            records.
+          </Text>
           {error ? (
             <Text className='text-red-600 dark:text-red-400 text-xs'>{error}</Text>
           ) : (
             <>
+              <Text className='text-gray-700 dark:text-gray-300 text-xs mb-2'>
+                Queued attachments: {queuedAttachmentCount}
+              </Text>
               <Text className='text-gray-700 dark:text-gray-300 text-xs mb-2'>
                 Pending photos (cloudinaryUrl is NULL): {photoPendingCount}
               </Text>

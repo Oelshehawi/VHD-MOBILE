@@ -68,58 +68,56 @@ async function runBoundedBackgroundSyncInternal(
   let powerSyncOpsUploaded = 0;
   let photoUploadsAttempted = 0;
   let photoUploadsSucceeded = 0;
+  let shouldContinue = true;
 
   try {
     if (hasReachedDeadline(deadlineMs)) {
-      success = false;
-      stoppedBecause = 'deadline';
-      return buildResult();
+      stopRun('deadline');
     }
 
-    await backgroundSystem.init(deadlineMs);
-
-    if (hasReachedDeadline(deadlineMs)) {
-      success = false;
-      stoppedBecause = 'deadline';
-      return buildResult();
+    if (shouldContinue) {
+      await backgroundSystem.init(deadlineMs);
     }
 
-    const authAvailable = await backgroundSystem.ensureAuthAvailable(deadlineMs);
-    if (!authAvailable) {
-      success = false;
-      stoppedBecause = 'auth-unavailable';
-      return buildResult();
+    if (shouldContinue && hasReachedDeadline(deadlineMs)) {
+      stopRun('deadline');
     }
 
-    if (hasReachedDeadline(deadlineMs)) {
-      success = false;
-      stoppedBecause = 'deadline';
-      return buildResult();
+    if (shouldContinue) {
+      const authAvailable = await backgroundSystem.ensureAuthAvailable(deadlineMs);
+      if (!authAvailable) {
+        stopRun('auth-unavailable');
+      }
     }
 
-    powerSyncOpsUploaded += await backgroundSystem.uploadPendingPowerSyncOps(deadlineMs);
-
-    if (hasReachedDeadline(deadlineMs)) {
-      success = false;
-      stoppedBecause = 'deadline';
-      return buildResult();
+    if (shouldContinue && hasReachedDeadline(deadlineMs)) {
+      stopRun('deadline');
     }
 
-    const photoStats = await backgroundSystem.processQueuedPhotoUploads(deadlineMs);
-    photoUploadsAttempted += photoStats.attempted;
-    photoUploadsSucceeded += photoStats.succeeded;
-
-    if (hasReachedDeadline(deadlineMs)) {
-      success = false;
-      stoppedBecause = 'deadline';
-      return buildResult();
+    if (shouldContinue) {
+      powerSyncOpsUploaded += await backgroundSystem.uploadPendingPowerSyncOps(deadlineMs);
     }
 
-    powerSyncOpsUploaded += await backgroundSystem.uploadPendingPowerSyncOps(deadlineMs);
+    if (shouldContinue && hasReachedDeadline(deadlineMs)) {
+      stopRun('deadline');
+    }
 
-    if (hasReachedDeadline(deadlineMs)) {
-      success = false;
-      stoppedBecause = 'deadline';
+    if (shouldContinue) {
+      const photoStats = await backgroundSystem.processQueuedPhotoUploads(deadlineMs);
+      photoUploadsAttempted += photoStats.attempted;
+      photoUploadsSucceeded += photoStats.succeeded;
+    }
+
+    if (shouldContinue && hasReachedDeadline(deadlineMs)) {
+      stopRun('deadline');
+    }
+
+    if (shouldContinue) {
+      powerSyncOpsUploaded += await backgroundSystem.uploadPendingPowerSyncOps(deadlineMs);
+    }
+
+    if (shouldContinue && hasReachedDeadline(deadlineMs)) {
+      stopRun('deadline');
     }
   } catch (runError) {
     success = false;
@@ -137,6 +135,12 @@ async function runBoundedBackgroundSyncInternal(
   }
 
   return buildResult();
+
+  function stopRun(reason: BackgroundSyncResult['stoppedBecause']): void {
+    success = false;
+    stoppedBecause = reason;
+    shouldContinue = false;
+  }
 
   function buildResult(): BackgroundSyncResult {
     const finishedAtMs = Date.now();

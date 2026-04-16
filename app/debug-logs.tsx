@@ -6,10 +6,10 @@ import { Text } from '../components/ui/text';
 import { debugLogger } from '../utils/DebugLogger';
 import { Ionicons } from '@expo/vector-icons';
 import { usePowerSync } from '@powersync/react-native';
+import { AttachmentState } from '@powersync/attachments';
 import { LogCategoryFilter } from '../components/debug/LogCategoryFilter';
 import { UploadDiagnosticsPanel } from '../components/debug/UploadDiagnosticsPanel';
 import { runBoundedBackgroundSync } from '@/services/background/BackgroundSyncRunner';
-import { BackgroundSystem } from '@/services/background/BackgroundSystem';
 
 interface LogEntry {
   timestamp: string;
@@ -121,7 +121,10 @@ export default function DebugLogsScreen() {
     setDiagnosticLoading(true);
     setDiagnosticError(null);
     try {
-      await powerSync.execute('DELETE FROM attachments');
+      await powerSync.execute('DELETE FROM attachments WHERE state = ? OR state = ?', [
+        AttachmentState.QUEUED_UPLOAD,
+        AttachmentState.QUEUED_SYNC
+      ]);
       await loadDiagnostics();
     } catch (error) {
       setDiagnosticError(error instanceof Error ? error.message : 'Unknown error');
@@ -229,76 +232,6 @@ export default function DebugLogsScreen() {
     });
   }, [runBackgroundAction]);
 
-  const handleBackgroundInitDisconnect = useCallback(async () => {
-    await runBackgroundAction('BackgroundSystem init/disconnect', async () => {
-      const deadlineMs = Date.now() + 5000;
-      const system = new BackgroundSystem();
-      try {
-        await system.init(deadlineMs);
-        return { initialized: true };
-      } finally {
-        await system.disconnect();
-      }
-    });
-  }, [runBackgroundAction]);
-
-  const handleBackgroundAuthCheck = useCallback(async () => {
-    await runBackgroundAction('BackgroundSystem auth check', async () => {
-      const deadlineMs = Date.now() + 5000;
-      const system = new BackgroundSystem();
-      try {
-        await system.init(deadlineMs);
-        const authAvailable = await system.ensureAuthAvailable(deadlineMs);
-        return { authAvailable };
-      } finally {
-        await system.disconnect();
-      }
-    });
-  }, [runBackgroundAction]);
-
-  const handleBackgroundUploadOps = useCallback(async () => {
-    await runBackgroundAction('BackgroundSystem upload pending ops', async () => {
-      const deadlineMs = Date.now() + 10000;
-      const system = new BackgroundSystem();
-      try {
-        await system.init(deadlineMs);
-        const authAvailable = await system.ensureAuthAvailable(deadlineMs);
-        if (!authAvailable) {
-          return { authAvailable, uploadedTransactions: 0 };
-        }
-        const uploadedTransactions = await system.uploadPendingPowerSyncOps(deadlineMs);
-        return { authAvailable, uploadedTransactions };
-      } finally {
-        await system.disconnect();
-      }
-    });
-  }, [runBackgroundAction]);
-
-  const handleBackgroundProcessPhotos = useCallback(async () => {
-    await runBackgroundAction('BackgroundSystem process queued photos', async () => {
-      const deadlineMs = Date.now() + 15000;
-      const system = new BackgroundSystem();
-      try {
-        await system.init(deadlineMs);
-        const authAvailable = await system.ensureAuthAvailable(deadlineMs);
-        if (!authAvailable) {
-          return {
-            authAvailable,
-            attempted: 0,
-            succeeded: 0
-          };
-        }
-        const result = await system.processQueuedPhotoUploads(deadlineMs);
-        return {
-          authAvailable,
-          ...result
-        };
-      } finally {
-        await system.disconnect();
-      }
-    });
-  }, [runBackgroundAction]);
-
   const toggleLogExpanded = (index: number) => {
     setExpandedLogs((prev) => {
       const newSet = new Set(prev);
@@ -403,51 +336,17 @@ export default function DebugLogsScreen() {
                 Background Sync (Manual)
               </Text>
               <Text className='text-blue-800 dark:text-blue-200 text-xs mb-3'>
-                Development actions for Phase 6 testing.
+                Use this runner entrypoint for all shared-worker testing.
               </Text>
 
               <TouchableOpacity
                 onPress={handleRunManualSync}
                 disabled={backgroundActionLoading}
-                className='flex-row items-center justify-center bg-blue-600 py-3 rounded-lg mb-2'
+                className='flex-row items-center justify-center bg-blue-600 py-3 rounded-lg'
               >
                 <Ionicons name='play-outline' size={18} color='white' />
                 <Text className='text-white font-medium ml-2'>Run Manual Sync (Runner)</Text>
               </TouchableOpacity>
-
-              <View className='flex-row gap-2 mb-2'>
-                <TouchableOpacity
-                  onPress={handleBackgroundInitDisconnect}
-                  disabled={backgroundActionLoading}
-                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
-                >
-                  <Text className='text-white text-xs font-medium'>Init + Disconnect</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleBackgroundAuthCheck}
-                  disabled={backgroundActionLoading}
-                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
-                >
-                  <Text className='text-white text-xs font-medium'>Auth Check</Text>
-                </TouchableOpacity>
-              </View>
-
-              <View className='flex-row gap-2'>
-                <TouchableOpacity
-                  onPress={handleBackgroundUploadOps}
-                  disabled={backgroundActionLoading}
-                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
-                >
-                  <Text className='text-white text-xs font-medium'>Upload Ops</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={handleBackgroundProcessPhotos}
-                  disabled={backgroundActionLoading}
-                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
-                >
-                  <Text className='text-white text-xs font-medium'>Process Photos</Text>
-                </TouchableOpacity>
-              </View>
 
               {backgroundActionResult && (
                 <Text className='text-[11px] text-blue-900 dark:text-blue-100 mt-3 font-mono'>
