@@ -20,6 +20,7 @@ import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
 import { ApiClient } from '@/services/ApiClient';
 import { formatVancouverTimestamp } from '@/utils/date';
+import { canMarkChequeReceived } from '@/utils/invoicePayment';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -446,7 +447,7 @@ export function InvoiceModal({
         </View>
 
         {/* Mark Cheque Received Section - Only show if invoice is not paid */}
-        {invoice?.status !== 'paid' && (
+        {canMarkChequeReceived(invoice) && (
           <View className='flex flex-col gap-4'>
             <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
               Payment Received
