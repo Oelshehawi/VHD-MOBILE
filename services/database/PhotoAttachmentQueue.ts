@@ -29,17 +29,24 @@ interface QueuePhotoInput {
 interface SignedUploadUrl {
   filename: string;
   fileName?: string;
+  photoId?: string;
   apiKey: string;
   timestamp: string;
   signature: string;
   cloudName: string;
   folderPath: string;
+  publicId?: string;
+  overwrite?: boolean;
+  uniqueFilename?: boolean;
+  expectedSecureUrl?: string;
 }
 
 interface QueuedAttachmentRecord extends AttachmentRecord {
   photoType: string;
   jobTitle: string;
   startDate: string;
+  uploadOwner?: string | null;
+  uploadClaimedAt?: number | null;
 }
 
 type UploadResult =
@@ -94,6 +101,7 @@ const HUGE_IMAGE_BYTES = 10 * 1024 * 1024;
 const HUGE_IMAGE_DIMENSION = 4000;
 const JPEG_NORMAL_QUALITY = 0.9;
 const JPEG_HUGE_QUALITY = 0.85;
+const UPLOAD_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
 export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmentQueueOptions> {
   private readonly CONCURRENT_UPLOADS = 10;
@@ -113,6 +121,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
 
   async init() {
     if (this.enableAutomaticProcessing) {
+      await this.clearUploadClaims('foreground-startup-recovery');
       await super.init();
       return;
     }
@@ -263,8 +272,8 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         );
 
         await tx.execute(
-          `INSERT INTO ${this.table} (id, timestamp, filename, local_uri, media_type, size, state, scheduleId, photoType, jobTitle, startDate)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO ${this.table} (id, timestamp, filename, local_uri, media_type, size, state, scheduleId, photoType, jobTitle, startDate, uploadOwner, uploadClaimedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL)`,
           [
             id,
             Date.now(),
@@ -374,6 +383,9 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     let repeatAttemptCount = 0;
     const uniqueAttachmentIds = new Set<string>();
     const attachmentAttemptCounts = new Map<string, number>();
+    const uploadRunOwner = `${this.instanceLabel}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}`;
 
     this.isProcessing = true;
 
@@ -400,18 +412,24 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         const attemptedIds = Array.from(attachmentAttemptCounts.keys());
         const excludeAttemptedClause =
           attemptedIds.length > 0 ? ` AND id NOT IN (${attemptedIds.map(() => '?').join(', ')})` : '';
-        const queued = await this.powersync.getAll<QueuedAttachmentRecord>(
-          `SELECT id, filename, local_uri, media_type, photoType, jobTitle, startDate
+        const staleClaimBefore = Date.now() - UPLOAD_CLAIM_LEASE_MS;
+        const queuedCandidates = await this.powersync.getAll<QueuedAttachmentRecord>(
+          `SELECT id, filename, local_uri, media_type, photoType, jobTitle, startDate, uploadOwner, uploadClaimedAt
                      FROM ${this.table}
-                     WHERE (state = ? OR state = ?)${excludeAttemptedClause}
+                     WHERE (state = ? OR state = ?)
+                       AND (uploadOwner IS NULL OR uploadClaimedAt IS NULL OR uploadClaimedAt < ?)
+                       ${excludeAttemptedClause}
                      LIMIT ?`,
           [
             AttachmentState.QUEUED_UPLOAD,
             AttachmentState.QUEUED_SYNC,
+            staleClaimBefore,
             ...attemptedIds,
             this.CONCURRENT_UPLOADS
           ]
         );
+
+        const queued = await this.claimQueuedAttachments(queuedCandidates, uploadRunOwner);
 
         if (queued.length === 0) {
           if (attemptedIds.length > 0) {
@@ -434,6 +452,17 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
               });
               break;
             }
+          }
+
+          if (queuedCandidates.length > 0) {
+            stoppedBecause = 'already-attempted';
+            void debugLogger.info('UPLOAD', 'Photo queue skipped rows claimed by another runner', {
+              queueInstance: this.instanceLabel,
+              triggerSource,
+              workerRunId,
+              candidateCount: queuedCandidates.length
+            });
+            break;
           }
 
           stoppedBecause = 'empty';
@@ -465,6 +494,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         // Get all signed URLs in one batch request
         const signedUrls = await this.getBatchSignedUploadUrls(
           queued.map((att) => ({
+            photoId: att.id,
             fileName: att.filename,
             mediaType: att.media_type || 'image/jpeg',
             type: att.photoType,
@@ -489,6 +519,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
 
         const photoUpdates: Array<{ id: string; secureUrl: string }> = [];
         const syncedIds: string[] = [];
+        const failedIds: string[] = [];
 
         for (const [index, result] of uploadResults.entries()) {
           if (result.status !== 'fulfilled') {
@@ -505,6 +536,9 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
               reason
             });
             failed += 1;
+            if (attachment?.id) {
+              failedIds.push(attachment.id);
+            }
             continue;
           }
           const value = result.value;
@@ -532,12 +566,16 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
               ]);
             }
             for (const id of syncedIds) {
-              await tx.execute(`UPDATE ${this.table} SET state = ? WHERE id = ?`, [
+              await tx.execute(`UPDATE ${this.table} SET state = ?, uploadOwner = NULL, uploadClaimedAt = NULL WHERE id = ?`, [
                 AttachmentState.SYNCED,
                 id
               ]);
             }
           });
+        }
+
+        if (failedIds.length > 0) {
+          await this.releaseUploadClaims(failedIds, uploadRunOwner);
         }
 
         void debugLogger.debug('UPLOAD', 'Photo queue batch processed', {
@@ -612,17 +650,38 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     formData.append('timestamp', signedUrl.timestamp);
     formData.append('signature', signedUrl.signature);
     formData.append('folder', signedUrl.folderPath);
+    if (signedUrl.publicId) {
+      formData.append('public_id', signedUrl.publicId);
+    }
+    if (signedUrl.overwrite !== undefined) {
+      formData.append('overwrite', signedUrl.overwrite ? 'true' : 'false');
+    }
+    if (signedUrl.uniqueFilename !== undefined) {
+      formData.append('unique_filename', signedUrl.uniqueFilename ? 'true' : 'false');
+    }
 
     const uploadResponse = await this.fetchImpl(
       `https://api.cloudinary.com/v1_1/${signedUrl.cloudName}/image/upload`,
       { method: 'POST', body: formData }
     );
 
+    const responseData = await uploadResponse.json();
     if (!uploadResponse.ok) {
-      throw new Error(`Cloudinary upload failed: ${uploadResponse.status}`);
+      if (signedUrl.expectedSecureUrl && this.isDuplicateCloudinaryUpload(responseData)) {
+        void debugLogger.info('UPLOAD', 'Cloudinary upload already exists; treating as success', {
+          id: attachment.id,
+          filename: attachment.filename,
+          status: uploadResponse.status,
+          elapsedMs: Date.now() - startedAt
+        });
+        return { id: attachment.id, secureUrl: signedUrl.expectedSecureUrl };
+      }
+
+      throw new Error(
+        `Cloudinary upload failed: ${uploadResponse.status} ${this.getCloudinaryErrorMessage(responseData)}`
+      );
     }
 
-    const responseData = await uploadResponse.json();
     const secureUrl = responseData?.secure_url as string | undefined;
 
     if (!secureUrl) {
@@ -638,11 +697,119 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     return { id: attachment.id, secureUrl };
   }
 
+  private isDuplicateCloudinaryUpload(responseData: unknown): boolean {
+    const message = this.getCloudinaryErrorMessage(responseData).toLowerCase();
+    return (
+      message.includes('already exists') ||
+      message.includes('duplicate') ||
+      message.includes('public id')
+    );
+  }
+
+  private getCloudinaryErrorMessage(responseData: unknown): string {
+    if (
+      typeof responseData === 'object' &&
+      responseData !== null &&
+      'error' in responseData &&
+      typeof responseData.error === 'object' &&
+      responseData.error !== null &&
+      'message' in responseData.error
+    ) {
+      const message = responseData.error.message;
+      return typeof message === 'string' ? message : '';
+    }
+
+    return '';
+  }
+
+  private async claimQueuedAttachments(
+    candidates: QueuedAttachmentRecord[],
+    uploadRunOwner: string
+  ): Promise<QueuedAttachmentRecord[]> {
+    if (candidates.length === 0) {
+      return [];
+    }
+
+    const now = Date.now();
+    const staleClaimBefore = now - UPLOAD_CLAIM_LEASE_MS;
+
+    await this.powersync.writeTransaction(async (tx) => {
+      for (const attachment of candidates) {
+        await tx.execute(
+          `UPDATE ${this.table}
+             SET uploadOwner = ?, uploadClaimedAt = ?
+           WHERE id = ?
+             AND (state = ? OR state = ?)
+             AND (uploadOwner IS NULL OR uploadClaimedAt IS NULL OR uploadClaimedAt < ?)`,
+          [
+            uploadRunOwner,
+            now,
+            attachment.id,
+            AttachmentState.QUEUED_UPLOAD,
+            AttachmentState.QUEUED_SYNC,
+            staleClaimBefore
+          ]
+        );
+      }
+    });
+
+    const candidateIds = candidates.map((attachment) => attachment.id);
+    const claimed = await this.powersync.getAll<QueuedAttachmentRecord>(
+      `SELECT id, filename, local_uri, media_type, photoType, jobTitle, startDate, uploadOwner, uploadClaimedAt
+         FROM ${this.table}
+        WHERE uploadOwner = ?
+          AND id IN (${candidateIds.map(() => '?').join(', ')})`,
+      [uploadRunOwner, ...candidateIds]
+    );
+
+    if (claimed.length !== candidates.length) {
+      void debugLogger.info('UPLOAD', 'Photo queue claimed partial batch', {
+        queueInstance: this.instanceLabel,
+        requestedCount: candidates.length,
+        claimedCount: claimed.length,
+        uploadRunOwner
+      });
+    }
+
+    return claimed;
+  }
+
+  private async releaseUploadClaims(ids: string[], uploadRunOwner: string): Promise<void> {
+    if (ids.length === 0) {
+      return;
+    }
+
+    await this.powersync.execute(
+      `UPDATE ${this.table}
+          SET uploadOwner = NULL, uploadClaimedAt = NULL
+        WHERE uploadOwner = ?
+          AND id IN (${ids.map(() => '?').join(', ')})`,
+      [uploadRunOwner, ...ids]
+    );
+  }
+
+  private async clearUploadClaims(reason: string): Promise<void> {
+    await this.powersync.execute(
+      `UPDATE ${this.table}
+          SET uploadOwner = NULL, uploadClaimedAt = NULL
+        WHERE (state = ? OR state = ?)
+          AND uploadOwner IS NOT NULL`,
+      [AttachmentState.QUEUED_UPLOAD, AttachmentState.QUEUED_SYNC]
+    );
+
+    void debugLogger.info('UPLOAD', 'Cleared upload claims for recovery', {
+      queueInstance: this.instanceLabel,
+      reason
+    });
+  }
+
   private async markAsSynced(id: string): Promise<void> {
-    await this.powersync.execute(`UPDATE ${this.table} SET state = ? WHERE id = ?`, [
-      AttachmentState.SYNCED,
-      id
-    ]);
+    await this.powersync.execute(
+      `UPDATE ${this.table}
+          SET state = ?, uploadOwner = NULL, uploadClaimedAt = NULL
+        WHERE id = ?`,
+      [AttachmentState.SYNCED, id]
+    );
   }
 
   private async removeAttachment(attachment: AttachmentRecord): Promise<void> {
@@ -661,6 +828,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
 
   private async getBatchSignedUploadUrls(
     files: Array<{
+      photoId: string;
       fileName: string;
       mediaType: string;
       type: string;

@@ -169,6 +169,14 @@ export const AppSchema = new Schema({
       new Column({
         name: 'startDate',
         type: ColumnType.TEXT
+      }),
+      new Column({
+        name: 'uploadOwner',
+        type: ColumnType.TEXT
+      }),
+      new Column({
+        name: 'uploadClaimedAt',
+        type: ColumnType.INTEGER
       })
     ]
   })
