@@ -42,7 +42,8 @@ export class System {
       storage: this.storage,
       performInitialSync: true,
       syncInterval: 30000,
-      downloadAttachments: false
+      downloadAttachments: false,
+      instanceLabel: 'foreground-system'
     });
   }
 
@@ -76,7 +77,6 @@ export class System {
 
     if (this.attachmentQueue) {
       await this.attachmentQueue.init();
-      this.attachmentQueue.watchUploads();
       debugLogger.debug('SYNC', 'Attachment queue initialized');
     }
   }

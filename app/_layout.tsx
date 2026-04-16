@@ -2,18 +2,21 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { useEffect, useRef, useState } from 'react';
+import { AppState, Text, TouchableOpacity, View } from 'react-native';
 import { useUpdates } from 'expo-updates';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import '@/services/background';
 import './global.css';
-import { ClerkProvider, useUser } from '@clerk/clerk-expo';
+import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { PowerSyncProvider, usePowerSyncStatus } from '../providers/PowerSyncProvider';
+import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/services/background';
+import { runBoundedBackgroundSync } from '@/services/background/BackgroundSyncRunner';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
@@ -177,6 +180,50 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function BackgroundSyncLifecycle() {
+  const { isLoaded, isSignedIn } = useAuth();
+  const { isInitialized } = usePowerSyncStatus();
+  const startupRecoveryRunRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      startupRecoveryRunRef.current = false;
+      return;
+    }
+
+    if (!isInitialized || startupRecoveryRunRef.current) {
+      return;
+    }
+
+    startupRecoveryRunRef.current = true;
+    void runBoundedBackgroundSync({ reason: 'app-startup', maxMs: 8000 });
+  }, [isLoaded, isSignedIn, isInitialized]);
+
+  useEffect(() => {
+    if (!isLoaded || !isSignedIn) {
+      return;
+    }
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'background' || nextState === 'inactive') {
+        void registerBackgroundSyncTask();
+        return;
+      }
+
+      if (nextState === 'active') {
+        void unregisterBackgroundSyncTask();
+      }
+    });
+
+    return () => {
+      subscription.remove();
+      void unregisterBackgroundSyncTask();
+    };
+  }, [isLoaded, isSignedIn]);
+
+  return null;
+}
+
 const CLERK_PUBLISHABLE_KEY = process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
 if (!CLERK_PUBLISHABLE_KEY) {
@@ -198,6 +245,7 @@ export default function RootLayout() {
             <InitialLayout>
               <ThemeProvider>
                 <PowerSyncProvider>
+                  <BackgroundSyncLifecycle />
                   <PushNotificationInitializer />
                   <PowerSyncStatusBanner />
                   <BottomSheetModalProvider>

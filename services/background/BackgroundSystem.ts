@@ -56,7 +56,9 @@ export class BackgroundSystem {
       syncInterval: 30000,
       downloadAttachments: false,
       fetchImpl: backgroundFetch,
-      tokenProvider
+      tokenProvider,
+      instanceLabel: 'background-system',
+      enableAutomaticProcessing: false
     });
   }
 

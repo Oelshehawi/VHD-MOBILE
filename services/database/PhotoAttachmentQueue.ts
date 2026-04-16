@@ -45,6 +45,8 @@ type UploadResult =
 export interface PhotoAttachmentQueueOptions extends AttachmentQueueOptions {
   fetchImpl?: FetchLike;
   tokenProvider?: TokenProvider;
+  instanceLabel?: string;
+  enableAutomaticProcessing?: boolean;
 }
 
 interface ProcessQueueOptions {
@@ -63,16 +65,28 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
   private readonly CONCURRENT_UPLOADS = 10;
   private readonly fetchImpl: FetchLike;
   private readonly tokenProvider?: TokenProvider;
+  private readonly instanceLabel: string;
+  private readonly enableAutomaticProcessing: boolean;
   private isProcessing = false;
 
   constructor(options: PhotoAttachmentQueueOptions) {
     super(options);
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.tokenProvider = options.tokenProvider;
+    this.instanceLabel = options.instanceLabel ?? 'unknown-queue';
+    this.enableAutomaticProcessing = options.enableAutomaticProcessing ?? true;
   }
 
   async init() {
-    await super.init();
+    if (this.enableAutomaticProcessing) {
+      await super.init();
+      return;
+    }
+
+    await this.storage.makeDir(this.storageDirectory);
+    void debugLogger.debug('UPLOAD', 'Photo queue initialized in manual-only mode', {
+      queueInstance: this.instanceLabel
+    });
   }
 
   onAttachmentIdsChange(_onUpdate: (ids: string[]) => void): void {
@@ -82,12 +96,19 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
   watchUploads(): void {
     this.idsToUpload((ids) => {
       if (ids.length > 0) {
+        void debugLogger.debug('UPLOAD', 'Photo queue triggered by watch', {
+          queueInstance: this.instanceLabel,
+          queuedIds: ids.length
+        });
         void this.processQueue();
       }
     });
   }
 
   trigger(): void {
+    void debugLogger.debug('UPLOAD', 'Photo queue triggered by interval/manual trigger', {
+      queueInstance: this.instanceLabel
+    });
     void this.processQueue();
     void this.expireCache();
   }
@@ -267,8 +288,16 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         const photoUpdates: Array<{ id: string; secureUrl: string }> = [];
         const syncedIds: string[] = [];
 
-        for (const result of uploadResults) {
+        for (const [index, result] of uploadResults.entries()) {
           if (result.status !== 'fulfilled') {
+            const attachment = queued[index];
+            const reason =
+              result.reason instanceof Error ? result.reason.message : String(result.reason);
+            void debugLogger.warn('UPLOAD', 'Photo upload attempt failed; leaving queued for retry', {
+              id: attachment?.id,
+              filename: attachment?.filename,
+              reason
+            });
             failed += 1;
             continue;
           }
@@ -309,6 +338,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       this.isProcessing = false;
 
       void debugLogger.info('UPLOAD', 'Photo queue processing complete', {
+        queueInstance: this.instanceLabel,
         attempted,
         succeeded,
         failed,
