@@ -1,4 +1,5 @@
 import { debugLogger } from '@/utils/DebugLogger';
+import { BackgroundSystem } from './BackgroundSystem';
 
 export type BackgroundSyncReason =
   | 'app-startup'
@@ -38,34 +39,6 @@ interface BackgroundSystemInstance {
   disconnect(): Promise<void>;
 }
 
-class StubBackgroundSystem implements BackgroundSystemInstance {
-  async init(_deadlineMs: number): Promise<void> {
-    // Phase 1: real background-safe PowerSync setup is implemented in later phases.
-  }
-
-  async ensureAuthAvailable(_deadlineMs: number): Promise<boolean> {
-    // Phase 1: auth fallback/cache work is intentionally deferred.
-    return true;
-  }
-
-  async uploadPendingPowerSyncOps(_deadlineMs: number): Promise<number> {
-    // Phase 1: PowerSync CRUD drain behavior is intentionally stubbed.
-    return 0;
-  }
-
-  async processQueuedPhotoUploads(_deadlineMs: number): Promise<PhotoUploadStats> {
-    // Phase 1: photo queue processing is intentionally stubbed.
-    return {
-      attempted: 0,
-      succeeded: 0
-    };
-  }
-
-  async disconnect(): Promise<void> {
-    // Phase 1: no-op disconnect for stubbed system.
-  }
-}
-
 let inFlightSyncRun: Promise<BackgroundSyncResult> | null = null;
 
 function hasReachedDeadline(deadlineMs: number): boolean {
@@ -77,7 +50,7 @@ function toErrorMessage(error: unknown): string {
 }
 
 function createBackgroundSystem(): BackgroundSystemInstance {
-  return new StubBackgroundSystem();
+  return new BackgroundSystem();
 }
 
 async function runBoundedBackgroundSyncInternal(

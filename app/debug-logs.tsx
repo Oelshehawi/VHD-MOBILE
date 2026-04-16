@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, ScrollView, TouchableOpacity, TextInput, Share, RefreshControl } from 'react-native';
+import { View, TouchableOpacity, TextInput, Share, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { Text } from '../components/ui/text';
@@ -8,6 +8,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePowerSync } from '@powersync/react-native';
 import { LogCategoryFilter } from '../components/debug/LogCategoryFilter';
 import { UploadDiagnosticsPanel } from '../components/debug/UploadDiagnosticsPanel';
+import { runBoundedBackgroundSync } from '@/services/background/BackgroundSyncRunner';
+import { BackgroundSystem } from '@/services/background/BackgroundSystem';
 
 interface LogEntry {
   timestamp: string;
@@ -70,6 +72,8 @@ export default function DebugLogsScreen() {
   const [attachmentRows, setAttachmentRows] = useState<AttachmentRow[]>([]);
   const [photoPendingCount, setPhotoPendingCount] = useState(0);
   const [photoRows, setPhotoRows] = useState<PhotoRow[]>([]);
+  const [backgroundActionLoading, setBackgroundActionLoading] = useState(false);
+  const [backgroundActionResult, setBackgroundActionResult] = useState<string | null>(null);
 
   const loadLogs = useCallback(async () => {
     const fetchedLogs = await debugLogger.getLogs();
@@ -180,6 +184,121 @@ export default function DebugLogsScreen() {
     setLogs([]);
   };
 
+  const runBackgroundAction = useCallback(
+    async (name: string, action: () => Promise<unknown>) => {
+      if (backgroundActionLoading) return;
+
+      setBackgroundActionLoading(true);
+      setBackgroundActionResult(`${name}: running...`);
+
+      const startedAtMs = Date.now();
+
+      try {
+        const result = await action();
+        const elapsedMs = Date.now() - startedAtMs;
+        const summary = `${name}: success (${elapsedMs}ms)\n${JSON.stringify(result, null, 2)}`;
+        setBackgroundActionResult(summary);
+        await debugLogger.info('SYNC', `Debug background action success: ${name}`, {
+          elapsedMs,
+          result
+        });
+      } catch (error) {
+        const elapsedMs = Date.now() - startedAtMs;
+        const message = error instanceof Error ? error.message : String(error);
+        const summary = `${name}: failed (${elapsedMs}ms)\n${message}`;
+        setBackgroundActionResult(summary);
+        await debugLogger.error('SYNC', `Debug background action failed: ${name}`, {
+          elapsedMs,
+          error: message
+        });
+      } finally {
+        setBackgroundActionLoading(false);
+        await loadLogs();
+        await loadDiagnostics();
+      }
+    },
+    [backgroundActionLoading, loadDiagnostics, loadLogs]
+  );
+
+  const handleRunManualSync = useCallback(async () => {
+    await runBackgroundAction('Runner manual sync', async () => {
+      return runBoundedBackgroundSync({
+        reason: 'manual-test',
+        maxMs: 25000
+      });
+    });
+  }, [runBackgroundAction]);
+
+  const handleBackgroundInitDisconnect = useCallback(async () => {
+    await runBackgroundAction('BackgroundSystem init/disconnect', async () => {
+      const deadlineMs = Date.now() + 5000;
+      const system = new BackgroundSystem();
+      try {
+        await system.init(deadlineMs);
+        return { initialized: true };
+      } finally {
+        await system.disconnect();
+      }
+    });
+  }, [runBackgroundAction]);
+
+  const handleBackgroundAuthCheck = useCallback(async () => {
+    await runBackgroundAction('BackgroundSystem auth check', async () => {
+      const deadlineMs = Date.now() + 5000;
+      const system = new BackgroundSystem();
+      try {
+        await system.init(deadlineMs);
+        const authAvailable = await system.ensureAuthAvailable(deadlineMs);
+        return { authAvailable };
+      } finally {
+        await system.disconnect();
+      }
+    });
+  }, [runBackgroundAction]);
+
+  const handleBackgroundUploadOps = useCallback(async () => {
+    await runBackgroundAction('BackgroundSystem upload pending ops', async () => {
+      const deadlineMs = Date.now() + 10000;
+      const system = new BackgroundSystem();
+      try {
+        await system.init(deadlineMs);
+        const authAvailable = await system.ensureAuthAvailable(deadlineMs);
+        if (!authAvailable) {
+          return { authAvailable, uploadedTransactions: 0 };
+        }
+        const uploadedTransactions = await system.uploadPendingPowerSyncOps(deadlineMs);
+        return { authAvailable, uploadedTransactions };
+      } finally {
+        await system.disconnect();
+      }
+    });
+  }, [runBackgroundAction]);
+
+  const handleBackgroundProcessPhotos = useCallback(async () => {
+    await runBackgroundAction('BackgroundSystem process queued photos', async () => {
+      const deadlineMs = Date.now() + 15000;
+      const system = new BackgroundSystem();
+      try {
+        await system.init(deadlineMs);
+        const authAvailable = await system.ensureAuthAvailable(deadlineMs);
+        if (!authAvailable) {
+          return {
+            authAvailable,
+            attempted: 0,
+            succeeded: 0
+          };
+        }
+        const result = await system.processQueuedPhotoUploads(deadlineMs);
+        return {
+          authAvailable,
+          ...result
+        };
+      } finally {
+        await system.disconnect();
+      }
+    });
+  }, [runBackgroundAction]);
+
   const toggleLogExpanded = (index: number) => {
     setExpandedLogs((prev) => {
       const newSet = new Set(prev);
@@ -203,6 +322,49 @@ export default function DebugLogsScreen() {
     });
   };
 
+  const renderLogItem = useCallback(
+    ({ item, index }: { item: LogEntry; index: number }) => {
+      const colors = levelColors[item.level] || levelColors.info;
+      const isExpanded = expandedLogs.has(index);
+
+      return (
+        <TouchableOpacity
+          key={`${item.timestamp}-${index}`}
+          onPress={() => toggleLogExpanded(index)}
+          activeOpacity={0.7}
+          className={`mb-2 p-3 rounded-lg ${colors.bg}`}
+        >
+          <View className='flex-row items-start justify-between'>
+            <View className='flex-1'>
+              <View className='flex-row items-center gap-2 mb-1'>
+                <Text className={`text-xs font-bold uppercase ${colors.text}`}>{item.level}</Text>
+                <Text className='text-xs text-gray-500 dark:text-gray-400'>[{item.category}]</Text>
+                <Text className='text-xs text-gray-400 dark:text-gray-500'>
+                  {formatTimestamp(item.timestamp)}
+                </Text>
+              </View>
+              <Text
+                className={`${colors.text} ${isExpanded ? '' : 'line-clamp-2'}`}
+                numberOfLines={isExpanded ? undefined : 2}
+              >
+                {item.message}
+              </Text>
+              {item.data && isExpanded && (
+                <Text className='text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono'>
+                  {item.data}
+                </Text>
+              )}
+            </View>
+            {item.data && (
+              <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color='#9ca3af' />
+            )}
+          </View>
+        </TouchableOpacity>
+      );
+    },
+    [expandedLogs]
+  );
+
   return (
     <SafeAreaView className='flex-1 bg-white dark:bg-gray-950' edges={['bottom', 'left', 'right']}>
       <Stack.Screen
@@ -211,133 +373,144 @@ export default function DebugLogsScreen() {
           title: 'Debug Logs'
         }}
       />
+      <FlatList
+        className='flex-1'
+        data={filteredLogs}
+        keyExtractor={(item, index) => `${item.timestamp}-${index}`}
+        renderItem={renderLogItem}
+        refreshing={refreshing}
+        onRefresh={onRefresh}
+        initialNumToRender={20}
+        maxToRenderPerBatch={20}
+        windowSize={10}
+        keyboardShouldPersistTaps='handled'
+        contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
+        ListHeaderComponent={
+          <>
+            <UploadDiagnosticsPanel
+              loading={diagnosticLoading}
+              error={diagnosticError}
+              attachmentCounts={attachmentCounts}
+              attachmentRows={attachmentRows}
+              photoPendingCount={photoPendingCount}
+              photoRows={photoRows}
+              onRefresh={loadDiagnostics}
+              onClearAttachments={handleClearAttachments}
+            />
 
-      <View className='flex-1 p-4'>
-        {/* Diagnostics */}
-        <UploadDiagnosticsPanel
-          loading={diagnosticLoading}
-          error={diagnosticError}
-          attachmentCounts={attachmentCounts}
-          attachmentRows={attachmentRows}
-          photoPendingCount={photoPendingCount}
-          photoRows={photoRows}
-          onRefresh={loadDiagnostics}
-          onClearAttachments={handleClearAttachments}
-        />
+            <View className='mb-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-3'>
+              <Text className='text-blue-900 dark:text-blue-100 font-semibold mb-2'>
+                Background Sync (Manual)
+              </Text>
+              <Text className='text-blue-800 dark:text-blue-200 text-xs mb-3'>
+                Development actions for Phase 6 testing.
+              </Text>
 
-        {/* Search Bar */}
-        <View className='mb-2'>
-          <TextInput
-            className='bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3 text-gray-900 dark:text-gray-100'
-            placeholder='Search logs...'
-            placeholderTextColor='#9ca3af'
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-        </View>
+              <TouchableOpacity
+                onPress={handleRunManualSync}
+                disabled={backgroundActionLoading}
+                className='flex-row items-center justify-center bg-blue-600 py-3 rounded-lg mb-2'
+              >
+                <Ionicons name='play-outline' size={18} color='white' />
+                <Text className='text-white font-medium ml-2'>Run Manual Sync (Runner)</Text>
+              </TouchableOpacity>
 
-        {/* Category Filter */}
-        <LogCategoryFilter
-          categories={CATEGORIES}
-          selectedCategory={selectedCategory}
-          onSelect={setSelectedCategory}
-        />
-
-        {/* Action Buttons */}
-        <View className='flex-row gap-3 mb-2'>
-          <TouchableOpacity
-            onPress={handleExport}
-            className='flex-1 flex-row items-center justify-center bg-blue-600 py-3 rounded-lg'
-          >
-            <Ionicons name='share-outline' size={18} color='white' />
-            <Text className='text-white font-medium ml-2'>Export</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleClear}
-            className='flex-1 flex-row items-center justify-center bg-red-600 py-3 rounded-lg'
-          >
-            <Ionicons name='trash-outline' size={18} color='white' />
-            <Text className='text-white font-medium ml-2'>Clear</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Environment Tools Link */}
-        <TouchableOpacity
-          onPress={() => router.push('/debug-env')}
-          className='flex-row items-center justify-center bg-gray-100 dark:bg-gray-800 py-3 rounded-lg mb-4'
-        >
-          <Ionicons name='settings-outline' size={18} color='#4b5563' />
-          <Text className='text-gray-700 dark:text-gray-300 font-medium ml-2'>
-            Environment & PowerSync Tools
-          </Text>
-        </TouchableOpacity>
-
-        {/* Log Count */}
-        <Text className='text-gray-500 dark:text-gray-400 mb-2'>
-          Showing {filteredLogs.length} of {logs.length} logs
-        </Text>
-
-        {/* Logs List */}
-        <ScrollView
-          className='flex-1'
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {filteredLogs.length === 0 ? (
-            <View className='flex-1 items-center justify-center py-8'>
-              <Ionicons name='document-text-outline' size={48} color='#9ca3af' />
-              <Text className='text-gray-500 dark:text-gray-400 mt-2'>No logs found</Text>
-            </View>
-          ) : (
-            filteredLogs.map((log, index) => {
-              const colors = levelColors[log.level] || levelColors.info;
-              const isExpanded = expandedLogs.has(index);
-
-              return (
+              <View className='flex-row gap-2 mb-2'>
                 <TouchableOpacity
-                  key={index}
-                  onPress={() => toggleLogExpanded(index)}
-                  activeOpacity={0.7}
-                  className={`mb-2 p-3 rounded-lg ${colors.bg}`}
+                  onPress={handleBackgroundInitDisconnect}
+                  disabled={backgroundActionLoading}
+                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
                 >
-                  <View className='flex-row items-start justify-between'>
-                    <View className='flex-1'>
-                      <View className='flex-row items-center gap-2 mb-1'>
-                        <Text className={`text-xs font-bold uppercase ${colors.text}`}>
-                          {log.level}
-                        </Text>
-                        <Text className='text-xs text-gray-500 dark:text-gray-400'>
-                          [{log.category}]
-                        </Text>
-                        <Text className='text-xs text-gray-400 dark:text-gray-500'>
-                          {formatTimestamp(log.timestamp)}
-                        </Text>
-                      </View>
-                      <Text
-                        className={`${colors.text} ${isExpanded ? '' : 'line-clamp-2'}`}
-                        numberOfLines={isExpanded ? undefined : 2}
-                      >
-                        {log.message}
-                      </Text>
-                      {log.data && isExpanded && (
-                        <Text className='text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono'>
-                          {log.data}
-                        </Text>
-                      )}
-                    </View>
-                    {log.data && (
-                      <Ionicons
-                        name={isExpanded ? 'chevron-up' : 'chevron-down'}
-                        size={16}
-                        color='#9ca3af'
-                      />
-                    )}
-                  </View>
+                  <Text className='text-white text-xs font-medium'>Init + Disconnect</Text>
                 </TouchableOpacity>
-              );
-            })
-          )}
-        </ScrollView>
-      </View>
+                <TouchableOpacity
+                  onPress={handleBackgroundAuthCheck}
+                  disabled={backgroundActionLoading}
+                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
+                >
+                  <Text className='text-white text-xs font-medium'>Auth Check</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View className='flex-row gap-2'>
+                <TouchableOpacity
+                  onPress={handleBackgroundUploadOps}
+                  disabled={backgroundActionLoading}
+                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
+                >
+                  <Text className='text-white text-xs font-medium'>Upload Ops</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={handleBackgroundProcessPhotos}
+                  disabled={backgroundActionLoading}
+                  className='flex-1 bg-slate-700 py-2 rounded-lg items-center'
+                >
+                  <Text className='text-white text-xs font-medium'>Process Photos</Text>
+                </TouchableOpacity>
+              </View>
+
+              {backgroundActionResult && (
+                <Text className='text-[11px] text-blue-900 dark:text-blue-100 mt-3 font-mono'>
+                  {backgroundActionResult}
+                </Text>
+              )}
+            </View>
+
+            <View className='mb-2'>
+              <TextInput
+                className='bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3 text-gray-900 dark:text-gray-100'
+                placeholder='Search logs...'
+                placeholderTextColor='#9ca3af'
+                value={searchQuery}
+                onChangeText={setSearchQuery}
+              />
+            </View>
+
+            <LogCategoryFilter
+              categories={CATEGORIES}
+              selectedCategory={selectedCategory}
+              onSelect={setSelectedCategory}
+            />
+
+            <View className='flex-row gap-3 mb-2'>
+              <TouchableOpacity
+                onPress={handleExport}
+                className='flex-1 flex-row items-center justify-center bg-blue-600 py-3 rounded-lg'
+              >
+                <Ionicons name='share-outline' size={18} color='white' />
+                <Text className='text-white font-medium ml-2'>Export</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleClear}
+                className='flex-1 flex-row items-center justify-center bg-red-600 py-3 rounded-lg'
+              >
+                <Ionicons name='trash-outline' size={18} color='white' />
+                <Text className='text-white font-medium ml-2'>Clear</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TouchableOpacity
+              onPress={() => router.push('/debug-env')}
+              className='flex-row items-center justify-center bg-gray-100 dark:bg-gray-800 py-3 rounded-lg mb-4'
+            >
+              <Ionicons name='settings-outline' size={18} color='#4b5563' />
+              <Text className='text-gray-700 dark:text-gray-300 font-medium ml-2'>
+                Environment & PowerSync Tools
+              </Text>
+            </TouchableOpacity>
+
+            <Text className='text-gray-500 dark:text-gray-400 mb-2'>
+              Showing {filteredLogs.length} of {logs.length} logs
+            </Text>
+          </>
+        }
+        ListEmptyComponent={
+          <View className='items-center justify-center py-8'>
+            <Ionicons name='document-text-outline' size={48} color='#9ca3af' />
+            <Text className='text-gray-500 dark:text-gray-400 mt-2'>No logs found</Text>
+          </View>
+        }
+      />
     </SafeAreaView>
   );
 }

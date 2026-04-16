@@ -7,9 +7,10 @@ import {
 import { ApiClient, SyncOperationResult } from '../ApiClient';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
-import { System } from './System';
+import type { System } from './System';
 import { debugLogger } from '@/utils/DebugLogger';
 import { cacheBackgroundToken } from '@/services/background/BackgroundAuth';
+import type { TokenProvider } from '../network/types';
 
 type SyncMetricName =
   | 'sync_ack_success'
@@ -21,8 +22,14 @@ type PendingCrudTransaction = NonNullable<
   Awaited<ReturnType<AbstractPowerSyncDatabase['getNextCrudTransaction']>>
 >;
 
+interface BackendConnectorOptions {
+  apiClient?: ApiClient;
+  tokenProvider?: TokenProvider;
+}
+
 export class BackendConnector implements PowerSyncBackendConnector {
   private apiClient: ApiClient;
+  private readonly tokenProvider?: TokenProvider;
   storage: CloudinaryStorageAdapter;
   private endpoint: string = '';
   private readonly PHOTO_BATCH_SIZE = 10;
@@ -33,8 +40,9 @@ export class BackendConnector implements PowerSyncBackendConnector {
     sync_auth_pause: 0
   };
 
-  constructor(protected system: System) {
-    this.apiClient = new ApiClient();
+  constructor(protected system: System | null = null, options?: BackendConnectorOptions) {
+    this.apiClient = options?.apiClient ?? new ApiClient();
+    this.tokenProvider = options?.tokenProvider;
     this.storage = new CloudinaryStorageAdapter(this.apiClient);
   }
 
@@ -52,6 +60,30 @@ export class BackendConnector implements PowerSyncBackendConnector {
     );
 
     try {
+      if (this.tokenProvider) {
+        const token = await this.tokenProvider();
+
+        if (!token) {
+          debugLogger.warn('AUTH', 'No token received from token provider');
+          return null;
+        }
+
+        await cacheBackgroundToken(token);
+
+        if (!this.endpoint) {
+          debugLogger.error('AUTH', 'No endpoint configured');
+          return null;
+        }
+
+        this.apiClient.setToken(token);
+
+        debugLogger.info('AUTH', 'fetchCredentials success');
+        return {
+          endpoint: this.endpoint,
+          token
+        };
+      }
+
       const clerk = getClerkInstance({
         publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
       });
