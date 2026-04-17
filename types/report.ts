@@ -2,6 +2,18 @@ export type ReportStatus = 'draft' | 'in_progress' | 'completed';
 
 export type TriState = 'Yes' | 'No' | 'N/A';
 
+export type FilterType = 'baffle' | 'longDrawer' | 'singleDrawer' | 'other';
+
+export type FanAccessReason = 'accessDenied' | 'unsafe' | 'noRoofAccess' | 'locked' | 'other';
+
+export interface EquipmentDetails {
+  numberOfHoods?: number;
+  numberOfFilters?: number;
+  numberOfFans?: number;
+  filterTypes?: FilterType[];
+  otherFilterType?: string;
+}
+
 export interface ReportSavePayload {
   scheduleId: string;
   invoiceId: string;
@@ -19,7 +31,10 @@ export interface ReportSavePayload {
     ductworkCleaned?: boolean | null;
     fanCleaned?: boolean | null;
   };
+  equipmentDetails?: EquipmentDetails;
   inspectionItems?: {
     adequateAccessPanels?: TriState;
+    safeAccessToFan?: TriState;
+    fanAccessReason?: FanAccessReason | string;
   };
 }

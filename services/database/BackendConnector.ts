@@ -171,6 +171,15 @@ export class BackendConnector implements PowerSyncBackendConnector {
       }
     }
 
+    // Parse equipmentDetails if it's a string
+    if (typeof result.equipmentDetails === 'string') {
+      try {
+        result.equipmentDetails = JSON.parse(result.equipmentDetails);
+      } catch {
+        debugLogger.warn('SYNC', 'Failed to parse equipmentDetails JSON');
+      }
+    }
+
     return result as T;
   }
 

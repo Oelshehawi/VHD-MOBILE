@@ -137,25 +137,36 @@ export function PhotoDocumentationModal({
 
         {/* Content */}
         {activeTab === 'before' || activeTab === 'after' ? (
-          <ScrollView
-            className='flex-1 px-4 py-4'
-            contentContainerStyle={{
-              paddingBottom: insets.bottom + 16
-            }}
-          >
+          <View className='flex-1'>
+            <ScrollView
+              className='flex-1 px-4 py-4'
+              contentContainerStyle={{
+                paddingBottom: activeTab === 'after' ? 120 : insets.bottom + 16
+              }}
+            >
+              <PhotoCapture
+                technicianId={technicianId}
+                type={activeTab}
+                jobTitle={jobTitle}
+                startDate={startDateTime}
+                scheduleId={scheduleId}
+                allowAdd
+              />
+            </ScrollView>
             {activeTab === 'after' && (
               <View
                 className={cn(
-                  'mb-4 gap-3 rounded-2xl border p-5',
+                  'border-t px-4 pt-3',
                   isReportCompleteState
                     ? 'border-emerald-200 bg-emerald-50'
                     : 'border-gray-200 bg-white'
                 )}
+                style={{ paddingBottom: insets.bottom + 12 }}
               >
-                <Text className='text-lg font-bold text-gray-900'>
+                <Text className='text-base font-bold text-gray-900'>
                   {isReportCompleteState ? 'Report Completed' : 'Complete Report'}
                 </Text>
-                <Text className='text-sm text-gray-500'>
+                <Text className='mt-1 text-xs text-gray-500'>
                   {isReportCompleteState
                     ? 'Report submitted and pending admin review.'
                     : 'Submit your report after photos are uploaded.'}
@@ -163,23 +174,14 @@ export function PhotoDocumentationModal({
                 {!isReportCompleteState && (
                   <Pressable
                     onPress={handleGoToReport}
-                    className='w-full rounded-xl bg-emerald-700 px-4 py-3 active:bg-emerald-800'
+                    className='mt-3 w-full rounded-xl bg-emerald-700 px-4 py-3 active:bg-emerald-800'
                   >
                     <Text className='text-center font-semibold text-white'>Go to Report</Text>
                   </Pressable>
                 )}
               </View>
             )}
-
-            <PhotoCapture
-              technicianId={technicianId}
-              type={activeTab}
-              jobTitle={jobTitle}
-              startDate={startDateTime}
-              scheduleId={scheduleId}
-              allowAdd
-            />
-          </ScrollView>
+          </View>
         ) : (
           <View className='flex-1 px-4 pt-4' style={{ paddingBottom: insets.bottom + 16 }}>
             <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />

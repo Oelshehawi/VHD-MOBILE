@@ -16,6 +16,7 @@ import { formatTimeUTC, formatDateReadable } from '@/utils/date';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { PhotoDocumentationModal } from '../PhotoComponents/PhotoDocumentationModal';
+import { openReport } from '@/utils/openReport';
 import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
 import { GeocodingService } from '@/services/weather/GeocodingService';
 import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
@@ -35,13 +36,21 @@ const TIME_SLOTS: Array<'Morning' | 'Afternoon' | 'Evening'> = ['Morning', 'Afte
 interface ScheduleCardProps {
   schedule: Schedule;
   weather?: WeatherData;
+  technicianId: string;
   onOpenInvoice: (schedule: Schedule) => void;
   onOpenPhotos: (schedule: Schedule) => void;
   onOpenMap: (schedule: Schedule) => void;
 }
 
 const ScheduleCard = React.memo(
-  ({ schedule, weather, onOpenInvoice, onOpenPhotos, onOpenMap }: ScheduleCardProps) => {
+  ({
+    schedule,
+    weather,
+    technicianId,
+    onOpenInvoice,
+    onOpenPhotos,
+    onOpenMap
+  }: ScheduleCardProps) => {
     const startTime = useMemo(() => {
       try {
         const parsed = parseISO(schedule.startDateTime);
@@ -118,6 +127,19 @@ const ScheduleCard = React.memo(
       [onOpenMap, schedule]
     );
 
+    const handleReportPress = useCallback(
+      (event: GestureResponderEvent) => {
+        event.stopPropagation();
+        openReport({
+          scheduleId: schedule.id,
+          jobTitle: schedule.jobTitle,
+          startDateTime: schedule.startDateTime,
+          technicianId
+        });
+      },
+      [schedule, technicianId]
+    );
+
     return (
       <TouchableOpacity
         onPress={handleCardPress}
@@ -171,17 +193,31 @@ const ScheduleCard = React.memo(
               </View>
             </View>
 
-            <View className='flex-row'>
+            <View className='flex-row items-center'>
               {/* Camera/Photo Documentation Button */}
               <TouchableOpacity
                 onPress={handlePhotosPress}
-                className='bg-blue-500 p-2 rounded-full mr-2 relative'
+                hitSlop={8}
+                className='bg-blue-500 h-11 w-11 items-center justify-center rounded-full mr-2 relative'
               >
                 <Ionicons name={photoIcon} size={20} color='#ffffff' />
               </TouchableOpacity>
 
+              {/* Report Button */}
+              <TouchableOpacity
+                onPress={handleReportPress}
+                hitSlop={8}
+                className='bg-emerald-700 h-11 w-11 items-center justify-center rounded-full mr-2'
+              >
+                <Ionicons name='clipboard' size={20} color='#ffffff' />
+              </TouchableOpacity>
+
               {/* Map Button */}
-              <TouchableOpacity onPress={handleMapPress} className='bg-darkGreen p-2 rounded-full'>
+              <TouchableOpacity
+                onPress={handleMapPress}
+                hitSlop={8}
+                className='bg-darkGreen h-11 w-11 items-center justify-center rounded-full'
+              >
                 <Ionicons name='navigate' size={20} color='#ffffff' />
               </TouchableOpacity>
             </View>
@@ -464,6 +500,7 @@ export function DailyAgenda({
                         key={schedule.id}
                         schedule={schedule}
                         weather={weatherDataMap.get(schedule.location)}
+                        technicianId={userId}
                         onOpenInvoice={handleInvoicePress}
                         onOpenPhotos={handlePhotoDocumentationPress}
                         onOpenMap={handleMapPress}

@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, ScrollView, Pressable, TextInput, Alert } from 'react-native';
+import {
+  View,
+  ScrollView,
+  Pressable,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform
+} from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useForm, Controller, useWatch } from 'react-hook-form';
@@ -9,7 +17,16 @@ import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Schedule } from '@/types';
-import type { ReportSavePayload, TriState } from '@/types/report';
+import type {
+  ReportSavePayload,
+  TriState,
+  FilterType,
+  FanAccessReason,
+  EquipmentDetails
+} from '@/types/report';
+import { NumberStepper } from '@/components/forms/NumberStepper';
+import { MultiSelectChips } from '@/components/forms/MultiSelectChips';
+import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
 
 type ReportFormValues = {
   cleaningDetails: {
@@ -18,7 +35,17 @@ type ReportFormValues = {
     ductworkCleaned: TriState;
     fanCleaned: TriState;
   };
+  equipmentDetails: {
+    numberOfHoods: number;
+    numberOfFilters: number;
+    numberOfFans: number;
+    filterTypes: FilterType[];
+    otherFilterType: string;
+  };
   accessPanels: TriState;
+  safeAccessToFan: TriState;
+  fanAccessReason: FanAccessReason | '';
+  fanAccessReasonDetail: string;
   dirtyScale: number;
   recommendedCleaningFrequency?: number;
   comments?: string;
@@ -26,11 +53,26 @@ type ReportFormValues = {
 
 const TRI_OPTIONS: TriState[] = ['Yes', 'No', 'N/A'];
 
-const FREQUENCY_OPTIONS = [
+const FREQUENCY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
   { value: 1, label: '1x per year' },
   { value: 2, label: '2x per year' },
   { value: 3, label: '3x per year' },
   { value: 4, label: '4x per year' }
+];
+
+const FILTER_TYPE_OPTIONS: ReadonlyArray<{ value: FilterType; label: string }> = [
+  { value: 'baffle', label: 'Baffle' },
+  { value: 'longDrawer', label: 'Long Drawer' },
+  { value: 'singleDrawer', label: 'Single Drawer' },
+  { value: 'other', label: 'Other' }
+];
+
+const FAN_ACCESS_REASON_OPTIONS: ReadonlyArray<{ value: FanAccessReason; label: string }> = [
+  { value: 'accessDenied', label: 'Access denied by owner' },
+  { value: 'unsafe', label: 'Unsafe to access' },
+  { value: 'noRoofAccess', label: 'No roof access' },
+  { value: 'locked', label: 'Fan locked out' },
+  { value: 'other', label: 'Other' }
 ];
 
 function getCookingVolume(value: number) {
@@ -46,7 +88,6 @@ function mapTriStateToBoolean(value: TriState) {
 }
 
 function mapBooleanToTriState(value: boolean | number | string | null): TriState {
-  // Handle all possible formats: boolean, number, or string
   if (value === true || value === 1 || value === '1') return 'Yes';
   if (value === false || value === 0 || value === '0') return 'No';
   return 'N/A';
@@ -65,8 +106,6 @@ function calculateActualServiceDurationMinutes(
 ): number | null {
   if (!startDateTime) return null;
 
-  // DB stores "fake-UTC" timestamps: wall-clock local time serialized with a UTC suffix.
-  // Example: "2026-02-11T10:00:00Z" means 10:00 local, not 10:00 UTC.
   const parsedStart = new Date(startDateTime);
   if (!Number.isFinite(parsedStart.getTime())) return null;
 
@@ -102,8 +141,9 @@ type ReportRow = {
   cookingVolume: string | null;
   recommendedCleaningFrequency: number | null;
   comments: string | null;
-  cleaningDetails: string | null; // JSON: { hoodCleaned, filtersCleaned, ductworkCleaned, fanCleaned }
-  inspectionItems: string | null; // JSON: { adequateAccessPanels }
+  cleaningDetails: string | null;
+  inspectionItems: string | null;
+  equipmentDetails: string | null;
 };
 
 export default function ReportScreen() {
@@ -119,7 +159,9 @@ export default function ReportScreen() {
 
   const scheduleId = typeof params.scheduleId === 'string' ? params.scheduleId : '';
   const technicianId =
-    typeof params.technicianId === 'string' ? params.technicianId : user?.id || '';
+    typeof params.technicianId === 'string' && params.technicianId
+      ? params.technicianId
+      : user?.id || '';
 
   const scheduleQuery = useQuery<Schedule>(
     scheduleId ? `SELECT * FROM schedules WHERE id = ?` : `SELECT * FROM schedules WHERE 0`,
@@ -129,7 +171,7 @@ export default function ReportScreen() {
 
   const schedule = (scheduleQuery.data?.[0] as Schedule | undefined) ?? null;
 
-  const { data: existingReports = [], isLoading: _isLoadingReport } = useQuery<ReportRow>(
+  const { data: existingReports = [] } = useQuery<ReportRow>(
     scheduleId
       ? `SELECT * FROM reports WHERE scheduleId = ? LIMIT 1`
       : `SELECT * FROM reports WHERE 0`,
@@ -157,14 +199,23 @@ export default function ReportScreen() {
           ductworkCleaned: 'N/A',
           fanCleaned: 'N/A'
         },
+        equipmentDetails: {
+          numberOfHoods: 0,
+          numberOfFilters: 0,
+          numberOfFans: 0,
+          filterTypes: [],
+          otherFilterType: ''
+        },
         accessPanels: 'N/A',
+        safeAccessToFan: 'N/A',
+        fanAccessReason: '',
+        fanAccessReasonDetail: '',
         dirtyScale: 5,
         recommendedCleaningFrequency: undefined,
         comments: ''
       };
     }
 
-    // Parse cleaningDetails JSON
     let cleaningData: {
       hoodCleaned?: boolean;
       filtersCleaned?: boolean;
@@ -179,8 +230,11 @@ export default function ReportScreen() {
       }
     }
 
-    // Parse inspectionItems JSON
-    let inspectionData: { adequateAccessPanels?: string } = {};
+    let inspectionData: {
+      adequateAccessPanels?: string;
+      safeAccessToFan?: string;
+      fanAccessReason?: string;
+    } = {};
     if (report.inspectionItems) {
       try {
         inspectionData = JSON.parse(report.inspectionItems);
@@ -189,6 +243,24 @@ export default function ReportScreen() {
       }
     }
 
+    let equipmentData: EquipmentDetails = {};
+    if (report.equipmentDetails) {
+      try {
+        equipmentData = JSON.parse(report.equipmentDetails);
+      } catch {
+        console.warn('[Report] Failed to parse equipmentDetails JSON');
+      }
+    }
+
+    const fanReasonRaw = inspectionData.fanAccessReason ?? '';
+    const knownReason = FAN_ACCESS_REASON_OPTIONS.find(
+      (o) => o.value === fanReasonRaw
+    )?.value;
+    const fanAccessReason: FanAccessReason | '' =
+      knownReason ?? (fanReasonRaw ? 'other' : '');
+    const fanAccessReasonDetail =
+      fanAccessReason === 'other' && fanReasonRaw !== 'other' ? fanReasonRaw : '';
+
     return {
       cleaningDetails: {
         hoodCleaned: mapBooleanToTriState(cleaningData.hoodCleaned ?? null),
@@ -196,7 +268,17 @@ export default function ReportScreen() {
         ductworkCleaned: mapBooleanToTriState(cleaningData.ductworkCleaned ?? null),
         fanCleaned: mapBooleanToTriState(cleaningData.fanCleaned ?? null)
       },
+      equipmentDetails: {
+        numberOfHoods: equipmentData.numberOfHoods ?? 0,
+        numberOfFilters: equipmentData.numberOfFilters ?? 0,
+        numberOfFans: equipmentData.numberOfFans ?? 0,
+        filterTypes: equipmentData.filterTypes ?? [],
+        otherFilterType: equipmentData.otherFilterType ?? ''
+      },
       accessPanels: (inspectionData.adequateAccessPanels as TriState) ?? 'N/A',
+      safeAccessToFan: (inspectionData.safeAccessToFan as TriState) ?? 'N/A',
+      fanAccessReason,
+      fanAccessReasonDetail,
       dirtyScale: mapCookingVolumeToScale(report.cookingVolume),
       recommendedCleaningFrequency: report.recommendedCleaningFrequency ?? undefined,
       comments: report.comments ?? ''
@@ -210,7 +292,6 @@ export default function ReportScreen() {
 
   useEffect(() => {
     if (existingReport) {
-      console.log('[Report] Loaded existing report:', JSON.stringify(existingReport, null, 2));
       reset(getDefaultValues(existingReport));
     }
   }, [existingReport, reset]);
@@ -232,11 +313,24 @@ export default function ReportScreen() {
     [watchedValues?.dirtyScale]
   );
 
+  const showFanAccessReasons = watchedValues?.safeAccessToFan === 'No';
+  const showOtherFilterInput = (watchedValues?.equipmentDetails?.filterTypes ?? []).includes(
+    'other'
+  );
+  const showOtherFanReasonInput = watchedValues?.fanAccessReason === 'other';
+
   const buildPayload = (
     status: ReportSavePayload['reportStatus'],
     dateCompleted: string
   ): ReportSavePayload => {
     const values = getValues();
+    const fanReasonValue: string | undefined =
+      values.safeAccessToFan === 'No'
+        ? values.fanAccessReason === 'other'
+          ? values.fanAccessReasonDetail?.trim() || 'other'
+          : values.fanAccessReason || undefined
+        : undefined;
+
     return {
       scheduleId,
       invoiceId,
@@ -254,36 +348,119 @@ export default function ReportScreen() {
         ductworkCleaned: mapTriStateToBoolean(values.cleaningDetails.ductworkCleaned),
         fanCleaned: mapTriStateToBoolean(values.cleaningDetails.fanCleaned)
       },
+      equipmentDetails: {
+        numberOfHoods: values.equipmentDetails.numberOfHoods,
+        numberOfFilters: values.equipmentDetails.numberOfFilters,
+        numberOfFans: values.equipmentDetails.numberOfFans,
+        filterTypes: values.equipmentDetails.filterTypes,
+        otherFilterType: values.equipmentDetails.filterTypes.includes('other')
+          ? values.equipmentDetails.otherFilterType?.trim() || undefined
+          : undefined
+      },
       inspectionItems: {
-        adequateAccessPanels: values.accessPanels
+        adequateAccessPanels: values.accessPanels,
+        safeAccessToFan: values.safeAccessToFan,
+        fanAccessReason: fanReasonValue
       }
     };
   };
 
   const validateForSubmit = () => {
+    const values = getValues();
+    const errorFields: Parameters<typeof clearErrors>[0] = [
+      'recommendedCleaningFrequency',
+      'comments',
+      'equipmentDetails.numberOfHoods',
+      'equipmentDetails.numberOfFilters',
+      'equipmentDetails.numberOfFans',
+      'equipmentDetails.filterTypes',
+      'equipmentDetails.otherFilterType',
+      'safeAccessToFan',
+      'fanAccessReason',
+      'fanAccessReasonDetail'
+    ];
+    clearErrors(errorFields);
+
     let valid = true;
+
     if (!scheduleId || !invoiceId || !technicianId) {
       setSubmitError('Missing schedule or invoice details.');
       valid = false;
+    } else {
+      setSubmitError(null);
     }
-    if (!getValues().recommendedCleaningFrequency) {
+
+    if (!values.recommendedCleaningFrequency) {
       setError('recommendedCleaningFrequency', {
         type: 'required',
         message: 'Select a cleaning frequency.'
       });
       valid = false;
     }
-    if (anyNoSelected && !getValues().comments?.trim()) {
+
+    if (!(values.equipmentDetails.numberOfHoods > 0)) {
+      setError('equipmentDetails.numberOfHoods', {
+        type: 'required',
+        message: 'Enter the number of hoods.'
+      });
+      valid = false;
+    }
+    if (!(values.equipmentDetails.numberOfFilters > 0)) {
+      setError('equipmentDetails.numberOfFilters', {
+        type: 'required',
+        message: 'Enter the number of filters.'
+      });
+      valid = false;
+    }
+    if (!(values.equipmentDetails.numberOfFans > 0)) {
+      setError('equipmentDetails.numberOfFans', {
+        type: 'required',
+        message: 'Enter the number of fans.'
+      });
+      valid = false;
+    }
+
+    if (!values.equipmentDetails.filterTypes || values.equipmentDetails.filterTypes.length === 0) {
+      setError('equipmentDetails.filterTypes', {
+        type: 'required',
+        message: 'Select at least one filter type.'
+      });
+      valid = false;
+    } else if (
+      values.equipmentDetails.filterTypes.includes('other') &&
+      !values.equipmentDetails.otherFilterType?.trim()
+    ) {
+      setError('equipmentDetails.otherFilterType', {
+        type: 'required',
+        message: 'Describe the other filter type.'
+      });
+      valid = false;
+    }
+
+    if (values.safeAccessToFan === 'No') {
+      if (!values.fanAccessReason) {
+        setError('fanAccessReason', {
+          type: 'required',
+          message: 'Select a reason.'
+        });
+        valid = false;
+      } else if (values.fanAccessReason === 'other' && !values.fanAccessReasonDetail?.trim()) {
+        setError('fanAccessReasonDetail', {
+          type: 'required',
+          message: 'Describe the reason.'
+        });
+        valid = false;
+      }
+    }
+
+    if (anyNoSelected && !values.comments?.trim()) {
       setError('comments', {
         type: 'required',
         message: 'Explain why any item is marked No.'
       });
       valid = false;
     }
-    if (valid) {
-      clearErrors(['recommendedCleaningFrequency', 'comments']);
-      setSubmitError(null);
-    }
+
     return valid;
   };
 
@@ -318,8 +495,9 @@ export default function ReportScreen() {
                     recommendedCleaningFrequency,
                     comments,
                     cleaningDetails,
-                    inspectionItems
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                    inspectionItems,
+                    equipmentDetails
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             reportId,
             payload.scheduleId,
@@ -333,7 +511,8 @@ export default function ReportScreen() {
             payload.recommendedCleaningFrequency ?? null,
             payload.comments ?? null,
             JSON.stringify(payload.cleaningDetails),
-            JSON.stringify(payload.inspectionItems)
+            JSON.stringify(payload.inspectionItems),
+            JSON.stringify(payload.equipmentDetails)
           ]
         );
 
@@ -371,140 +550,281 @@ export default function ReportScreen() {
           headerBackTitle: 'Back'
         }}
       />
-      <ScrollView
-        className='flex-1 px-5 py-6'
-        contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+      <KeyboardAvoidingView
+        className='flex-1'
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
       >
-        <Text className='text-xl font-semibold text-foreground'>Cleaning + Access Panels</Text>
-        <View className='mt-4 gap-4'>
-          <Controller
-            control={control}
-            name='cleaningDetails.hoodCleaned'
-            render={({ field: { onChange, value } }) => (
-              <TriStateRow label='Hood Cleaned' value={value} onChange={onChange} />
-            )}
-          />
-          <Controller
-            control={control}
-            name='cleaningDetails.filtersCleaned'
-            render={({ field: { onChange, value } }) => (
-              <TriStateRow label='Filters Cleaned' value={value} onChange={onChange} />
-            )}
-          />
-          <Controller
-            control={control}
-            name='cleaningDetails.ductworkCleaned'
-            render={({ field: { onChange, value } }) => (
-              <TriStateRow label='Ductwork Cleaned' value={value} onChange={onChange} />
-            )}
-          />
-          <Controller
-            control={control}
-            name='cleaningDetails.fanCleaned'
-            render={({ field: { onChange, value } }) => (
-              <TriStateRow label='Fan Cleaned' value={value} onChange={onChange} />
-            )}
-          />
-          <Controller
-            control={control}
-            name='accessPanels'
-            render={({ field: { onChange, value } }) => (
-              <TriStateRow label='Access Panels Adequate' value={value} onChange={onChange} />
-            )}
-          />
-        </View>
+        <ScrollView
+          className='flex-1 px-5 py-6'
+          contentContainerStyle={{ paddingBottom: 32 }}
+          keyboardShouldPersistTaps='handled'
+        >
+          {/* Equipment */}
+          <Text className='text-xl font-semibold text-foreground'>Equipment</Text>
+          <View className='mt-4 gap-3'>
+            <Controller
+              control={control}
+              name='equipmentDetails.numberOfHoods'
+              render={({ field: { onChange, value }, fieldState }) => (
+                <View>
+                  <NumberStepper label='Hoods' value={value} onChange={onChange} />
+                  {fieldState.error && (
+                    <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
+                  )}
+                </View>
+              )}
+            />
+            <Controller
+              control={control}
+              name='equipmentDetails.numberOfFilters'
+              render={({ field: { onChange, value }, fieldState }) => (
+                <View>
+                  <NumberStepper label='Filters' value={value} onChange={onChange} />
+                  {fieldState.error && (
+                    <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
+                  )}
+                </View>
+              )}
+            />
+            <Controller
+              control={control}
+              name='equipmentDetails.numberOfFans'
+              render={({ field: { onChange, value }, fieldState }) => (
+                <View>
+                  <NumberStepper label='Fans' value={value} onChange={onChange} />
+                  {fieldState.error && (
+                    <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
+                  )}
+                </View>
+              )}
+            />
+          </View>
 
-        {anyNoSelected && (
           <View className='mt-5'>
-            <Text className='text-sm font-semibold text-foreground'>
-              Required: Explain why any item is No
+            <Text className='text-base font-semibold text-foreground'>Filter Types</Text>
+            <Text className='mt-1 text-xs text-muted-foreground'>Select all that apply</Text>
+            <Controller
+              control={control}
+              name='equipmentDetails.filterTypes'
+              render={({ field: { onChange, value }, fieldState }) => (
+                <View className='mt-3'>
+                  <MultiSelectChips<FilterType>
+                    options={FILTER_TYPE_OPTIONS}
+                    value={value}
+                    onChange={onChange}
+                  />
+                  {fieldState.error && (
+                    <Text className='mt-2 text-xs text-red-600'>{fieldState.error.message}</Text>
+                  )}
+                </View>
+              )}
+            />
+            {showOtherFilterInput && (
+              <Controller
+                control={control}
+                name='equipmentDetails.otherFilterType'
+                render={({ field: { onChange, value }, fieldState }) => (
+                  <>
+                    <TextInput
+                      value={value}
+                      onChangeText={onChange}
+                      placeholder='Describe filter type'
+                      className={cn(
+                        'mt-3 min-h-[44px] rounded-md border border-border bg-background px-3 py-2 text-base text-foreground',
+                        fieldState.error && 'border-red-500'
+                      )}
+                    />
+                    {fieldState.error && (
+                      <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
+                    )}
+                  </>
+                )}
+              />
+            )}
+          </View>
+
+          {/* Cleaning + Access Panels */}
+          <Text className='mt-8 text-xl font-semibold text-foreground'>
+            Cleaning + Access Panels
+          </Text>
+          <View className='mt-4 gap-4'>
+            <Controller
+              control={control}
+              name='cleaningDetails.hoodCleaned'
+              render={({ field: { onChange, value } }) => (
+                <TriStateRow label='Hood Cleaned' value={value} onChange={onChange} />
+              )}
+            />
+            <Controller
+              control={control}
+              name='cleaningDetails.filtersCleaned'
+              render={({ field: { onChange, value } }) => (
+                <TriStateRow label='Filters Cleaned' value={value} onChange={onChange} />
+              )}
+            />
+            <Controller
+              control={control}
+              name='cleaningDetails.ductworkCleaned'
+              render={({ field: { onChange, value } }) => (
+                <TriStateRow label='Ductwork Cleaned' value={value} onChange={onChange} />
+              )}
+            />
+            <Controller
+              control={control}
+              name='cleaningDetails.fanCleaned'
+              render={({ field: { onChange, value } }) => (
+                <TriStateRow label='Fan Cleaned' value={value} onChange={onChange} />
+              )}
+            />
+            <Controller
+              control={control}
+              name='accessPanels'
+              render={({ field: { onChange, value } }) => (
+                <TriStateRow label='Access Panels Adequate' value={value} onChange={onChange} />
+              )}
+            />
+          </View>
+
+          {/* Fan Access */}
+          <Text className='mt-8 text-xl font-semibold text-foreground'>Fan Access</Text>
+          <View className='mt-4 gap-4'>
+            <Controller
+              control={control}
+              name='safeAccessToFan'
+              render={({ field: { onChange, value } }) => (
+                <TriStateRow label='Safe Access to Fan' value={value} onChange={onChange} />
+              )}
+            />
+            {showFanAccessReasons && (
+              <View className='rounded-xl border border-border bg-card px-4 py-4'>
+                <Text className='text-base font-semibold text-foreground'>Reason</Text>
+                <Controller
+                  control={control}
+                  name='fanAccessReason'
+                  render={({ field: { onChange, value }, fieldState }) => (
+                    <View className='mt-3'>
+                      <ReasonChipRow<FanAccessReason>
+                        options={FAN_ACCESS_REASON_OPTIONS}
+                        value={value || undefined}
+                        onChange={onChange}
+                      />
+                      {fieldState.error && (
+                        <Text className='mt-2 text-xs text-red-600'>
+                          {fieldState.error.message}
+                        </Text>
+                      )}
+                    </View>
+                  )}
+                />
+                {showOtherFanReasonInput && (
+                  <Controller
+                    control={control}
+                    name='fanAccessReasonDetail'
+                    render={({ field: { onChange, value }, fieldState }) => (
+                      <>
+                        <TextInput
+                          value={value}
+                          onChangeText={onChange}
+                          placeholder='Describe reason'
+                          className={cn(
+                            'mt-3 min-h-[44px] rounded-md border border-border bg-background px-3 py-2 text-base text-foreground',
+                            fieldState.error && 'border-red-500'
+                          )}
+                        />
+                        {fieldState.error && (
+                          <Text className='mt-1 text-xs text-red-600'>
+                            {fieldState.error.message}
+                          </Text>
+                        )}
+                      </>
+                    )}
+                  />
+                )}
+              </View>
+            )}
+          </View>
+
+          {anyNoSelected && (
+            <View className='mt-5'>
+              <Text className='text-sm font-semibold text-foreground'>
+                Required: Explain why any item is No
+              </Text>
+              <Controller
+                control={control}
+                name='comments'
+                render={({ field: { onChange, value }, fieldState }) => (
+                  <>
+                    <TextInput
+                      value={value}
+                      onChangeText={onChange}
+                      placeholder='Example: No roof access / fan locked out'
+                      className={cn(
+                        'mt-2 min-h-[96px] rounded-md border border-border bg-background px-3 py-2 text-base text-foreground',
+                        fieldState.error && 'border-red-500'
+                      )}
+                      multiline
+                    />
+                    {fieldState.error && (
+                      <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
+                    )}
+                  </>
+                )}
+              />
+            </View>
+          )}
+
+          <View className='mt-8'>
+            <Text className='text-xl font-semibold text-foreground'>Dirty Scale</Text>
+            <Text className='mt-1 text-sm text-muted-foreground'>
+              1 is clean, 10 is heavy build up
             </Text>
             <Controller
               control={control}
-              name='comments'
+              name='dirtyScale'
+              render={({ field: { onChange, value } }) => (
+                <DirtyScaleSelector value={value} onChange={onChange} />
+              )}
+            />
+            <Text className='mt-2 text-sm text-muted-foreground'>
+              Cooking Volume:{' '}
+              <Text className='font-semibold text-foreground'>{cookingVolumeLabel}</Text>
+            </Text>
+          </View>
+
+          <View className='mt-8'>
+            <Text className='text-xl font-semibold text-foreground'>
+              Recommended Cleaning Frequency
+            </Text>
+            <Controller
+              control={control}
+              name='recommendedCleaningFrequency'
+              rules={{ required: 'Select a cleaning frequency.' }}
               render={({ field: { onChange, value }, fieldState }) => (
                 <>
-                  <TextInput
-                    value={value}
-                    onChangeText={onChange}
-                    placeholder='Example: No roof access / fan locked out'
-                    className={cn(
-                      'mt-2 min-h-[96px] rounded-md border border-border bg-background px-3 py-2 text-base text-foreground',
-                      fieldState.error && 'border-red-500'
-                    )}
-                    multiline
-                  />
+                  <View className='mt-3'>
+                    <ReasonChipRow<number>
+                      options={FREQUENCY_OPTIONS}
+                      value={value}
+                      onChange={onChange}
+                    />
+                  </View>
                   {fieldState.error && (
-                    <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
+                    <Text className='mt-2 text-xs text-red-600'>{fieldState.error.message}</Text>
                   )}
                 </>
               )}
             />
           </View>
-        )}
 
-        <View className='mt-8'>
-          <Text className='text-xl font-semibold text-foreground'>Dirty Scale</Text>
-          <Text className='mt-1 text-sm text-muted-foreground'>
-            1 is clean, 10 is heavy build up
-          </Text>
-          <Controller
-            control={control}
-            name='dirtyScale'
-            render={({ field: { onChange, value } }) => (
-              <DirtyScaleSelector value={value} onChange={onChange} />
-            )}
-          />
-          <Text className='mt-2 text-sm text-muted-foreground'>
-            Cooking Volume:{' '}
-            <Text className='font-semibold text-foreground'>{cookingVolumeLabel}</Text>
-          </Text>
-        </View>
+          {submitError && <Text className='mt-6 text-sm text-red-600'>{submitError}</Text>}
+        </ScrollView>
 
-        <View className='mt-8'>
-          <Text className='text-xl font-semibold text-foreground'>
-            Recommended Cleaning Frequency
-          </Text>
-          <Controller
-            control={control}
-            name='recommendedCleaningFrequency'
-            rules={{ required: 'Select a cleaning frequency.' }}
-            render={({ field: { onChange, value }, fieldState }) => (
-              <>
-                <View className='mt-3 flex-row flex-wrap gap-2'>
-                  {FREQUENCY_OPTIONS.map((option) => (
-                    <Pressable
-                      key={option.value}
-                      onPress={() => onChange(option.value)}
-                      className={cn(
-                        'rounded-full border px-4 py-2',
-                        value === option.value
-                          ? 'border-emerald-600 bg-emerald-600'
-                          : 'border-border bg-background'
-                      )}
-                    >
-                      <Text
-                        className={cn(
-                          'text-sm font-semibold',
-                          value === option.value ? 'text-white' : 'text-foreground'
-                        )}
-                      >
-                        {option.label}
-                      </Text>
-                    </Pressable>
-                  ))}
-                </View>
-                {fieldState.error && (
-                  <Text className='mt-2 text-xs text-red-600'>{fieldState.error.message}</Text>
-                )}
-              </>
-            )}
-          />
-        </View>
-
-        {submitError && <Text className='mt-6 text-sm text-red-600'>{submitError}</Text>}
-
-        <View className='mt-8 flex-row gap-3'>
+        {/* Sticky action bar */}
+        <View
+          className='flex-row gap-3 border-t border-border bg-background px-5 pt-3'
+          style={{ paddingBottom: Math.max(insets.bottom, 12) }}
+        >
           <Button
             variant='outline'
             className='flex-1'
@@ -521,7 +841,7 @@ export default function ReportScreen() {
             <Text>Submit</Text>
           </Button>
         </View>
-      </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -549,7 +869,7 @@ function TriStateRow({
               key={option}
               onPress={() => onChange(option)}
               className={cn(
-                'flex-1 items-center justify-center rounded-lg border px-3 py-2',
+                'min-h-[44px] flex-1 items-center justify-center rounded-lg border px-3 py-2',
                 isSelected && isYes && 'border-emerald-600 bg-emerald-600',
                 isSelected && isNo && 'border-red-600 bg-red-600',
                 isSelected && isNA && 'border-gray-300 bg-gray-300',
@@ -592,7 +912,7 @@ function DirtyScaleSelector({
               key={scaleValue}
               onPress={() => onChange(scaleValue)}
               className={cn(
-                'h-10 w-10 items-center justify-center rounded-md border',
+                'h-11 w-11 items-center justify-center rounded-md border',
                 isSelected ? 'border-emerald-600 bg-emerald-600' : 'border-border bg-background'
               )}
             >
