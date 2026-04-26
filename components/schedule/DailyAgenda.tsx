@@ -76,15 +76,13 @@ const ScheduleCard = React.memo(
     }, [schedule.confirmed]);
 
     const { data: photoCounts = [] } = useQuery<{
-      totalCount: number | null;
       beforeAfterCount: number | null;
     }>(
       schedule?.id
         ? `SELECT
-                     COUNT(*) as totalCount,
                      SUM(CASE WHEN type IN ('before', 'after') THEN 1 ELSE 0 END) as beforeAfterCount
                    FROM photos WHERE scheduleId = ?`
-        : `SELECT 0 as totalCount, 0 as beforeAfterCount`,
+        : `SELECT 0 as beforeAfterCount`,
       [schedule.id],
       { rowComparator: DEFAULT_ROW_COMPARATOR }
     );

@@ -2,7 +2,7 @@ export type ReportStatus = 'draft' | 'in_progress' | 'completed';
 
 export type TriState = 'Yes' | 'No' | 'N/A';
 
-export type FilterType = 'baffle' | 'longDrawer' | 'singleDrawer' | 'other';
+export type FilterType = 'baffle' | 'longDrawer' | 'singleDrawer' | 'mesh' | 'other';
 
 export type FanAccessReason = 'accessDenied' | 'unsafe' | 'noRoofAccess' | 'locked' | 'other';
 
@@ -10,7 +10,8 @@ export interface EquipmentDetails {
   numberOfHoods?: number;
   numberOfFilters?: number;
   numberOfFans?: number;
-  filterTypes?: FilterType[];
+  filterTypes?: string;
+  // Backward compatibility for local legacy report rows.
   otherFilterType?: string;
 }
 

@@ -75,7 +75,7 @@ const reports = new Table(
     // Nested objects stored as JSON text
     cleaningDetails: column.text, // JSON: { hoodCleaned, filtersCleaned, ductworkCleaned, fanCleaned }
     inspectionItems: column.text, // JSON: { adequateAccessPanels, safeAccessToFan, fanAccessReason }
-    equipmentDetails: column.text // JSON: { numberOfHoods, numberOfFilters, numberOfFans, filterTypes, otherFilterType }
+    equipmentDetails: column.text // JSON: { numberOfHoods, numberOfFilters, numberOfFans, filterTypes }
   },
   { indexes: { schedules: ['scheduleId'] } }
 );

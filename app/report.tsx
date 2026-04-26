@@ -25,7 +25,6 @@ import type {
   EquipmentDetails
 } from '@/types/report';
 import { NumberStepper } from '@/components/forms/NumberStepper';
-import { MultiSelectChips } from '@/components/forms/MultiSelectChips';
 import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
 
 type ReportFormValues = {
@@ -39,7 +38,7 @@ type ReportFormValues = {
     numberOfHoods: number;
     numberOfFilters: number;
     numberOfFans: number;
-    filterTypes: FilterType[];
+    filterTypes: FilterType | '';
     otherFilterType: string;
   };
   accessPanels: TriState;
@@ -64,6 +63,7 @@ const FILTER_TYPE_OPTIONS: ReadonlyArray<{ value: FilterType; label: string }> =
   { value: 'baffle', label: 'Baffle' },
   { value: 'longDrawer', label: 'Long Drawer' },
   { value: 'singleDrawer', label: 'Single Drawer' },
+  { value: 'mesh', label: 'Mesh' },
   { value: 'other', label: 'Other' }
 ];
 
@@ -203,7 +203,7 @@ export default function ReportScreen() {
           numberOfHoods: 0,
           numberOfFilters: 0,
           numberOfFans: 0,
-          filterTypes: [],
+          filterTypes: '',
           otherFilterType: ''
         },
         accessPanels: 'N/A',
@@ -260,6 +260,22 @@ export default function ReportScreen() {
       knownReason ?? (fanReasonRaw ? 'other' : '');
     const fanAccessReasonDetail =
       fanAccessReason === 'other' && fanReasonRaw !== 'other' ? fanReasonRaw : '';
+    const rawEquipmentFilterType = (equipmentData as { filterTypes?: unknown }).filterTypes;
+    const normalizedFilterTypeSource = Array.isArray(rawEquipmentFilterType)
+      ? rawEquipmentFilterType.find((entry): entry is string => typeof entry === 'string') ?? ''
+      : typeof rawEquipmentFilterType === 'string'
+        ? rawEquipmentFilterType
+        : '';
+    const knownFilterType = FILTER_TYPE_OPTIONS.find(
+      (o) => o.value === normalizedFilterTypeSource
+    )?.value;
+    const filterType: FilterType | '' = knownFilterType ?? (normalizedFilterTypeSource ? 'other' : '');
+    const otherFilterType =
+      filterType === 'other'
+        ? normalizedFilterTypeSource && normalizedFilterTypeSource !== 'other'
+          ? normalizedFilterTypeSource
+          : equipmentData.otherFilterType ?? ''
+        : '';
 
     return {
       cleaningDetails: {
@@ -272,8 +288,8 @@ export default function ReportScreen() {
         numberOfHoods: equipmentData.numberOfHoods ?? 0,
         numberOfFilters: equipmentData.numberOfFilters ?? 0,
         numberOfFans: equipmentData.numberOfFans ?? 0,
-        filterTypes: equipmentData.filterTypes ?? [],
-        otherFilterType: equipmentData.otherFilterType ?? ''
+        filterTypes: filterType,
+        otherFilterType
       },
       accessPanels: (inspectionData.adequateAccessPanels as TriState) ?? 'N/A',
       safeAccessToFan: (inspectionData.safeAccessToFan as TriState) ?? 'N/A',
@@ -314,9 +330,7 @@ export default function ReportScreen() {
   );
 
   const showFanAccessReasons = watchedValues?.safeAccessToFan === 'No';
-  const showOtherFilterInput = (watchedValues?.equipmentDetails?.filterTypes ?? []).includes(
-    'other'
-  );
+  const showOtherFilterInput = watchedValues?.equipmentDetails?.filterTypes === 'other';
   const showOtherFanReasonInput = watchedValues?.fanAccessReason === 'other';
 
   const buildPayload = (
@@ -324,6 +338,10 @@ export default function ReportScreen() {
     dateCompleted: string
   ): ReportSavePayload => {
     const values = getValues();
+    const filterTypeValue =
+      values.equipmentDetails.filterTypes === 'other'
+        ? values.equipmentDetails.otherFilterType?.trim() || undefined
+        : values.equipmentDetails.filterTypes || undefined;
     const fanReasonValue: string | undefined =
       values.safeAccessToFan === 'No'
         ? values.fanAccessReason === 'other'
@@ -351,11 +369,9 @@ export default function ReportScreen() {
       equipmentDetails: {
         numberOfHoods: values.equipmentDetails.numberOfHoods,
         numberOfFilters: values.equipmentDetails.numberOfFilters,
-        numberOfFans: values.equipmentDetails.numberOfFans,
-        filterTypes: values.equipmentDetails.filterTypes,
-        otherFilterType: values.equipmentDetails.filterTypes.includes('other')
-          ? values.equipmentDetails.otherFilterType?.trim() || undefined
-          : undefined
+        numberOfFans:
+          values.safeAccessToFan === 'No' ? undefined : values.equipmentDetails.numberOfFans,
+        filterTypes: filterTypeValue
       },
       inspectionItems: {
         adequateAccessPanels: values.accessPanels,
@@ -375,7 +391,6 @@ export default function ReportScreen() {
       'equipmentDetails.numberOfFans',
       'equipmentDetails.filterTypes',
       'equipmentDetails.otherFilterType',
-      'safeAccessToFan',
       'fanAccessReason',
       'fanAccessReasonDetail'
     ];
@@ -412,7 +427,7 @@ export default function ReportScreen() {
       });
       valid = false;
     }
-    if (!(values.equipmentDetails.numberOfFans > 0)) {
+    if (values.safeAccessToFan !== 'No' && !(values.equipmentDetails.numberOfFans > 0)) {
       setError('equipmentDetails.numberOfFans', {
         type: 'required',
         message: 'Enter the number of fans.'
@@ -420,14 +435,14 @@ export default function ReportScreen() {
       valid = false;
     }
 
-    if (!values.equipmentDetails.filterTypes || values.equipmentDetails.filterTypes.length === 0) {
+    if (!values.equipmentDetails.filterTypes) {
       setError('equipmentDetails.filterTypes', {
         type: 'required',
-        message: 'Select at least one filter type.'
+        message: 'Select a filter type.'
       });
       valid = false;
     } else if (
-      values.equipmentDetails.filterTypes.includes('other') &&
+      values.equipmentDetails.filterTypes === 'other' &&
       !values.equipmentDetails.otherFilterType?.trim()
     ) {
       setError('equipmentDetails.otherFilterType', {
@@ -603,15 +618,15 @@ export default function ReportScreen() {
 
           <View className='mt-5'>
             <Text className='text-base font-semibold text-foreground'>Filter Types</Text>
-            <Text className='mt-1 text-xs text-muted-foreground'>Select all that apply</Text>
+            <Text className='mt-1 text-xs text-muted-foreground'>Select one option</Text>
             <Controller
               control={control}
               name='equipmentDetails.filterTypes'
               render={({ field: { onChange, value }, fieldState }) => (
                 <View className='mt-3'>
-                  <MultiSelectChips<FilterType>
+                  <ReasonChipRow<FilterType>
                     options={FILTER_TYPE_OPTIONS}
-                    value={value}
+                    value={value || undefined}
                     onChange={onChange}
                   />
                   {fieldState.error && (

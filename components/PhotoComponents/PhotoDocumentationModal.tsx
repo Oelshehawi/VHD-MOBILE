@@ -5,10 +5,10 @@ import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
 import { JobPhotoHistory } from './JobPhotoHistory';
 import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { router } from 'expo-router';
 import type { ReportStatus } from '@/types/report';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
+import { openReport } from '@/utils/openReport';
 
 // Tab type for the modal navigation
 type TabType = 'before' | 'after' | 'history';
@@ -75,14 +75,11 @@ export function PhotoDocumentationModal({
 
   const handleGoToReport = () => {
     handleClose();
-    router.push({
-      pathname: '/report',
-      params: {
-        scheduleId,
-        jobTitle,
-        startDateTime,
-        technicianId
-      }
+    openReport({
+      scheduleId,
+      jobTitle,
+      startDateTime,
+      technicianId
     });
   };
 
