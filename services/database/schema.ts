@@ -26,6 +26,22 @@ const invoices = new Table(
   { indexes: { visits: ['visitIds'] } }
 );
 
+const equipmentprofiles = new Table(
+  {
+    // id column (text) is automatically included
+    serviceJobId: column.text,
+    profileKey: column.text,
+    location: column.text,
+    jobTitle: column.text,
+    scopeLabel: column.text,
+    hoods: column.text,
+    airMovers: column.text,
+    needsReview: column.integer,
+    updatedAt: column.text
+  },
+  { indexes: { servicejobs: ['serviceJobId'] } }
+);
+
 const schedules = new Table(
   {
     // id column (text) is automatically included
@@ -161,6 +177,7 @@ const expopushtokens = new Table(
 // Add the attachments table from PowerSync
 export const AppSchema = new Schema({
   invoices,
+  equipmentprofiles,
   schedules,
   payrollperiods,
   availabilities,
@@ -201,6 +218,7 @@ export const AppSchema = new Schema({
 
 export type Database = (typeof AppSchema)['types'];
 export type Schedule = Database['schedules'];
+export type EquipmentProfile = Database['equipmentprofiles'];
 export type Availability = Database['availabilities'];
 export type TimeOffRequest = Database['timeoffrequests'];
 export type Report = Database['reports'];

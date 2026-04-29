@@ -48,6 +48,44 @@ export interface PayrollPeriod {
   updatedAt?: string;
 }
 
+export interface EquipmentFilterGroup {
+  type: string;
+  quantity: number;
+  notes?: string | null;
+}
+
+export interface HoodEquipment {
+  id: string;
+  label: string;
+  filterGroups?: EquipmentFilterGroup[] | string;
+  notes?: string | null;
+}
+
+export interface AirMoverEquipment {
+  id: string;
+  label: string;
+  type: 'exhaustFan' | 'ecologyUnit' | 'other' | string;
+  manufacturer?: string | null;
+  modelNumber?: string | null;
+  serialNumber?: string | null;
+  filterGroups?: EquipmentFilterGroup[] | string;
+  filterReplacementNeeded?: boolean | number | null;
+  notes?: string | null;
+}
+
+export interface EquipmentProfile {
+  id: string;
+  serviceJobId: string;
+  profileKey?: string;
+  location?: string;
+  jobTitle?: string;
+  scopeLabel?: string;
+  hoods?: HoodEquipment[] | string;
+  airMovers?: AirMoverEquipment[] | string;
+  needsReview?: boolean | number;
+  updatedAt?: string;
+}
+
 export interface EmployeeHours {
   technicianName: string;
   hours: number;

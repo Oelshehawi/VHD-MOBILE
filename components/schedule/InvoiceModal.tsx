@@ -18,6 +18,7 @@ import { useQuery, DEFAULT_ROW_COMPARATOR, usePowerSync } from '@powersync/react
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { TechnicianNotes } from './TechnicianNotes';
+import { EquipmentProfilePanel } from './EquipmentProfilePanel';
 import { ApiClient } from '@/services/ApiClient';
 import { formatVancouverTimestamp } from '@/utils/date';
 import { canMarkChequeReceived } from '@/utils/invoicePayment';
@@ -717,6 +718,9 @@ export function InvoiceModal({
                     </Text>
                   </View>
                 )}
+
+                {/* Equipment Profile Section */}
+                <EquipmentProfilePanel serviceJobId={schedule?.serviceJobId} />
 
                 {/* Work Documentation Section */}
                 {renderWorkCompletionSection()}
