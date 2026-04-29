@@ -99,9 +99,7 @@ const ScheduleCard = React.memo(
     }, [beforeAfterCount, schedule]);
 
     const handleCardPress = useCallback(() => {
-      if (schedule.invoiceRef) {
-        onOpenInvoice(schedule);
-      }
+      onOpenInvoice(schedule);
     }, [onOpenInvoice, schedule]);
 
     const handlePhotosPress = useCallback(
@@ -331,10 +329,6 @@ export function DailyAgenda({
 
   const handleInvoicePress = useCallback(
     (schedule: Schedule) => {
-      if (!schedule.invoiceRef) {
-        return;
-      }
-
       // Use parent callback if provided
       if (onInvoicePress) {
         onInvoicePress(schedule);

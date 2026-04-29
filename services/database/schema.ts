@@ -14,6 +14,8 @@ const invoices = new Table(
     items: column.text, // JSON string of items array
     jobTitle: column.text,
     location: column.text,
+    serviceJobIds: column.text, // JSON string of linked service job ids
+    visitIds: column.text, // JSON string of linked schedule ids
     notes: column.text,
     status: column.text,
     // Payment info fields
@@ -21,7 +23,7 @@ const invoices = new Table(
     paymentDatePaid: column.text, // ISO date string
     paymentNotes: column.text // Optional payment notes
   },
-  { indexes: {} }
+  { indexes: { visits: ['visitIds'] } }
 );
 
 const schedules = new Table(

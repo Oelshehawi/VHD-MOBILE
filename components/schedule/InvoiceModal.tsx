@@ -21,6 +21,7 @@ import { TechnicianNotes } from './TechnicianNotes';
 import { ApiClient } from '@/services/ApiClient';
 import { formatVancouverTimestamp } from '@/utils/date';
 import { canMarkChequeReceived } from '@/utils/invoicePayment';
+import { invoiceLinksToSchedule } from '@/utils/invoices';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -82,22 +83,26 @@ export function InvoiceModal({
   );
 
   const schedule: Schedule | null = (scheduleQuery.data?.[0] as Schedule | undefined) ?? null;
-  const invoiceRef = schedule?.invoiceRef;
 
-  // Then fetch the invoice using the invoiceRef from the schedule
+  // Then fetch linked invoice candidates using Invoice.visitIds.
   const invoiceQuery = useQuery<InvoiceType>(
-    invoiceRef ? `SELECT * FROM invoices WHERE id = ?` : `SELECT * FROM invoices WHERE 0`,
-    [invoiceRef || ''],
+    scheduleId ? `SELECT * FROM invoices WHERE visitIds LIKE ?` : `SELECT * FROM invoices WHERE 0`,
+    [`%${scheduleId}%`],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
-  const invoice = invoiceQuery.data?.[0] || null;
+  const linkedInvoices = useMemo(
+    () => (invoiceQuery.data ?? []).filter((candidate) => invoiceLinksToSchedule(candidate, scheduleId)),
+    [invoiceQuery.data, scheduleId]
+  );
+  const invoice = linkedInvoices.length === 1 ? linkedInvoices[0] : null;
+  const hasMultipleLinkedInvoices = linkedInvoices.length > 1;
 
   // Check if queries are still loading
-  const isLoading = !schedule || !invoice;
+  const isLoading = scheduleQuery.isLoading || invoiceQuery.isLoading;
 
-  // If we have no invoice data, don't render content (but keep sheet for animation)
-  const shouldShowContent = !isLoading && invoice;
+  // If we have no schedule data, don't render content (but keep sheet for animation)
+  const shouldShowContent = !isLoading && schedule;
 
   const { data: photoCounts = [] } = useQuery<{
     beforeCount: number | null;
@@ -176,6 +181,10 @@ export function InvoiceModal({
     setShowConfirmationModal(false);
 
     try {
+      if (!invoice) {
+        throw new Error('No linked invoice is available for this visit.');
+      }
+
       // Create ApiClient instance - you'll need to get the actual auth token
       // For now using empty token, but you should replace this with actual Clerk token
       const apiClient = new ApiClient('');
@@ -398,56 +407,64 @@ export function InvoiceModal({
         )}
 
         {/* Send Invoice Section */}
-        <View className='flex flex-col gap-4'>
-          <Text className='text-lg font-semibold text-gray-900 dark:text-white'>Send Invoice</Text>
+        {linkedInvoices.length === 1 ? (
+          <View className='flex flex-col gap-4'>
+            <Text className='text-lg font-semibold text-gray-900 dark:text-white'>Send Invoice</Text>
 
-          {invoiceSent ? (
-            <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
-              <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
-                ✓ Invoice Sent Successfully
-              </Text>
-            </View>
-          ) : (
-            <TouchableOpacity
-              onPress={handleSendInvoiceClick}
-              disabled={isSendingInvoice}
-              className={`p-4 rounded-lg flex-row justify-center items-center ${
-                isSendingInvoice ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'
-              }`}
-            >
-              {isSendingInvoice ? (
-                <View className='flex-row items-center gap-2'>
-                  <ActivityIndicator size='small' color='#ffffff' />
-                  <Text className='text-white font-medium text-lg'>Sending Invoice...</Text>
-                </View>
-              ) : (
-                <Text className='text-white font-medium text-lg'>📧 Send Invoice</Text>
-              )}
-            </TouchableOpacity>
-          )}
+            {invoiceSent ? (
+              <View className='bg-green-50 dark:bg-green-900/20 p-4 rounded-lg'>
+                <Text className='text-green-800 dark:text-green-200 text-center font-medium'>
+                  ✓ Invoice Sent Successfully
+                </Text>
+              </View>
+            ) : (
+              <TouchableOpacity
+                onPress={handleSendInvoiceClick}
+                disabled={isSendingInvoice}
+                className={`p-4 rounded-lg flex-row justify-center items-center ${
+                  isSendingInvoice ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'
+                }`}
+              >
+                {isSendingInvoice ? (
+                  <View className='flex-row items-center gap-2'>
+                    <ActivityIndicator size='small' color='#ffffff' />
+                    <Text className='text-white font-medium text-lg'>Sending Invoice...</Text>
+                  </View>
+                ) : (
+                  <Text className='text-white font-medium text-lg'>📧 Send Invoice</Text>
+                )}
+              </TouchableOpacity>
+            )}
 
-          {sendInvoiceError && (
-            <View className='bg-red-50 dark:bg-red-900/20 p-4 rounded-lg'>
-              <Text className='text-red-800 dark:text-red-200 text-center font-medium'>
-                ⚠️ {sendInvoiceError}
-              </Text>
-              {!isSendingInvoice && (
-                <TouchableOpacity
-                  onPress={() => {
-                    setSendInvoiceError(null);
-                    sendInvoice();
-                  }}
-                  className='mt-2 p-2 bg-red-600 rounded-lg'
-                >
-                  <Text className='text-white text-center font-medium'>Try Again</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-        </View>
+            {sendInvoiceError && (
+              <View className='bg-red-50 dark:bg-red-900/20 p-4 rounded-lg'>
+                <Text className='text-red-800 dark:text-red-200 text-center font-medium'>
+                  ⚠️ {sendInvoiceError}
+                </Text>
+                {!isSendingInvoice && (
+                  <TouchableOpacity
+                    onPress={() => {
+                      setSendInvoiceError(null);
+                      sendInvoice();
+                    }}
+                    className='mt-2 p-2 bg-red-600 rounded-lg'
+                  >
+                    <Text className='text-white text-center font-medium'>Try Again</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+          </View>
+        ) : hasMultipleLinkedInvoices ? (
+          <View className='bg-amber-50 dark:bg-amber-900/20 p-4 rounded-lg'>
+            <Text className='text-amber-800 dark:text-amber-200 text-center font-medium'>
+              Multiple invoices are linked to this visit. Send from the admin app.
+            </Text>
+          </View>
+        ) : null}
 
         {/* Mark Cheque Received Section - Only show if invoice is not paid */}
-        {canMarkChequeReceived(invoice) && (
+        {invoice && canMarkChequeReceived(invoice) && (
           <View className='flex flex-col gap-4'>
             <Text className='text-lg font-semibold text-gray-900 dark:text-white'>
               Payment Received
@@ -517,7 +534,7 @@ export function InvoiceModal({
 
   // Render the pricing section only for managers
   const renderPricingSection = () => {
-    if (!isManager) return null;
+    if (!isManager || !invoice) return null;
 
     return (
       <View className='flex flex-col gap-6 border-t border-gray-200 dark:border-gray-700 pt-6 mt-6'>
@@ -599,10 +616,10 @@ export function InvoiceModal({
               <View className='flex-row justify-between items-center'>
                 <View className='flex flex-col gap-1'>
                   <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
-                    {invoice.jobTitle}
+                    {invoice?.jobTitle ?? schedule.jobTitle}
                   </Text>
                   <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                    {isManager ? `Invoice #${invoice.invoiceId}` : ''}
+                    {isManager && invoice ? `Invoice #${invoice.invoiceId}` : ''}
                   </Text>
                 </View>
                 <TouchableOpacity
@@ -628,7 +645,7 @@ export function InvoiceModal({
             >
               <View className='flex flex-col gap-6'>
                 {/* Dates Section - Show only for managers */}
-                {isManager && (
+                {isManager && invoice && (
                   <View className='flex-row justify-between bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg gap-4'>
                     <View className='flex flex-col gap-1 flex-1'>
                       <Text className='text-sm text-gray-500 dark:text-gray-400'>Date Issued</Text>
@@ -653,11 +670,13 @@ export function InvoiceModal({
                         Location
                       </Text>
                       <Text className='text-base font-medium text-gray-900 dark:text-white'>
-                        {invoice.location}
+                        {invoice?.location ?? schedule.location}
                       </Text>
                     </View>
                     <TouchableOpacity
-                      onPress={() => openMaps(invoice.jobTitle, invoice.location)}
+                      onPress={() =>
+                        openMaps(invoice?.jobTitle ?? schedule.jobTitle, invoice?.location ?? schedule.location)
+                      }
                       className='bg-darkGreen p-2 rounded-full ml-2'
                     >
                       <Ionicons name='navigate' size={20} color='#ffffff' />

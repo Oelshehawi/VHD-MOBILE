@@ -138,10 +138,8 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
 
   // Handle schedule press - open invoice modal
   const handleSchedulePress = useCallback((schedule: Schedule) => {
-    if (schedule.invoiceRef) {
-      setSelectedScheduleForInvoice(schedule);
-      setInvoiceModalVisible(true);
-    }
+    setSelectedScheduleForInvoice(schedule);
+    setInvoiceModalVisible(true);
   }, []);
 
   return (

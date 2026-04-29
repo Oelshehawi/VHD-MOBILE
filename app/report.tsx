@@ -16,7 +16,7 @@ import { useUser } from '@clerk/clerk-expo';
 import { Text } from '@/components/ui/text';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import type { Schedule } from '@/types';
+import type { InvoiceType, Schedule } from '@/types';
 import type {
   ReportSavePayload,
   TriState,
@@ -27,6 +27,7 @@ import type {
 import { NumberStepper } from '@/components/forms/NumberStepper';
 import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
 import { getScheduleStartAtUtc } from '@/utils/scheduleTime';
+import { invoiceLinksToSchedule } from '@/utils/invoices';
 
 type ReportFormValues = {
   cleaningDetails: {
@@ -156,6 +157,14 @@ export default function ReportScreen() {
 
   const schedule = (scheduleQuery.data?.[0] as Schedule | undefined) ?? null;
 
+  const invoiceQuery = useQuery<InvoiceType>(
+    scheduleId ? `SELECT * FROM invoices WHERE visitIds LIKE ?` : `SELECT * FROM invoices WHERE 0`,
+    [`%${scheduleId}%`],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
+  );
+  const linkedInvoice =
+    invoiceQuery.data?.find((candidate) => invoiceLinksToSchedule(candidate, scheduleId)) ?? null;
+
   const { data: existingReports = [] } = useQuery<ReportRow>(
     scheduleId
       ? `SELECT * FROM reports WHERE scheduleId = ? LIMIT 1`
@@ -165,7 +174,7 @@ export default function ReportScreen() {
   );
   const existingReport = existingReports[0] ?? null;
 
-  const invoiceId = schedule?.invoiceRef || '';
+  const invoiceId = linkedInvoice?.id || '';
   const jobTitle =
     schedule?.jobTitle || (typeof params.jobTitle === 'string' ? params.jobTitle : '');
   const location = schedule?.location || '';

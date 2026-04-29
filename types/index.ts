@@ -109,6 +109,8 @@ export interface InvoiceType {
   dateDue: string;
   items: string;
   notes?: string;
+  serviceJobIds?: string[] | string;
+  visitIds?: string[] | string;
   photos?: string;
   signature?: string;
   frequency?: number;
