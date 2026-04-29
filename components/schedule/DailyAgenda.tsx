@@ -21,6 +21,7 @@ import { openReport } from '@/utils/openReport';
 import { WeatherService, WeatherData } from '@/services/weather/WeatherService';
 import { GeocodingService } from '@/services/weather/GeocodingService';
 import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
+import { isScheduleReportRequired } from '@/utils/schedules';
 
 interface DailyAgendaProps {
   selectedDate: string; // ISO string in UTC
@@ -97,6 +98,7 @@ const ScheduleCard = React.memo(
         photoIcon: iconName
       };
     }, [beforeAfterCount, schedule]);
+    const showReportAction = isScheduleReportRequired(schedule);
 
     const handleCardPress = useCallback(() => {
       onOpenInvoice(schedule);
@@ -196,13 +198,15 @@ const ScheduleCard = React.memo(
               </TouchableOpacity>
 
               {/* Report Button */}
-              <TouchableOpacity
-                onPress={handleReportPress}
-                hitSlop={8}
-                className='bg-emerald-700 h-11 w-11 items-center justify-center rounded-full mr-2'
-              >
-                <Ionicons name='clipboard' size={20} color='#ffffff' />
-              </TouchableOpacity>
+              {showReportAction && (
+                <TouchableOpacity
+                  onPress={handleReportPress}
+                  hitSlop={8}
+                  className='bg-emerald-700 h-11 w-11 items-center justify-center rounded-full mr-2'
+                >
+                  <Ionicons name='clipboard' size={20} color='#ffffff' />
+                </TouchableOpacity>
+              )}
 
               {/* Map Button */}
               <TouchableOpacity
@@ -510,6 +514,7 @@ export function DailyAgenda({
           jobTitle={selectedSchedule.jobTitle}
           scheduledStartAtUtc={getScheduleStartAtUtc(selectedSchedule)}
           timeZone={selectedSchedule.timeZone}
+          requiresReport={selectedSchedule.requiresReport}
           technicianId={userId}
         />
       )}

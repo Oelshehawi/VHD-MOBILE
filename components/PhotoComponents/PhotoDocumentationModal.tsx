@@ -9,6 +9,7 @@ import type { ReportStatus } from '@/types/report';
 import { Text } from '@/components/ui/text';
 import { cn } from '@/lib/utils';
 import { openReport } from '@/utils/openReport';
+import { isScheduleReportRequired } from '@/utils/schedules';
 
 // Tab type for the modal navigation
 type TabType = 'before' | 'after' | 'history';
@@ -20,6 +21,7 @@ interface PhotoDocumentationModalProps {
   jobTitle: string;
   scheduledStartAtUtc: string;
   timeZone?: string | null;
+  requiresReport?: boolean | number | string | null;
   technicianId: string;
 }
 
@@ -30,10 +32,12 @@ export function PhotoDocumentationModal({
   jobTitle,
   scheduledStartAtUtc,
   timeZone,
+  requiresReport,
   technicianId
 }: PhotoDocumentationModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('before');
   const insets = useSafeAreaInsets();
+  const showReportAction = isScheduleReportRequired({ requiresReport });
 
   const { data: photoCounts = [] } = useQuery<{
     beforeCount: number | null;
@@ -153,7 +157,7 @@ export function PhotoDocumentationModal({
                 allowAdd
               />
             </ScrollView>
-            {activeTab === 'after' && (
+            {activeTab === 'after' && showReportAction && (
               <View
                 className={cn(
                   'border-t px-4 pt-3',
