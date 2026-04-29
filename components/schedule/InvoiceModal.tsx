@@ -181,28 +181,11 @@ export function InvoiceModal({
     setShowConfirmationModal(false);
 
     try {
-      if (!invoice) {
-        throw new Error('No linked invoice is available for this visit.');
-      }
-
       // Create ApiClient instance - you'll need to get the actual auth token
       // For now using empty token, but you should replace this with actual Clerk token
       const apiClient = new ApiClient('');
 
-      const result = await apiClient.sendInvoice(
-        scheduleId,
-        invoice.id,
-        {
-          invoiceId: invoice.invoiceId,
-          jobTitle: invoice.jobTitle,
-          location: invoice.location,
-          dateIssued: invoice.dateIssued,
-          dateDue: invoice.dateDue,
-          items: items
-        },
-        technicianId,
-        true // Always send as complete since we're removing work documentation requirement
-      );
+      const result = await apiClient.sendInvoice(scheduleId, technicianId);
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to send invoice');

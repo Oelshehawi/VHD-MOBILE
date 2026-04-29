@@ -290,13 +290,10 @@ export class ApiClient {
 
   async sendInvoice(
     scheduleId: string,
-    invoiceRef: string,
-    invoiceData: any,
-    technicianId: string,
-    isComplete: boolean
+    technicianId: string
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      if (!scheduleId || !invoiceRef) {
+      if (!scheduleId || !technicianId) {
         return { success: false, error: 'Missing required fields' };
       }
 
@@ -306,10 +303,7 @@ export class ApiClient {
         headers,
         body: JSON.stringify({
           scheduleId,
-          invoiceRef,
-          invoiceData,
-          technicianId,
-          isComplete
+          technicianId
         })
       });
 
