@@ -1,9 +1,26 @@
+export type ScheduleServiceType =
+  | 'hoodCleaning'
+  | 'touchUp'
+  | 'beltChange'
+  | 'inspection'
+  | 'repair'
+  | 'estimate'
+  | 'other';
+
 export interface Schedule {
   id: string;
   invoiceRef: string;
+  serviceJobId?: string;
   jobTitle: string;
   location: string;
   startDateTime: string;
+  scheduledStartAtUtc?: string;
+  timeZone?: string;
+  serviceTypes?: ScheduleServiceType[] | string;
+  requiresReport?: boolean | number;
+  requiresEquipmentProfile?: boolean | number;
+  affectsRecurrence?: boolean | number;
+  isBackfilledHistorical?: boolean | number;
   actualServiceDurationMinutes?: number;
   assignedTechnicians: string[];
   confirmed: boolean;
@@ -122,9 +139,17 @@ export interface DashboardData {
 export interface DashboardSchedule {
   _id: string;
   invoiceRef: string;
+  serviceJobId?: string;
   jobTitle: string;
   location: string;
   startDateTime: string;
+  scheduledStartAtUtc?: string;
+  timeZone?: string;
+  serviceTypes?: ScheduleServiceType[] | string;
+  requiresReport?: boolean | number;
+  requiresEquipmentProfile?: boolean | number;
+  affectsRecurrence?: boolean | number;
+  isBackfilledHistorical?: boolean | number;
   hours: number;
   confirmed: boolean;
   technicians?: Array<{

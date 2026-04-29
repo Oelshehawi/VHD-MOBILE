@@ -30,6 +30,7 @@ const schedules = new Table(
     assignedTechnicians: column.text,
     confirmed: column.integer,
     deadRun: column.integer,
+    serviceJobId: column.text,
     hours: column.real,
     invoiceRef: column.text,
     jobTitle: column.text,
@@ -37,13 +38,26 @@ const schedules = new Table(
     payrollPeriod: column.text,
     shifts: column.text,
     startDateTime: column.text,
+    scheduledStartAtUtc: column.text,
+    timeZone: column.text,
+    serviceTypes: column.text,
+    requiresReport: column.integer,
+    requiresEquipmentProfile: column.integer,
+    affectsRecurrence: column.integer,
+    isBackfilledHistorical: column.integer,
     actualServiceDurationMinutes: column.integer,
     technicianNotes: column.text, // Notes from technicians
     // Site access info
     onSiteContact: column.text, // JSON: { name, phone, email }
     accessInstructions: column.text // Free text
   },
-  { indexes: { invoices: ['invoiceRef'] } }
+  {
+    indexes: {
+      invoices: ['invoiceRef'],
+      servicejobs: ['serviceJobId'],
+      scheduledStartAtUtc: ['scheduledStartAtUtc']
+    }
+  }
 );
 
 const photos = new Table(
