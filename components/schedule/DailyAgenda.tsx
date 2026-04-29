@@ -12,7 +12,8 @@ import { scheduleOnRN } from 'react-native-worklets';
 import Animated, { useSharedValue, useAnimatedStyle, withSpring } from 'react-native-reanimated';
 import { parseISO, format, addDays } from 'date-fns';
 import { Schedule } from '@/types';
-import { formatTimeUTC, formatDateReadable } from '@/utils/date';
+import { formatDateReadable } from '@/utils/date';
+import { formatScheduleTime, getScheduleHour, getScheduleStartAtUtc } from '@/utils/scheduleTime';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { openMaps } from '@/utils/dashboard';
 import { PhotoDocumentationModal } from '../PhotoComponents/PhotoDocumentationModal';
@@ -52,14 +53,8 @@ const ScheduleCard = React.memo(
     onOpenMap
   }: ScheduleCardProps) => {
     const startTime = useMemo(() => {
-      try {
-        const parsed = parseISO(schedule.startDateTime);
-        return formatTimeUTC(parsed);
-      } catch (err) {
-        console.error('Error formatting time', schedule.startDateTime, err);
-        return '';
-      }
-    }, [schedule.startDateTime]);
+      return formatScheduleTime(schedule);
+    }, [schedule]);
 
     const { statusColor, statusBorder } = useMemo(() => {
       if (schedule.confirmed) {
@@ -131,7 +126,8 @@ const ScheduleCard = React.memo(
         openReport({
           scheduleId: schedule.id,
           jobTitle: schedule.jobTitle,
-          startDateTime: schedule.startDateTime,
+          scheduledStartAtUtc: getScheduleStartAtUtc(schedule),
+          timeZone: schedule.timeZone,
           technicianId
         });
       },
@@ -305,20 +301,19 @@ export function DailyAgenda({
   // Group schedules by time slot for better visualization
   const groupedSchedules = useMemo(() => {
     return schedules.reduce<Record<string, Schedule[]>>((acc, schedule) => {
-      try {
-        const date = parseISO(schedule.startDateTime);
-        // Use getUTCHours() since dates are stored in UTC
-        const hour = date.getUTCHours();
-        const timeSlot = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
-
-        if (!acc[timeSlot]) {
-          acc[timeSlot] = [];
-        }
-
-        acc[timeSlot].push(schedule);
-      } catch (err) {
-        console.error('Error parsing date', schedule.startDateTime, err);
+      const hour = getScheduleHour(schedule);
+      if (hour === null) {
+        console.error('Error parsing schedule date', getScheduleStartAtUtc(schedule));
+        return acc;
       }
+
+      const timeSlot = hour < 12 ? 'Morning' : hour < 17 ? 'Afternoon' : 'Evening';
+
+      if (!acc[timeSlot]) {
+        acc[timeSlot] = [];
+      }
+
+      acc[timeSlot].push(schedule);
       return acc;
     }, {});
   }, [schedules]);
@@ -519,7 +514,8 @@ export function DailyAgenda({
           onClose={() => setPhotoModalVisible(false)}
           scheduleId={selectedSchedule.id}
           jobTitle={selectedSchedule.jobTitle}
-          startDateTime={selectedSchedule.startDateTime}
+          scheduledStartAtUtc={getScheduleStartAtUtc(selectedSchedule)}
+          timeZone={selectedSchedule.timeZone}
           technicianId={userId}
         />
       )}

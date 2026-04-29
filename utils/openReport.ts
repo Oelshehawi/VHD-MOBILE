@@ -3,14 +3,16 @@ import { router } from 'expo-router';
 interface OpenReportParams {
   scheduleId: string;
   jobTitle?: string | null;
-  startDateTime?: string | null;
+  scheduledStartAtUtc?: string | null;
+  timeZone?: string | null;
   technicianId?: string | null;
 }
 
 export function openReport({
   scheduleId,
   jobTitle,
-  startDateTime,
+  scheduledStartAtUtc,
+  timeZone,
   technicianId
 }: OpenReportParams) {
   router.push({
@@ -18,7 +20,8 @@ export function openReport({
     params: {
       scheduleId,
       jobTitle: jobTitle ?? '',
-      startDateTime: startDateTime ?? '',
+      scheduledStartAtUtc: scheduledStartAtUtc ?? '',
+      timeZone: timeZone ?? '',
       technicianId: technicianId ?? ''
     }
   });

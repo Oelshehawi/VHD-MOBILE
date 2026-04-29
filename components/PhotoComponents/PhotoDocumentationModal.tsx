@@ -18,7 +18,8 @@ interface PhotoDocumentationModalProps {
   onClose: () => void;
   scheduleId: string;
   jobTitle: string;
-  startDateTime: string;
+  scheduledStartAtUtc: string;
+  timeZone?: string | null;
   technicianId: string;
 }
 
@@ -27,7 +28,8 @@ export function PhotoDocumentationModal({
   onClose,
   scheduleId,
   jobTitle,
-  startDateTime,
+  scheduledStartAtUtc,
+  timeZone,
   technicianId
 }: PhotoDocumentationModalProps) {
   const [activeTab, setActiveTab] = useState<TabType>('before');
@@ -78,7 +80,8 @@ export function PhotoDocumentationModal({
     openReport({
       scheduleId,
       jobTitle,
-      startDateTime,
+      scheduledStartAtUtc,
+      timeZone,
       technicianId
     });
   };
@@ -145,7 +148,7 @@ export function PhotoDocumentationModal({
                 technicianId={technicianId}
                 type={activeTab}
                 jobTitle={jobTitle}
-                startDate={startDateTime}
+                startDate={scheduledStartAtUtc}
                 scheduleId={scheduleId}
                 allowAdd
               />

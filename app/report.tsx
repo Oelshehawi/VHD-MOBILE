@@ -26,6 +26,7 @@ import type {
 } from '@/types/report';
 import { NumberStepper } from '@/components/forms/NumberStepper';
 import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
+import { getScheduleStartAtUtc } from '@/utils/scheduleTime';
 
 type ReportFormValues = {
   cleaningDetails: {
@@ -100,31 +101,13 @@ function mapCookingVolumeToScale(volume: string | null): number {
   return 5;
 }
 
-function calculateActualServiceDurationMinutes(
-  startDateTime: string | undefined,
-  completedAt: Date
-): number | null {
-  if (!startDateTime) return null;
+function calculateActualServiceDurationMinutes(startAtUtc: string | undefined, completedAt: Date): number | null {
+  if (!startAtUtc) return null;
 
-  const parsedStart = new Date(startDateTime);
+  const parsedStart = new Date(startAtUtc);
   if (!Number.isFinite(parsedStart.getTime())) return null;
 
-  const hasTimezoneSuffix =
-    /(?:Z|[+-]\d{2}:?\d{2})$/i.test(startDateTime) || /GMT/i.test(startDateTime);
-
-  const normalizedStart = hasTimezoneSuffix
-    ? new Date(
-        parsedStart.getUTCFullYear(),
-        parsedStart.getUTCMonth(),
-        parsedStart.getUTCDate(),
-        parsedStart.getUTCHours(),
-        parsedStart.getUTCMinutes(),
-        parsedStart.getUTCSeconds(),
-        parsedStart.getUTCMilliseconds()
-      )
-    : parsedStart;
-
-  const startMs = normalizedStart.getTime();
+  const startMs = parsedStart.getTime();
   if (!Number.isFinite(startMs)) return null;
 
   const elapsedMs = completedAt.getTime() - startMs;
@@ -153,7 +136,9 @@ export default function ReportScreen() {
   const params = useLocalSearchParams<{
     scheduleId?: string;
     jobTitle?: string;
+    scheduledStartAtUtc?: string;
     startDateTime?: string;
+    timeZone?: string;
     technicianId?: string;
   }>();
 
@@ -184,8 +169,12 @@ export default function ReportScreen() {
   const jobTitle =
     schedule?.jobTitle || (typeof params.jobTitle === 'string' ? params.jobTitle : '');
   const location = schedule?.location || '';
-  const fallbackStartDateTime =
-    typeof params.startDateTime === 'string' ? params.startDateTime : '';
+  const fallbackScheduledStartAtUtc =
+    typeof params.scheduledStartAtUtc === 'string' && params.scheduledStartAtUtc
+      ? params.scheduledStartAtUtc
+      : typeof params.startDateTime === 'string'
+        ? params.startDateTime
+        : '';
 
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -490,7 +479,7 @@ export default function ReportScreen() {
       const completedAt = new Date();
       const payload = buildPayload(status, completedAt.toISOString());
       const actualServiceDurationMinutes = calculateActualServiceDurationMinutes(
-        schedule?.startDateTime || fallbackStartDateTime,
+        schedule ? getScheduleStartAtUtc(schedule) : fallbackScheduledStartAtUtc,
         completedAt
       );
 

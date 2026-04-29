@@ -1,6 +1,5 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, Pressable, ActivityIndicator, useWindowDimensions } from 'react-native';
-import { format } from 'date-fns';
 import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import { PhotoType } from '@/utils/photos';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -9,6 +8,7 @@ import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { preloadImages } from '@/utils/imageCache';
 import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
 import { AppConfig } from '@/services/database/AppConfig';
+import { formatScheduleDateShort } from '@/utils/scheduleTime';
 
 const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
 const THUMBNAIL_WIDTH = 240;
@@ -36,7 +36,8 @@ interface JobPhotoHistoryProps {
 interface HistoryRow {
   scheduleId: string;
   jobTitle: string;
-  startDateTime: string | null;
+  scheduledStartAtUtc: string | null;
+  timeZone: string | null;
   photoId: string | null;
   cloudinaryUrl: string | null;
   type: PhotoType['type'] | null;
@@ -57,13 +58,13 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
 
   const { data: historyRows = [], isLoading: isHistoryLoading } = useQuery<HistoryRow>(
     jobTitle && scheduleId
-      ? `SELECT s.id as scheduleId, s.jobTitle, s.startDateTime,
+      ? `SELECT s.id as scheduleId, s.jobTitle, s.scheduledStartAtUtc, s.timeZone,
              p.id as photoId, p.cloudinaryUrl, p.type, p.timestamp, p.signerName, p.technicianId
            FROM schedules s
            LEFT JOIN photos p
              ON p.scheduleId = s.id AND p.cloudinaryUrl IS NOT NULL
            WHERE s.jobTitle = ? AND s.id != ?
-           ORDER BY s.startDateTime DESC, p.timestamp ASC`
+           ORDER BY s.scheduledStartAtUtc DESC, p.timestamp ASC`
       : `SELECT s.id as scheduleId FROM schedules s WHERE 0`,
     [jobTitle?.trim(), scheduleId],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
@@ -93,9 +94,7 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
         sections.set(row.scheduleId, {
           id: row.scheduleId,
           title: row.jobTitle || 'Untitled Job',
-          date: row.startDateTime
-            ? format(new Date(row.startDateTime), 'MMM d, yyyy')
-            : 'Unknown Date',
+          date: formatScheduleDateShort(row) || 'Unknown Date',
           beforePhotos: [],
           afterPhotos: [],
           signaturePhotos: []

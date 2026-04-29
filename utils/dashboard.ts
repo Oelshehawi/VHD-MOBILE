@@ -1,19 +1,12 @@
 import { Schedule } from '@/types';
 import { Linking } from 'react-native';
+import { getLocalDateKey, getScheduleSortTime, scheduleMatchesDateKey } from './scheduleTime';
 
 export const sortSchedulesByTime = (schedules: Schedule[]) => {
   return schedules
-    .filter((schedule) => schedule.startDateTime)
+    .filter((schedule) => scheduleMatchesDateKey(schedule, getLocalDateKey(new Date())))
     .sort((a, b) => {
-      try {
-        return new Date(a.startDateTime).getTime() - new Date(b.startDateTime).getTime();
-      } catch (err) {
-        console.error('Error sorting schedules:', err, {
-          a: a.startDateTime,
-          b: b.startDateTime
-        });
-        return 0;
-      }
+      return getScheduleSortTime(a) - getScheduleSortTime(b);
     });
 };
 

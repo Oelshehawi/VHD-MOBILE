@@ -57,6 +57,8 @@ export interface PayrollSchedule {
   id: string;
   jobTitle: string;
   date: string;
+  scheduledStartAtUtc?: string;
+  timeZone?: string;
   hours: number;
   location: string;
 }

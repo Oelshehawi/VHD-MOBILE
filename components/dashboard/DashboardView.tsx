@@ -7,10 +7,11 @@ import {
   usePayrollSchedules,
   useTodaySchedules
 } from '@/services/data/dashboard';
-import { formatTimeUTC, formatDateReadable, formatDateShort } from '@/utils/date';
+import { formatDateShort } from '@/utils/date';
 import { roundHoursToBucket, formatHoursDisplay } from '@/utils/hoursFormatting';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
+import { formatScheduleDateReadable, formatScheduleTime, getScheduleStartAtUtc } from '@/utils/scheduleTime';
 import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
 import { useTheme } from '@/providers/ThemeProvider';
 import { AvailabilityManager } from '@/components/schedule/AvailabilityManager';
@@ -45,7 +46,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   );
 
   const renderScheduleItem = (schedule: any) => {
-    if (!schedule?.startDateTime) return null;
+    if (!getScheduleStartAtUtc(schedule)) return null;
 
     const technicians = (() => {
       try {
@@ -78,7 +79,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
               {schedule.jobTitle?.trim() || 'Untitled Job'}
             </Text>
             <Text className='text-gray-600 dark:text-gray-400 mt-1'>
-              {formatTimeUTC(schedule.startDateTime)}
+              {formatScheduleTime(schedule)}
             </Text>
             <Text className='text-gray-600 dark:text-gray-400 mt-1'>
               {schedule.location || 'No location specified'}
@@ -110,7 +111,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
       <Text className='text-gray-900 dark:text-gray-200 font-medium'>{schedule.jobTitle}</Text>
       <View className='flex-row justify-between mt-1'>
         <Text className='text-gray-600 dark:text-gray-400'>
-          {formatDateReadable(schedule.date)}
+          {formatScheduleDateReadable(schedule)}
         </Text>
         <Text className='text-gray-600 dark:text-gray-400'>
           {formatHoursDisplay(schedule.hours)}

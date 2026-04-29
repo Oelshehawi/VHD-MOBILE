@@ -56,13 +56,15 @@ export function usePayrollSchedules(
     `SELECT 
       s.id,
       s.jobTitle,
-      s.startDateTime as date,
+      s.scheduledStartAtUtc as date,
+      s.scheduledStartAtUtc,
+      s.timeZone,
       s.hours,
       s.location
      FROM schedules s
      WHERE (? IS NULL OR s.payrollPeriod = ?)
      AND (? = true OR s.assignedTechnicians LIKE ?)
-     ORDER BY s.startDateTime ASC`,
+     ORDER BY s.scheduledStartAtUtc ASC`,
     [payrollId, payrollId, isManager, userId ? `%${userId}%` : '']
   );
 
@@ -71,14 +73,14 @@ export function usePayrollSchedules(
 
 export function useTodaySchedules() {
   // Get today's date boundaries using the helper
-  const startOfDayLocal = getLocalDateTimeString('start');
-  const endOfDayLocal = getLocalDateTimeString('end');
+  const startOfDayLocal = getLocalDateTimeString('start', -1);
+  const endOfDayLocal = getLocalDateTimeString('end', 1);
 
   const query = useQuery<Schedule>(
-    `SELECT * FROM schedules 
-     WHERE datetime(startDateTime) >= datetime(?) 
-     AND datetime(startDateTime) <= datetime(?)
-     ORDER BY startDateTime ASC`,
+    `SELECT * FROM schedules
+     WHERE datetime(scheduledStartAtUtc) >= datetime(?)
+     AND datetime(scheduledStartAtUtc) <= datetime(?)
+     ORDER BY scheduledStartAtUtc ASC`,
     [startOfDayLocal, endOfDayLocal]
   );
 

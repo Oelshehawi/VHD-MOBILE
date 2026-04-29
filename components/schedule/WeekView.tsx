@@ -7,12 +7,11 @@ import {
   isSameDay,
   isToday,
   addWeeks,
-  parseISO,
   startOfDay
 } from 'date-fns';
 import { Schedule } from '@/types';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { formatTimeUTC } from '@/utils/date';
+import { getLocalDateKey, getScheduleDateKey, getScheduleHour } from '@/utils/scheduleTime';
 
 interface WeekViewProps {
   schedules: ReadonlyArray<Schedule>;
@@ -43,9 +42,8 @@ const TimeSlotRow = React.memo(
     getScheduleColor
   }: TimeSlotRowProps) => {
     const timeLabel = useMemo(() => {
-      const utcDate = new Date();
-      utcDate.setUTCHours(hour, 0, 0, 0);
-      return formatTimeUTC(utcDate);
+      const date = new Date(2000, 0, 1, hour, 0, 0, 0);
+      return format(date, 'h:mm a');
     }, [hour]);
 
     return (
@@ -138,22 +136,7 @@ export function WeekView({
   const getSchedulesForSlot = useCallback(
     (day: Date, hour: number): Schedule[] => {
       return schedules.filter((schedule) => {
-        try {
-          const scheduleDate = parseISO(schedule.startDateTime);
-          // Use UTC hour to match the display time in DailyAgenda
-          const utcHour = scheduleDate.getUTCHours();
-          // Check if the schedule is on the same day (in UTC) and at the same hour (in UTC)
-          const dayUTC = new Date(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
-          const scheduleDateUTC = new Date(
-            scheduleDate.getUTCFullYear(),
-            scheduleDate.getUTCMonth(),
-            scheduleDate.getUTCDate()
-          );
-          return dayUTC.getTime() === scheduleDateUTC.getTime() && utcHour === hour;
-        } catch (err) {
-          console.error('Error parsing schedule date:', err);
-          return false;
-        }
+        return getScheduleDateKey(schedule) === getLocalDateKey(day) && getScheduleHour(schedule) === hour;
       });
     },
     [schedules]

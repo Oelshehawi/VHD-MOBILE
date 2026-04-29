@@ -5,7 +5,7 @@ export function useSchedules(isManager: boolean, userId: string | null | undefin
   return useQuery<Schedule>(
     `SELECT * FROM schedules 
      WHERE (? = true OR assignedTechnicians LIKE ?)
-     ORDER BY startDateTime ASC`,
+     ORDER BY scheduledStartAtUtc ASC`,
     [isManager, userId ? `%${userId}%` : '']
   );
 }

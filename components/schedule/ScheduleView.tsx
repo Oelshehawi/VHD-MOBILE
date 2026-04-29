@@ -8,6 +8,11 @@ import { DailyAgenda } from './DailyAgenda';
 import { WeekView } from './WeekView';
 import { InvoiceModal } from './InvoiceModal';
 import { startOfWeek, endOfWeek, format, startOfDay } from 'date-fns';
+import {
+  getLocalDateKey,
+  getScheduleDateKey,
+  scheduleMatchesDateKey
+} from '@/utils/scheduleTime';
 
 interface ScheduleViewProps {
   userId: string;
@@ -33,22 +38,22 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
     setSelectedDate(normalized);
   }, [currentDate]);
 
-  const selectedDateParam = useMemo(() => selectedDate.slice(0, 10), [selectedDate]);
+  const selectedDateParam = useMemo(() => getLocalDateKey(selectedDate), [selectedDate]);
 
   // Get all schedules for the month view
   const monthQuery = useQuery<Schedule>(
     isManager
-      ? `SELECT * FROM schedules 
-         WHERE datetime(startDateTime) 
-         BETWEEN datetime(?, 'start of month', '-67 days') 
-           AND datetime(?, 'start of month', '+67 days') 
-         ORDER BY startDateTime`
-      : `SELECT * FROM schedules 
-         WHERE datetime(startDateTime) 
-         BETWEEN datetime(?, 'start of month', '-67 days') 
-           AND datetime(?, 'start of month', '+67 days') 
-           AND assignedTechnicians LIKE ? 
-         ORDER BY startDateTime`,
+      ? `SELECT * FROM schedules
+         WHERE datetime(scheduledStartAtUtc)
+         BETWEEN datetime(?, 'start of month', '-67 days')
+           AND datetime(?, 'start of month', '+67 days')
+         ORDER BY scheduledStartAtUtc`
+      : `SELECT * FROM schedules
+         WHERE datetime(scheduledStartAtUtc)
+         BETWEEN datetime(?, 'start of month', '-67 days')
+           AND datetime(?, 'start of month', '+67 days')
+           AND assignedTechnicians LIKE ?
+         ORDER BY scheduledStartAtUtc`,
     isManager
       ? [selectedDateParam, selectedDateParam]
       : [selectedDateParam, selectedDateParam, `%${userId}%`],
@@ -64,8 +69,8 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
   const weekEnd = endOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
   const weekQuery = useQuery<Schedule>(
     isManager
-      ? `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) ORDER BY startDateTime`
-      : `SELECT * FROM schedules WHERE DATE(startDateTime) BETWEEN DATE(?) AND DATE(?) AND assignedTechnicians LIKE ? ORDER BY startDateTime`,
+      ? `SELECT * FROM schedules WHERE datetime(scheduledStartAtUtc) BETWEEN datetime(?, '-1 day') AND datetime(?, '+2 days') ORDER BY scheduledStartAtUtc`
+      : `SELECT * FROM schedules WHERE datetime(scheduledStartAtUtc) BETWEEN datetime(?, '-1 day') AND datetime(?, '+2 days') AND assignedTechnicians LIKE ? ORDER BY scheduledStartAtUtc`,
     isManager
       ? [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')]
       : [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'), `%${userId}%`],
@@ -81,7 +86,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
     () =>
       monthSchedules.map((schedule) => ({
         id: schedule.id,
-        startTime: schedule.startDateTime,
+        startTime: getScheduleDateKey(schedule),
         clientName: schedule.jobTitle,
         status: schedule.confirmed ? 'confirmed' : 'pending'
       })),
@@ -94,15 +99,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
     }
 
     return monthSchedules.filter((schedule) => {
-      if (typeof schedule.startDateTime === 'string') {
-        return schedule.startDateTime.slice(0, 10) === selectedDateParam;
-      }
-
-      try {
-        return format(new Date(schedule.startDateTime), 'yyyy-MM-dd') === selectedDateParam;
-      } catch {
-        return false;
-      }
+      return scheduleMatchesDateKey(schedule, selectedDateParam);
     });
   }, [monthSchedules, selectedDateParam]);
 

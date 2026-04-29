@@ -5,11 +5,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import SignatureCanvas from 'react-native-signature-canvas';
 import { showToast } from '@/utils/photos';
 import { useSystem } from '@/services/database/System';
+import { getScheduleStartAtUtc } from '@/utils/scheduleTime';
 
 export interface SignatureSchedule {
   id: string;
   jobTitle: string;
-  startDateTime: string;
+  scheduledStartAtUtc?: string;
+  startDateTime?: string;
 }
 
 interface SignatureCaptureProps {
@@ -51,6 +53,7 @@ export function SignatureCapture({
     try {
       setIsSaving(true);
       const queue = system.attachmentQueue;
+      const scheduledStartAtUtc = getScheduleStartAtUtc(schedule);
 
       await queue.queuePhotos([
         {
@@ -60,7 +63,7 @@ export function SignatureCapture({
           technicianId: technicianId,
           signerName: signerName.trim(),
           jobTitle: schedule.jobTitle,
-          startDate: schedule.startDateTime
+          startDate: scheduledStartAtUtc
         }
       ]);
 
