@@ -18,7 +18,7 @@ interface QueuePhotoInput {
   technicianId: string;
   signerName?: string;
   jobTitle: string;
-  startDate: string;
+  scheduledStartAtUtc: string;
   sourceWidth?: number;
   sourceHeight?: number;
   sourceSize?: number;
@@ -285,7 +285,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
             photo.scheduleId,
             photo.type,
             photo.jobTitle,
-            photo.startDate
+            photo.scheduledStartAtUtc
           ]
         );
       }

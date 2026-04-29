@@ -63,7 +63,7 @@ export function SignatureCapture({
           technicianId: technicianId,
           signerName: signerName.trim(),
           jobTitle: schedule.jobTitle,
-          startDate: scheduledStartAtUtc
+          scheduledStartAtUtc
         }
       ]);
 

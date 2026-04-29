@@ -152,7 +152,7 @@ export function PhotoDocumentationModal({
                 technicianId={technicianId}
                 type={activeTab}
                 jobTitle={jobTitle}
-                startDate={scheduledStartAtUtc}
+                scheduledStartAtUtc={scheduledStartAtUtc}
                 scheduleId={scheduleId}
                 allowAdd
               />

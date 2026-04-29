@@ -19,7 +19,7 @@ interface PhotoCaptureProps {
   technicianId: string;
   type: 'before' | 'after';
   jobTitle: string;
-  startDate: string;
+  scheduledStartAtUtc: string;
   scheduleId?: string;
   isLoading?: boolean;
   allowAdd?: boolean;
@@ -40,7 +40,7 @@ export function PhotoCapture({
   type,
   scheduleId,
   jobTitle,
-  startDate,
+  scheduledStartAtUtc,
   isLoading: externalLoading = false,
   allowAdd = true
 }: PhotoCaptureProps) {
@@ -202,7 +202,7 @@ export function PhotoCapture({
           type: type,
           technicianId: technicianId,
           jobTitle: jobTitle,
-          startDate: startDate,
+          scheduledStartAtUtc,
           sourceWidth: asset.width,
           sourceHeight: asset.height,
           sourceSize: asset.fileSize ?? size,
