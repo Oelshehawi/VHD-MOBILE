@@ -174,6 +174,36 @@ const expopushtokens = new Table(
   { indexes: { users: ['userId'] } }
 );
 
+const techniciantrackingwindows = new Table(
+  {
+    // id column (text) is automatically included
+    technicianId: column.text,
+    scheduleId: column.text,
+    serviceJobId: column.text,
+    status: column.text,
+    scheduledStartAtUtc: column.text,
+    timeZone: column.text,
+    startsAtUtc: column.text,
+    endsAtUtc: column.text,
+    expectedDurationMinutes: column.integer,
+    travelTimeMinutes: column.integer,
+    depot: column.text,
+    jobSite: column.text,
+    locationUpdateMode: column.text,
+    pingIntervalSeconds: column.integer,
+    distanceIntervalMeters: column.integer,
+    updatedAt: column.text
+  },
+  {
+    indexes: {
+      technicians: ['technicianId'],
+      schedules: ['scheduleId'],
+      startsAtUtc: ['startsAtUtc'],
+      endsAtUtc: ['endsAtUtc']
+    }
+  }
+);
+
 // Add the attachments table from PowerSync
 export const AppSchema = new Schema({
   invoices,
@@ -183,6 +213,7 @@ export const AppSchema = new Schema({
   availabilities,
   timeoffrequests,
   expopushtokens,
+  techniciantrackingwindows,
   photos,
   reports,
   attachments: new AttachmentTable({
@@ -223,3 +254,4 @@ export type Availability = Database['availabilities'];
 export type TimeOffRequest = Database['timeoffrequests'];
 export type Report = Database['reports'];
 export type ExpoPushToken = Database['expopushtokens'];
+export type TechnicianTrackingWindow = Database['techniciantrackingwindows'];

@@ -8,6 +8,7 @@ import { useUpdates } from 'expo-updates';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import '@/services/background';
+import '@/services/location';
 import './global.css';
 import { ClerkProvider, useAuth, useUser } from '@clerk/clerk-expo';
 import { tokenCache } from '@clerk/clerk-expo/token-cache';
@@ -21,6 +22,7 @@ import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
 import { PushNotificationInitializer } from '@/components/notifications/PushNotificationInitializer';
+import { LocationTrackingInitializer } from '@/components/location/LocationTrackingInitializer';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
@@ -286,6 +288,7 @@ export default function RootLayout() {
               <ThemeProvider>
                 <PowerSyncProvider>
                   <BackgroundSyncLifecycle />
+                  <LocationTrackingInitializer />
                   <PushNotificationInitializer />
                   <PowerSyncStatusBanner />
                   <BottomSheetModalProvider>

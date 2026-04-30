@@ -1,6 +1,7 @@
 import { debugLogger } from '@/utils/DebugLogger';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import type { FetchLike, TokenProvider } from './network/types';
+import type { MobileLocationEvent } from '@/types/locationTracking';
 
 // API Response interface
 export interface ApiResponse<T> {
@@ -29,6 +30,13 @@ export interface SyncOperationResult {
   success?: boolean;
   error?: string;
   message?: string;
+}
+
+export interface LocationEventPostResult {
+  success: boolean;
+  error?: string;
+  statusCode?: number;
+  retryable?: boolean;
 }
 
 const PROD_URL = process.env.EXPO_PUBLIC_API_URL || '';
@@ -246,6 +254,71 @@ export class ApiClient {
       operation: 'batchPatch',
       data: records
     });
+  }
+
+  // ============ LOCATION TRACKING EVENTS ============
+
+  async postLocationEvent(event: MobileLocationEvent): Promise<LocationEventPostResult> {
+    try {
+      const headers = await this.ensureAuthHeaders();
+      const response = await this.fetchImpl(`${this.baseUrl}/api/mobile/location-events`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify(event)
+      });
+
+      if (response.ok) {
+        return { success: true, statusCode: response.status };
+      }
+
+      const rawBody = await response.text();
+      let parsedBody: { error?: string; message?: string; details?: string } = {};
+      try {
+        parsedBody = JSON.parse(rawBody);
+      } catch {
+        parsedBody = {
+          error: rawBody || `HTTP ${response.status}`
+        };
+      }
+
+      const retryable = response.status === 429 || response.status >= 500;
+      const error =
+        parsedBody.message ||
+        parsedBody.error ||
+        parsedBody.details ||
+        `Location event POST failed with status ${response.status}`;
+
+      debugLogger.warn('LOCATION', 'Location event POST failed', {
+        eventType: event.eventType,
+        trackingWindowId: event.trackingWindowId,
+        scheduleId: event.scheduleId,
+        statusCode: response.status,
+        retryable,
+        error
+      });
+
+      return {
+        success: false,
+        error,
+        statusCode: response.status,
+        retryable
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Unknown error';
+      debugLogger.warn('LOCATION', 'Location event POST transport failure', {
+        eventType: event.eventType,
+        trackingWindowId: event.trackingWindowId,
+        scheduleId: event.scheduleId,
+        error: message
+      });
+
+      return {
+        success: false,
+        error: message,
+        statusCode: 0,
+        retryable: true
+      };
+    }
   }
 
   // ============ CLOUDINARY UPLOAD URL ============

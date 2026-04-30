@@ -1,0 +1,305 @@
+import { Platform } from 'react-native';
+import * as Location from 'expo-location';
+import type { MobileLocationEvent, ParsedTrackingWindow, TechnicianTrackingWindow } from '@/types';
+import { debugLogger } from '@/utils/DebugLogger';
+import {
+  flushLocationEventQueue,
+  postOrQueueLocationEvent
+} from '@/services/location/LocationEventQueue';
+import {
+  buildGeofenceRegions,
+  startLocationUpdatesForWindows,
+  stopGeofencing,
+  stopLocationUpdates,
+  syncGeofences
+} from '@/services/location/LocationTrackingTasks';
+import {
+  readLocationTrackingState,
+  toPersistedWindows,
+  updateLocationTrackingState
+} from '@/services/location/LocationTrackingState';
+import type { PersistedTrackingWindow } from '@/services/location/LocationTrackingState';
+import {
+  getRelevantTrackingWindows,
+  isTravelWindowActive
+} from '@/services/location/trackingWindowUtils';
+
+const PERMISSION_DENIED_EVENT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
+
+type PermissionState = 'granted' | 'denied' | 'unavailable';
+
+function shouldSendPermissionDenied(lastSentAt?: string): boolean {
+  if (!lastSentAt) {
+    return true;
+  }
+
+  const lastSentAtMs = Date.parse(lastSentAt);
+  return Number.isNaN(lastSentAtMs) || Date.now() - lastSentAtMs > PERMISSION_DENIED_EVENT_COOLDOWN_MS;
+}
+
+function locationTrackingPlatform(): MobileLocationEvent['platform'] | null {
+  if (Platform.OS === 'ios' || Platform.OS === 'android') {
+    return Platform.OS;
+  }
+
+  return null;
+}
+
+function createSystemEvent(
+  window: Pick<ParsedTrackingWindow, 'id' | 'scheduleId'> | null,
+  eventType: MobileLocationEvent['eventType']
+): MobileLocationEvent | null {
+  const platform = locationTrackingPlatform();
+  if (!platform) {
+    return null;
+  }
+
+  return {
+    trackingWindowId: window?.id,
+    scheduleId: window?.scheduleId,
+    eventType,
+    recordedAt: new Date().toISOString(),
+    source: 'system',
+    platform
+  };
+}
+
+function createSystemEventFromPersistedWindow(
+  window: Pick<PersistedTrackingWindow, 'id' | 'scheduleId'> | null,
+  eventType: MobileLocationEvent['eventType']
+): MobileLocationEvent | null {
+  return createSystemEvent(window, eventType);
+}
+
+export class LocationTrackingCoordinator {
+  private syncInFlight: Promise<void> | null = null;
+  private lastWindowSignature = '';
+
+  sync(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
+    const signature = JSON.stringify(
+      windows.map((window) => [
+        window.id,
+        window.status,
+        window.startsAtUtc,
+        window.scheduledStartAtUtc,
+        window.endsAtUtc,
+        window.updatedAt
+      ])
+    );
+
+    if (this.syncInFlight && signature === this.lastWindowSignature) {
+      return this.syncInFlight;
+    }
+
+    this.lastWindowSignature = signature;
+    this.syncInFlight = this.syncInternal(windows).finally(() => {
+      this.syncInFlight = null;
+    });
+
+    return this.syncInFlight;
+  }
+
+  async stop(reason: string): Promise<void> {
+    await stopLocationUpdates();
+    await stopGeofencing();
+    const state = await readLocationTrackingState();
+    await updateLocationTrackingState((current) => ({
+      ...current,
+      activeLocationWindowIds: [],
+      geofenceRegions: [],
+      windows: [],
+      lastCoordinatorRunAt: new Date().toISOString()
+    }));
+
+    for (const windowId of state.activeLocationWindowIds) {
+      const stoppedWindow = state.windows.find((window) => window.id === windowId);
+      const event = createSystemEventFromPersistedWindow(stoppedWindow ?? null, 'tracking_stopped');
+      if (event) {
+        await postOrQueueLocationEvent(event);
+      }
+    }
+
+    debugLogger.info('LOCATION', 'Location tracking coordinator stopped', { reason });
+  }
+
+  private async syncInternal(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
+    if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
+      return;
+    }
+
+    await flushLocationEventQueue();
+
+    const relevantWindows = getRelevantTrackingWindows(windows);
+    const existingState = await readLocationTrackingState();
+    const activeWindows = relevantWindows.filter(
+      (window) =>
+        isTravelWindowActive(window) && !existingState.arrivedWindowIds.includes(window.id)
+    );
+
+    if (relevantWindows.length === 0) {
+      await this.stopExpiredTracking(existingState.activeLocationWindowIds, existingState.windows);
+      await stopGeofencing();
+      await updateLocationTrackingState((state) => ({
+        ...state,
+        windows: [],
+        geofenceRegions: [],
+        activeLocationWindowIds: []
+      }));
+      debugLogger.info('LOCATION', 'No relevant tracking windows; location tasks stopped');
+      return;
+    }
+
+    await updateLocationTrackingState((state) => ({
+      ...state,
+      windows: toPersistedWindows(relevantWindows),
+      arrivedWindowIds: state.arrivedWindowIds.filter((id) =>
+        relevantWindows.some((window) => window.id === id)
+      ),
+      lastCoordinatorRunAt: new Date().toISOString()
+    }));
+
+    const permissionState = await this.ensureLocationPermission(relevantWindows[0]);
+    if (permissionState !== 'granted') {
+      await this.stopExpiredTracking(existingState.activeLocationWindowIds, existingState.windows);
+      await stopGeofencing();
+      await updateLocationTrackingState((state) => ({
+        ...state,
+        activeLocationWindowIds: [],
+        locationUpdatesStartedAt: undefined
+      }));
+      debugLogger.warn('LOCATION', 'Location tracking permission unavailable', {
+        permissionState,
+        windowCount: relevantWindows.length
+      });
+      return;
+    }
+
+    const { regions, metadata } = buildGeofenceRegions(relevantWindows);
+    await syncGeofences(regions);
+    await updateLocationTrackingState((state) => ({
+      ...state,
+      geofenceRegions: metadata
+    }));
+
+    await this.syncLocationUpdates(
+      activeWindows,
+      existingState.activeLocationWindowIds,
+      existingState.windows
+    );
+
+    debugLogger.info('LOCATION', 'Location tracking coordinator synced', {
+      relevantWindowCount: relevantWindows.length,
+      activeTravelWindowCount: activeWindows.length,
+      geofenceRegionCount: regions.length
+    });
+  }
+
+  private async ensureLocationPermission(
+    windowForDeniedEvent: ParsedTrackingWindow
+  ): Promise<PermissionState> {
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled) {
+      await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
+      return 'unavailable';
+    }
+
+    const foregroundPermission = await Location.getForegroundPermissionsAsync();
+    const foregroundStatus = foregroundPermission.granted
+      ? foregroundPermission
+      : await Location.requestForegroundPermissionsAsync();
+
+    if (!foregroundStatus.granted) {
+      await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
+      return 'denied';
+    }
+
+    const backgroundPermission = await Location.getBackgroundPermissionsAsync();
+    const backgroundStatus = backgroundPermission.granted
+      ? backgroundPermission
+      : await Location.requestBackgroundPermissionsAsync();
+
+    if (!backgroundStatus.granted) {
+      await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
+      return 'denied';
+    }
+
+    return 'granted';
+  }
+
+  private async sendPermissionDeniedIfNeeded(window: ParsedTrackingWindow): Promise<void> {
+    const state = await readLocationTrackingState();
+    if (!shouldSendPermissionDenied(state.permissionDeniedSentAt)) {
+      return;
+    }
+
+    const event = createSystemEvent(window, 'permission_denied');
+    if (event) {
+      await postOrQueueLocationEvent(event);
+    }
+
+    await updateLocationTrackingState((current) => ({
+      ...current,
+      permissionDeniedSentAt: new Date().toISOString()
+    }));
+  }
+
+  private async syncLocationUpdates(
+    activeWindows: ParsedTrackingWindow[],
+    previousActiveWindowIds: string[],
+    previousWindows: PersistedTrackingWindow[]
+  ): Promise<void> {
+    const activeWindowIds = activeWindows.map((window) => window.id);
+    const newlyActiveWindows = activeWindows.filter(
+      (window) => !previousActiveWindowIds.includes(window.id)
+    );
+    const stoppedWindowIds = previousActiveWindowIds.filter((id) => !activeWindowIds.includes(id));
+
+    if (activeWindows.length > 0) {
+      await startLocationUpdatesForWindows(activeWindows);
+      await updateLocationTrackingState((state) => ({
+        ...state,
+        activeLocationWindowIds: activeWindowIds,
+        locationUpdatesStartedAt: state.locationUpdatesStartedAt ?? new Date().toISOString()
+      }));
+    } else {
+      await stopLocationUpdates();
+      await updateLocationTrackingState((state) => ({
+        ...state,
+        activeLocationWindowIds: [],
+        locationUpdatesStartedAt: undefined
+      }));
+    }
+
+    for (const window of newlyActiveWindows) {
+      const event = createSystemEvent(window, 'tracking_started');
+      if (event) {
+        await postOrQueueLocationEvent(event);
+      }
+    }
+
+    for (const windowId of stoppedWindowIds) {
+      const persistedWindow = previousWindows.find((window) => window.id === windowId);
+      const event = createSystemEventFromPersistedWindow(persistedWindow ?? null, 'tracking_stopped');
+      if (event) {
+        await postOrQueueLocationEvent(event);
+      }
+    }
+  }
+
+  private async stopExpiredTracking(
+    previousActiveWindowIds: string[],
+    previousWindows: PersistedTrackingWindow[]
+  ): Promise<void> {
+    await stopLocationUpdates();
+
+    for (const windowId of previousActiveWindowIds) {
+      const window = previousWindows.find((item) => item.id === windowId);
+      const event = createSystemEventFromPersistedWindow(window ?? null, 'tracking_stopped');
+      if (event) {
+        await postOrQueueLocationEvent(event);
+      }
+    }
+  }
+}
+
+export const locationTrackingCoordinator = new LocationTrackingCoordinator();

@@ -7,6 +7,19 @@ export type ScheduleServiceType =
   | 'estimate'
   | 'other';
 
+export type {
+  GeofenceTarget,
+  LocationEventPlatform,
+  LocationEventSource,
+  LocationEventType,
+  LocationRegionType,
+  LocationUpdateMode,
+  MobileLocationEvent,
+  ParsedTrackingWindow,
+  TechnicianTrackingWindow,
+  TrackingWindowStatus
+} from './locationTracking';
+
 export interface Schedule {
   id: string;
   invoiceRef: string;
