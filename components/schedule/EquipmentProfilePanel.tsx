@@ -7,32 +7,18 @@ import type {
   AirMoverEquipment,
   EquipmentFilterGroup,
   EquipmentProfile,
-  HoodEquipment
+  HoodEquipment,
+  HoodGroup
 } from '@/types';
 import { formatDateShort } from '@/utils/date';
-
-interface EquipmentProfilePanelProps {
-  serviceJobId?: string | null;
-}
-
-function parseArray<T>(value: T[] | string | null | undefined): T[] {
-  if (!value) return [];
-  if (Array.isArray(value)) return value;
-
-  try {
-    const parsed = JSON.parse(value);
-    return Array.isArray(parsed) ? (parsed as T[]) : [];
-  } catch {
-    return [];
-  }
-}
+import { parseJsonArray } from '@/utils/equipmentCategories';
 
 function booleanLike(value: boolean | number | string | null | undefined): boolean {
   return value === true || value === 1 || value === '1' || value === 'true';
 }
 
 function formatFilterGroups(value: EquipmentFilterGroup[] | string | null | undefined): string {
-  const filterGroups = parseArray<EquipmentFilterGroup>(value);
+  const filterGroups = parseJsonArray<EquipmentFilterGroup>(value);
   if (filterGroups.length === 0) return 'No filters listed';
 
   return filterGroups
@@ -46,6 +32,10 @@ function formatAirMoverType(type: string): string {
   return 'Other';
 }
 
+interface EquipmentProfilePanelProps {
+  serviceJobId?: string | null;
+}
+
 export function EquipmentProfilePanel({ serviceJobId }: EquipmentProfilePanelProps) {
   const { data: profiles = [], isLoading } = useQuery<EquipmentProfile>(
     serviceJobId
@@ -56,15 +46,19 @@ export function EquipmentProfilePanel({ serviceJobId }: EquipmentProfilePanelPro
   );
 
   const profile = profiles[0] ?? null;
-  const hoods = useMemo(() => parseArray<HoodEquipment>(profile?.hoods), [profile?.hoods]);
+  const hoods = useMemo(() => parseJsonArray<HoodEquipment>(profile?.hoods), [profile?.hoods]);
+  const hoodGroups = useMemo(
+    () => parseJsonArray<HoodGroup>(profile?.hoodGroups),
+    [profile?.hoodGroups]
+  );
   const airMovers = useMemo(
-    () => parseArray<AirMoverEquipment>(profile?.airMovers),
+    () => parseJsonArray<AirMoverEquipment>(profile?.airMovers),
     [profile?.airMovers]
   );
   const needsReview = booleanLike(profile?.needsReview);
 
   return (
-    <View className='bg-gray-50 dark:bg-gray-700/50 p-4 rounded-lg'>
+    <View className='rounded-2xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-[#16140F]'>
       <View className='flex-row items-start justify-between gap-3'>
         <View className='flex-1'>
           <Text className='text-sm text-gray-500 dark:text-gray-400 mb-1'>Equipment Profile</Text>
@@ -78,9 +72,9 @@ export function EquipmentProfilePanel({ serviceJobId }: EquipmentProfilePanelPro
           )}
         </View>
         {needsReview && (
-          <View className='flex-row items-center rounded-full bg-amber-100 px-2 py-1'>
+          <View className='flex-row items-center rounded-full bg-amber-100 px-2 py-1 dark:bg-amber-950/70'>
             <Ionicons name='alert-circle' size={14} color='#92400E' />
-            <Text className='ml-1 text-xs font-semibold text-amber-800'>Needs review</Text>
+            <Text className='ml-1 text-xs font-semibold text-amber-800 dark:text-amber-200'>Needs review</Text>
           </View>
         )}
       </View>
@@ -93,14 +87,14 @@ export function EquipmentProfilePanel({ serviceJobId }: EquipmentProfilePanelPro
           </Text>
         </View>
       ) : !serviceJobId ? (
-        <View className='mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3'>
-          <Text className='text-sm text-amber-800'>
+        <View className='mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30'>
+          <Text className='text-sm text-amber-800 dark:text-amber-200'>
             This visit is missing ServiceJob ownership, so no equipment profile can be matched.
           </Text>
         </View>
       ) : !profile ? (
-        <View className='mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3'>
-          <Text className='text-sm text-amber-800'>
+        <View className='mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/60 dark:bg-amber-950/30'>
+          <Text className='text-sm text-amber-800 dark:text-amber-200'>
             No equipment profile exists for this service job yet.
           </Text>
         </View>
@@ -110,12 +104,20 @@ export function EquipmentProfilePanel({ serviceJobId }: EquipmentProfilePanelPro
             <Text className='text-sm font-semibold text-gray-900 dark:text-white'>
               Hoods ({hoods.length})
             </Text>
+            {hoodGroups.length > 0 && (
+              <Text className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
+                {hoodGroups.length} hood group{hoodGroups.length === 1 ? '' : 's'} configured
+              </Text>
+            )}
             <View className='mt-2 gap-2'>
               {hoods.length === 0 ? (
                 <Text className='text-sm text-gray-500 dark:text-gray-400'>No hoods listed.</Text>
               ) : (
                 hoods.map((hood) => (
-                  <View key={hood.id || hood.label} className='rounded-lg bg-white p-3 dark:bg-gray-800'>
+                  <View
+                    key={hood.id || hood.label}
+                    className='rounded-xl border border-black/10 bg-[#F7F5F1] p-3 dark:border-white/10 dark:bg-[#1F1C16]'
+                  >
                     <Text className='font-medium text-gray-900 dark:text-white'>{hood.label}</Text>
                     <Text className='mt-1 text-sm text-gray-600 dark:text-gray-300'>
                       {formatFilterGroups(hood.filterGroups)}
@@ -144,7 +146,7 @@ export function EquipmentProfilePanel({ serviceJobId }: EquipmentProfilePanelPro
                 airMovers.map((airMover) => (
                   <View
                     key={airMover.id || airMover.label}
-                    className='rounded-lg bg-white p-3 dark:bg-gray-800'
+                    className='rounded-xl border border-black/10 bg-[#F7F5F1] p-3 dark:border-white/10 dark:bg-[#1F1C16]'
                   >
                     <View className='flex-row items-start justify-between gap-3'>
                       <View className='flex-1'>
@@ -156,7 +158,7 @@ export function EquipmentProfilePanel({ serviceJobId }: EquipmentProfilePanelPro
                         </Text>
                       </View>
                       {booleanLike(airMover.filterReplacementNeeded) && (
-                        <Text className='text-xs font-semibold text-amber-700'>
+                        <Text className='text-xs font-semibold text-amber-700 dark:text-amber-300'>
                           Filter needed
                         </Text>
                       )}

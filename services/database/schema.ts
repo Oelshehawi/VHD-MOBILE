@@ -29,17 +29,32 @@ const invoices = new Table(
 const equipmentprofiles = new Table(
   {
     // id column (text) is automatically included
-    serviceJobId: column.text,
     profileKey: column.text,
+    serviceJobId: column.text,
+    clientId: column.text,
+    normalizedLocation: column.text,
     location: column.text,
     jobTitle: column.text,
     scopeLabel: column.text,
     hoods: column.text,
+    hoodGroups: column.text,
     airMovers: column.text,
+    lastSourceReportId: column.text,
+    lastSourceScheduleId: column.text,
+    lastObservedAt: column.text,
+    updatedBy: column.text,
+    source: column.text,
     needsReview: column.integer,
+    createdAt: column.text,
     updatedAt: column.text
   },
-  { indexes: { servicejobs: ['serviceJobId'] } }
+  {
+    indexes: {
+      servicejobs: ['serviceJobId'],
+      profilekeys: ['profileKey'],
+      locations: ['clientId', 'normalizedLocation']
+    }
+  }
 );
 
 const schedules = new Table(
@@ -86,9 +101,17 @@ const photos = new Table(
     type: column.text, // 'before' | 'after' | 'signature' | 'estimate'
     technicianId: column.text,
     timestamp: column.text, // ISO string
-    signerName: column.text // Only for type='signature'
+    signerName: column.text, // Only for type='signature'
+    photoCategoryKey: column.text,
+    photoCategoryLabel: column.text,
+    photoCategoryKind: column.text
   },
-  { indexes: { schedules: ['scheduleId'] } }
+  {
+    indexes: {
+      schedules: ['scheduleId'],
+      categories: ['scheduleId', 'type', 'photoCategoryKey']
+    }
+  }
 );
 
 const reports = new Table(
@@ -242,6 +265,26 @@ export const AppSchema = new Schema({
       new Column({
         name: 'uploadClaimedAt',
         type: ColumnType.INTEGER
+      }),
+      new Column({
+        name: 'retryCount',
+        type: ColumnType.INTEGER
+      }),
+      new Column({
+        name: 'lastError',
+        type: ColumnType.TEXT
+      }),
+      new Column({
+        name: 'nextRetryAt',
+        type: ColumnType.INTEGER
+      }),
+      new Column({
+        name: 'failedAt',
+        type: ColumnType.INTEGER
+      }),
+      new Column({
+        name: 'errorCategory',
+        type: ColumnType.TEXT
       })
     ]
   })

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, StatusBar, Modal } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import {
@@ -14,9 +14,9 @@ import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
 import { formatScheduleDateReadable, formatScheduleTime, getScheduleStartAtUtc } from '@/utils/scheduleTime';
 import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
 import { useTheme } from '@/providers/ThemeProvider';
-import { AvailabilityManager } from '@/components/schedule/AvailabilityManager';
-import { TimeOffManager } from '@/components/schedule/TimeOffManager';
 import { ReviewQRCodeModal } from '@/components/dashboard/ReviewQRCodeModal';
+import { JobDetailModal } from '@/components/schedule/JobDetailModal';
+import type { Schedule } from '@/types';
 
 interface DashboardViewProps {
   userId: string;
@@ -26,9 +26,9 @@ interface DashboardViewProps {
 export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const [showSchedules, setShowSchedules] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
-  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
-  const [showTimeOffModal, setShowTimeOffModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
+  const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
+  const [jobDetailVisible, setJobDetailVisible] = useState(false);
   const googleReviewUrl = 'https://g.page/r/CRLDtlapvtO3EAE/review';
   const { colorScheme } = useTheme();
   const { data: todaySchedules = [] } = useTodaySchedules();
@@ -40,6 +40,22 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   );
 
   const sortedTodaySchedules = sortSchedulesByTime(todaySchedules);
+  const parseAssignedTechnicians = (assignedTechnicians: unknown): string[] => {
+    try {
+      if (typeof assignedTechnicians === 'string') {
+        const parsed = JSON.parse(assignedTechnicians);
+        return Array.isArray(parsed) ? parsed : [];
+      }
+      return Array.isArray(assignedTechnicians) ? assignedTechnicians : [];
+    } catch {
+      return [];
+    }
+  };
+  const visibleTodaySchedules = sortedTodaySchedules.filter((schedule) => {
+    if (isManager) return true;
+    return parseAssignedTechnicians(schedule.assignedTechnicians).includes(userId);
+  });
+  const nextUpSchedule = visibleTodaySchedules[0] ?? null;
   const totalHours = payrollSchedules.reduce(
     (acc, schedule) => acc + roundHoursToBucket(schedule.hours || 0),
     0
@@ -49,13 +65,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
     if (!getScheduleStartAtUtc(schedule)) return null;
 
     const technicians = (() => {
-      try {
-        return typeof schedule.assignedTechnicians === 'string'
-          ? JSON.parse(schedule.assignedTechnicians)
-          : schedule.assignedTechnicians;
-      } catch {
-        return [];
-      }
+      return parseAssignedTechnicians(schedule.assignedTechnicians);
     })();
 
     const isAssignedToCurrentUser =
@@ -69,10 +79,13 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
     return (
       <TouchableOpacity
         key={schedule.id}
-        className='border-l-4 border-l-darkGreen p-3 bg-white dark:bg-gray-800 rounded-lg shadow-sm'
+        className='border-l-4 border-l-amber-500 p-3 bg-white dark:bg-[#1F1C16] rounded-xl shadow-sm border border-black/10 dark:border-white/10'
         onPress={() => openMaps(schedule.jobTitle, schedule.location)}
       >
-        <StatusBar barStyle='light-content' backgroundColor='#22543D' />
+        <StatusBar
+          barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
+          backgroundColor={colorScheme === 'dark' ? '#030712' : '#F7F5F1'}
+        />
         <View className='flex-row justify-between items-start'>
           <View className='flex-1'>
             <Text className='font-semibold text-gray-900 dark:text-gray-200 text-lg'>
@@ -98,12 +111,17 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
             )}
           </View>
 
-          <View className='bg-darkGreen/10 p-2 rounded-full'>
-            <Ionicons name='location' size={20} color='#047857' />
+          <View className='bg-amber-100 dark:bg-amber-950/70 p-2 rounded-full'>
+            <Ionicons name='location' size={20} color='#D97706' />
           </View>
         </View>
       </TouchableOpacity>
     );
+  };
+
+  const handleOpenJob = (schedule: Schedule) => {
+    setSelectedSchedule(schedule);
+    setJobDetailVisible(true);
   };
 
   const renderPayrollSchedule = (schedule: any) => (
@@ -137,13 +155,13 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   );
 
   return (
-    <SafeAreaView edges={['top']} className='flex-1 bg-gray-100 dark:bg-gray-900'>
+    <SafeAreaView edges={['top']} className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>
       <StatusBar
         barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
-        backgroundColor={colorScheme === 'dark' ? '#111827' : '#FFFFFF'}
+        backgroundColor={colorScheme === 'dark' ? '#030712' : '#F7F5F1'}
       />
-      <View className='flex-row justify-between items-center p-4 bg-white dark:bg-gray-800 shadow-sm'>
-        <Text className='text-2xl font-bold text-gray-800 dark:text-white'>Dashboard</Text>
+      <View className='flex-row justify-between items-center p-4 bg-[#F7F5F1] dark:bg-gray-950 border-b border-black/10 dark:border-white/10'>
+        <Text className='text-2xl font-bold text-[#14110F] dark:text-white'>Dashboard</Text>
         <View className='flex-row items-center gap-2'>
           <TouchableOpacity
             onPress={() => setShowReviewModal(true)}
@@ -153,12 +171,12 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
           </TouchableOpacity>
           <TouchableOpacity
             onPress={() => setShowThemeModal(true)}
-            className='p-2 rounded-full bg-gray-100 dark:bg-gray-700'
+            className='p-2 rounded-full bg-white dark:bg-[#16140F] border border-black/10 dark:border-white/15'
           >
             <Ionicons
               name='color-palette'
               size={24}
-              color={colorScheme === 'dark' ? '#E5E7EB' : '#4B5563'}
+              color={colorScheme === 'dark' ? '#F2EFEA' : '#4B5563'}
             />
           </TouchableOpacity>
         </View>
@@ -166,35 +184,60 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
 
       <ScrollView className='flex-1'>
         <View className='p-4 flex flex-col gap-4'>
-          {/* Quick Actions for Technicians */}
-          {!isManager && (
-            <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
-              <Text className='text-lg font-bold text-gray-900 dark:text-gray-100 mb-4'>
-                Quick Actions
+          {nextUpSchedule && (
+            <View>
+              <Text className='mb-2 text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400'>
+                Next Up
               </Text>
-              <View className='flex-row gap-3'>
-                <TouchableOpacity
-                  onPress={() => setShowAvailabilityModal(true)}
-                  className='flex-1 bg-blue-50 dark:bg-blue-900 p-4 rounded-lg border border-blue-200 dark:border-blue-700'
-                >
-                  <Ionicons name='calendar' size={24} color='#3b82f6' />
-                  <Text className='text-gray-900 dark:text-white font-semibold mt-2'>
-                    Availability
+              <View className='overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm dark:border-white/10 dark:bg-[#16140F]'>
+                <View className='flex-row items-center bg-[#14110F] px-4 py-4 dark:bg-amber-400'>
+                  <Text className='font-mono text-2xl font-bold text-[#F7F5F1] dark:text-[#14110F]'>
+                    {formatScheduleTime(nextUpSchedule)}
                   </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  onPress={() => setShowTimeOffModal(true)}
-                  className='flex-1 bg-purple-50 dark:bg-purple-900 p-4 rounded-lg border border-purple-200 dark:border-purple-700'
-                >
-                  <Ionicons name='time' size={24} color='#a855f7' />
-                  <Text className='text-gray-900 dark:text-white font-semibold mt-2'>Time Off</Text>
-                </TouchableOpacity>
+                  <View className='mx-3 h-px flex-1 bg-white/25 dark:bg-black/20' />
+                  <Text className='text-xs font-bold uppercase tracking-widest text-[#F7F5F1]/80 dark:text-[#14110F]/70'>
+                    {nextUpSchedule.confirmed ? 'Confirmed' : 'Pending'}
+                  </Text>
+                </View>
+
+                <View className='p-4'>
+                  <Text className='text-xl font-bold text-[#14110F] dark:text-white' numberOfLines={2}>
+                    {nextUpSchedule.jobTitle?.trim() || 'Untitled Job'}
+                  </Text>
+                  <View className='mt-2 flex-row items-center gap-2'>
+                    <Ionicons name='location-outline' size={16} color='#76706A' />
+                    <Text className='flex-1 text-sm font-medium text-gray-600 dark:text-gray-300' numberOfLines={1}>
+                      {nextUpSchedule.location || 'No location specified'}
+                    </Text>
+                  </View>
+
+                  <View className='mt-4 flex-row gap-3'>
+                    <TouchableOpacity
+                      onPress={() => openMaps(nextUpSchedule.jobTitle, nextUpSchedule.location)}
+                      className='flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-amber-400 px-4 py-4'
+                    >
+                      <Ionicons name='navigate' size={18} color='#14110F' />
+                      <Text className='font-bold text-[#14110F]'>Navigate</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleOpenJob(nextUpSchedule as Schedule)}
+                      className='flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-black/15 bg-white px-4 py-4 dark:border-white/15 dark:bg-[#1F1C16]'
+                    >
+                      <Ionicons
+                        name='briefcase-outline'
+                        size={18}
+                        color={colorScheme === 'dark' ? '#F2EFEA' : '#14110F'}
+                      />
+                      <Text className='font-bold text-[#14110F] dark:text-white'>Open Job</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
               </View>
             </View>
           )}
 
           {/* Today's Schedule */}
-          <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
+          <View className='bg-white dark:bg-[#16140F] rounded-2xl p-5 shadow-sm border border-black/10 dark:border-white/10'>
             <View className='flex-row justify-between items-center mb-4'>
               <View className='flex-row items-center'>
                 <Ionicons name='calendar' size={20} color='#059669' />
@@ -203,26 +246,35 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                 </Text>
               </View>
               <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                {sortedTodaySchedules.length} {sortedTodaySchedules.length === 1 ? 'job' : 'jobs'}
+                {visibleTodaySchedules.length} {visibleTodaySchedules.length === 1 ? 'job' : 'jobs'}
               </Text>
             </View>
 
-            {!sortedTodaySchedules?.length ? (
+            {!visibleTodaySchedules?.length ? (
               <View className='items-center py-6'>
                 <Ionicons name='calendar-outline' size={48} color='#D1D5DB' />
                 <Text className='text-gray-500 dark:text-gray-400 mt-2'>
                   No appointments scheduled for today
                 </Text>
               </View>
+            ) : visibleTodaySchedules.filter((schedule) => schedule.id !== nextUpSchedule?.id).length === 0 ? (
+              <View className='items-center py-5'>
+                <Text className='text-gray-500 dark:text-gray-400'>
+                  No additional visits after Next Up
+                </Text>
+              </View>
             ) : (
               <View className='flex flex-col gap-3'>
-                {sortedTodaySchedules.map(renderScheduleItem).filter(Boolean)}
+                {visibleTodaySchedules
+                  .filter((schedule) => schedule.id !== nextUpSchedule?.id)
+                  .map(renderScheduleItem)
+                  .filter(Boolean)}
               </View>
             )}
           </View>
 
           {/* Hours Summary */}
-          <View className='bg-white dark:bg-gray-800 rounded-lg p-5 shadow-sm'>
+          <View className='bg-white dark:bg-[#16140F] rounded-2xl p-5 shadow-sm border border-black/10 dark:border-white/10'>
             <View className='flex-row justify-between items-center mb-4'>
               <View className='flex-row items-center'>
                 <Ionicons name='time' size={20} color='#059669' />
@@ -233,7 +285,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
             </View>
 
             {currentPayroll[0] ? (
-              <View className='bg-gray-50 dark:bg-gray-700 rounded-lg p-4'>
+              <View className='bg-[#F0EDE6] dark:bg-[#1F1C16] rounded-xl p-4'>
                 <View className='flex-row justify-between mb-3'>
                   <View>
                     <Text className='text-gray-500 dark:text-gray-400 text-sm'>Period</Text>
@@ -265,7 +317,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
 
                 <TouchableOpacity
                   onPress={() => setShowSchedules(!showSchedules)}
-                  className='flex-row justify-between items-center bg-white dark:bg-gray-600 p-3 rounded-lg mt-2'
+                  className='flex-row justify-between items-center bg-white dark:bg-[#2A261D] p-3 rounded-xl mt-2 border border-black/10 dark:border-white/10'
                 >
                   <Text className='text-gray-800 dark:text-gray-200 font-medium'>
                     View {isManager ? 'All' : 'My'} Schedules ({payrollSchedules.length})
@@ -297,23 +349,15 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
         reviewUrl={googleReviewUrl}
       />
 
-      {/* Availability Manager Modal */}
-      <Modal
-        visible={showAvailabilityModal}
-        animationType='slide'
-        onRequestClose={() => setShowAvailabilityModal(false)}
-      >
-        <AvailabilityManager onNavigateBack={() => setShowAvailabilityModal(false)} />
-      </Modal>
-
-      {/* Time Off Manager Modal */}
-      <Modal
-        visible={showTimeOffModal}
-        animationType='slide'
-        onRequestClose={() => setShowTimeOffModal(false)}
-      >
-        <TimeOffManager onNavigateBack={() => setShowTimeOffModal(false)} />
-      </Modal>
+      {selectedSchedule && (
+        <JobDetailModal
+          visible={jobDetailVisible}
+          onClose={() => setJobDetailVisible(false)}
+          scheduleId={selectedSchedule.id}
+          technicianId={userId}
+          isManager={isManager}
+        />
+      )}
     </SafeAreaView>
   );
 }

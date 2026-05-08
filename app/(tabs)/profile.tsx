@@ -1,4 +1,4 @@
-import { View, Alert, ScrollView, TouchableOpacity } from 'react-native';
+import { View, Alert, ScrollView, TouchableOpacity, Modal } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '../../components/ui/button';
 import { Text } from '../../components/ui/text';
@@ -15,6 +15,9 @@ import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
 import * as Updates from 'expo-updates';
+import Ionicons from '@expo/vector-icons/Ionicons';
+import { AvailabilityManager } from '../../components/schedule/AvailabilityManager';
+import { TimeOffManager } from '../../components/schedule/TimeOffManager';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -23,6 +26,8 @@ export default function ProfileScreen() {
   const { user } = useUser();
   const [isOffline, setIsOffline] = useState(false);
   const [cachedUser, setCachedUser] = useState<any>(null);
+  const [showAvailabilityModal, setShowAvailabilityModal] = useState(false);
+  const [showTimeOffModal, setShowTimeOffModal] = useState(false);
 
   // Secret gesture state for debug logs
   const tapCountRef = useRef(0);
@@ -110,9 +115,35 @@ export default function ProfileScreen() {
   // Use cached data when offline
   const displayUser = isOffline ? cachedUser : user;
 
+  const WorkRow = ({
+    icon,
+    label,
+    detail,
+    onPress
+  }: {
+    icon: keyof typeof Ionicons.glyphMap;
+    label: string;
+    detail: string;
+    onPress: () => void;
+  }) => (
+    <TouchableOpacity
+      onPress={onPress}
+      className='flex-row items-center gap-3 rounded-xl border border-black/10 bg-[#F7F5F1] p-4 active:bg-[#F0EDE6] dark:border-white/10 dark:bg-[#1F1C16] dark:active:bg-[#2A261D]'
+    >
+      <View className='h-11 w-11 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-950/70'>
+        <Ionicons name={icon} size={22} color='#D97706' />
+      </View>
+      <View className='flex-1'>
+        <Text className='text-base font-semibold text-[#14110F] dark:text-white'>{label}</Text>
+        <Text className='mt-1 text-xs font-medium text-gray-600 dark:text-gray-400'>{detail}</Text>
+      </View>
+      <Ionicons name='chevron-forward' size={18} color='#8A857D' />
+    </TouchableOpacity>
+  );
+
   if (!displayUser) {
     return (
-      <SafeAreaView className='flex-1 bg-white dark:bg-gray-950'>
+      <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>
         <View className='flex-1 justify-center items-center p-4'>
           <Text variant='muted'>
             {isOffline ? 'Offline - No cached data available' : 'Loading...'}
@@ -123,7 +154,7 @@ export default function ProfileScreen() {
   }
 
   return (
-    <SafeAreaView className='flex-1 bg-white dark:bg-gray-950'>
+    <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>
       <ScrollView
         className='flex-1'
         contentContainerStyle={{
@@ -142,6 +173,28 @@ export default function ProfileScreen() {
             username={displayUser.username}
             email={displayUser.email || displayUser.primaryEmailAddress?.emailAddress}
           />
+
+          <Card className='mb-4'>
+            <CardHeader>
+              <CardTitle>Work</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <View className='gap-3'>
+                <WorkRow
+                  icon='calendar-outline'
+                  label='Unavailable Time'
+                  detail='Block days or hours you cannot work'
+                  onPress={() => setShowAvailabilityModal(true)}
+                />
+                <WorkRow
+                  icon='time-outline'
+                  label='Time Off'
+                  detail='Request time away and review status'
+                  onPress={() => setShowTimeOffModal(true)}
+                />
+              </View>
+            </CardContent>
+          </Card>
 
           <Card className='mb-4'>
             <CardHeader>
@@ -184,14 +237,30 @@ export default function ProfileScreen() {
           <Button
             onPress={handleSignOut}
             disabled={isOffline}
-            className={` ${isOffline ? 'bg-gray-400 dark:bg-gray-600' : 'bg-darkGreen'}`}
+            className={`rounded-xl ${isOffline ? 'bg-gray-400 dark:bg-gray-700' : 'bg-[#14110F] dark:bg-amber-400'}`}
           >
-            <Text className='text-center text-white font-semibold'>
+            <Text className='text-center text-white dark:text-[#14110F] font-semibold'>
               {isOffline ? 'Offline - Sign Out Unavailable' : 'Sign Out'}
             </Text>
           </Button>
         </View>
       </ScrollView>
+
+      <Modal
+        visible={showAvailabilityModal}
+        animationType='slide'
+        onRequestClose={() => setShowAvailabilityModal(false)}
+      >
+        <AvailabilityManager onNavigateBack={() => setShowAvailabilityModal(false)} />
+      </Modal>
+
+      <Modal
+        visible={showTimeOffModal}
+        animationType='slide'
+        onRequestClose={() => setShowTimeOffModal(false)}
+      >
+        <TimeOffManager onNavigateBack={() => setShowTimeOffModal(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }

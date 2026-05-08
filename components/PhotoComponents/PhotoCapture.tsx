@@ -14,6 +14,7 @@ import { FastImageViewer } from '@/components/common/FastImageViewer';
 import { File, Paths } from 'expo-file-system';
 import { AttachmentRecord } from '@powersync/attachments';
 import type { QueuePhotoProgress } from '@/services/database/PhotoAttachmentQueue';
+import type { PhotoCategoryKind } from '@/types';
 
 interface PhotoCaptureProps {
   technicianId: string;
@@ -21,6 +22,9 @@ interface PhotoCaptureProps {
   jobTitle: string;
   scheduledStartAtUtc: string;
   scheduleId?: string;
+  photoCategoryKey?: string | null;
+  photoCategoryLabel?: string | null;
+  photoCategoryKind?: PhotoCategoryKind | null;
   isLoading?: boolean;
   allowAdd?: boolean;
 }
@@ -41,6 +45,9 @@ export function PhotoCapture({
   scheduleId,
   jobTitle,
   scheduledStartAtUtc,
+  photoCategoryKey,
+  photoCategoryLabel,
+  photoCategoryKind,
   isLoading: externalLoading = false,
   allowAdd = true
 }: PhotoCaptureProps) {
@@ -59,16 +66,47 @@ export function PhotoCapture({
     { uri: string; title?: string; type?: string }[]
   >([]);
 
+  const photoQuery = scheduleId
+    ? photoCategoryKey === undefined
+      ? {
+          sql: `SELECT p.id, p.scheduleId, p.cloudinaryUrl, p.type, p.technicianId, p.timestamp, p.signerName,
+                 p.photoCategoryKey, p.photoCategoryLabel, p.photoCategoryKind,
+                 a.local_uri, a.filename, a.failedAt, a.lastError, a.errorCategory
+               FROM photos p
+               LEFT JOIN attachments a ON a.id = p.id
+               WHERE p.scheduleId = ? AND p.type = ?
+               ORDER BY p.timestamp ASC`,
+          params: [scheduleId, type]
+        }
+      : photoCategoryKey === null
+        ? {
+            sql: `SELECT p.id, p.scheduleId, p.cloudinaryUrl, p.type, p.technicianId, p.timestamp, p.signerName,
+                   p.photoCategoryKey, p.photoCategoryLabel, p.photoCategoryKind,
+                   a.local_uri, a.filename, a.failedAt, a.lastError, a.errorCategory
+                 FROM photos p
+                 LEFT JOIN attachments a ON a.id = p.id
+                 WHERE p.scheduleId = ? AND p.type = ? AND p.photoCategoryKey IS NULL
+                 ORDER BY p.timestamp ASC`,
+            params: [scheduleId, type]
+          }
+        : {
+            sql: `SELECT p.id, p.scheduleId, p.cloudinaryUrl, p.type, p.technicianId, p.timestamp, p.signerName,
+                   p.photoCategoryKey, p.photoCategoryLabel, p.photoCategoryKind,
+                   a.local_uri, a.filename, a.failedAt, a.lastError, a.errorCategory
+                 FROM photos p
+                 LEFT JOIN attachments a ON a.id = p.id
+                 WHERE p.scheduleId = ? AND p.type = ? AND p.photoCategoryKey = ?
+                 ORDER BY p.timestamp ASC`,
+            params: [scheduleId, type, photoCategoryKey]
+          }
+    : {
+        sql: `SELECT p.id FROM photos p WHERE 0`,
+        params: []
+      };
+
   const { data: photos = [], isLoading: isQueryLoading } = useQuery<PhotoType>(
-    scheduleId
-      ? `SELECT p.id, p.scheduleId, p.cloudinaryUrl, p.type, p.technicianId, p.timestamp, p.signerName,
-           a.local_uri, a.filename
-         FROM photos p
-         LEFT JOIN attachments a ON a.id = p.id
-         WHERE p.scheduleId = ? AND p.type = ?
-         ORDER BY p.timestamp ASC`
-      : `SELECT p.id FROM photos p WHERE 0`,
-    [scheduleId || '', type],
+    photoQuery.sql,
+    photoQuery.params,
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
@@ -201,6 +239,9 @@ export function PhotoCapture({
           scheduleId: scheduleId,
           type: type,
           technicianId: technicianId,
+          photoCategoryKey: photoCategoryKey ?? null,
+          photoCategoryLabel: photoCategoryLabel ?? null,
+          photoCategoryKind: photoCategoryKind ?? null,
           jobTitle: jobTitle,
           scheduledStartAtUtc,
           sourceWidth: asset.width,
@@ -331,7 +372,7 @@ export function PhotoCapture({
   return (
     <View className='flex-1 mb-6'>
       <View className='flex-row justify-between items-center mb-3'>
-        <View className='flex-row items-center'>
+        <View className='flex-row items-center flex-1 pr-3'>
           <View
             className={`px-2 py-1 rounded-xl ${type === 'before' ? 'bg-blue-100' : 'bg-green-100'}`}
           >
@@ -347,6 +388,11 @@ export function PhotoCapture({
           <Text className='ml-1 text-base font-semibold'>
             {photos.length > 0 && `(${photos.length})`}
           </Text>
+          {photoCategoryLabel && (
+            <Text className='ml-2 flex-1 text-sm font-medium text-gray-600 dark:text-gray-300' numberOfLines={1}>
+              {photoCategoryLabel}
+            </Text>
+          )}
         </View>
 
         {allowAdd && (

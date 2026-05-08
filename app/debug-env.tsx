@@ -56,7 +56,7 @@ export default function DebugEnvScreen() {
   };
 
   return (
-    <SafeAreaView className='flex-1 bg-white dark:bg-gray-950' edges={['bottom']}>
+    <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950' edges={['bottom']}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -69,11 +69,11 @@ export default function DebugEnvScreen() {
           <Text className='text-lg font-bold mb-4 text-gray-900 dark:text-gray-100'>
             Environment Variables
           </Text>
-          <View className='bg-gray-100 dark:bg-gray-800 rounded-xl overflow-hidden'>
+          <View className='bg-white dark:bg-[#16140F] rounded-2xl overflow-hidden border border-black/10 dark:border-white/10'>
             {envVars.map((env, index) => (
               <View
                 key={index}
-                className={`p-4 border-b border-gray-200 dark:border-gray-700 ${index === envVars.length - 1 ? 'border-b-0' : ''}`}
+                className={`p-4 border-b border-black/10 dark:border-white/10 ${index === envVars.length - 1 ? 'border-b-0' : ''}`}
               >
                 <Text className='text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase mb-1'>
                   {env.label}
@@ -110,7 +110,7 @@ export default function DebugEnvScreen() {
           </TouchableOpacity>
         </View>
 
-        <View className='mb-8 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800'>
+        <View className='mb-8 p-4 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-100 dark:border-blue-800'>
           <View className='flex-row items-center mb-2'>
             <Ionicons name='information-circle' size={20} color='#3b82f6' />
             <Text className='text-blue-700 dark:text-blue-400 font-bold ml-2'>Note</Text>

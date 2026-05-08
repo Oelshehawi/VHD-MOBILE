@@ -3,11 +3,32 @@ import * as SecureStore from 'expo-secure-store';
 import { debugLogger } from '@/utils/DebugLogger';
 
 const BACKGROUND_TOKEN_CACHE_KEY = 'vhd_background_powersync_token_cache';
-const BACKGROUND_TOKEN_TTL_MS = 10 * 60 * 1000;
+const BACKGROUND_TOKEN_TTL_MS = 25 * 60 * 1000;
+const JWT_EXP_SAFETY_MARGIN_MS = 60 * 1000;
 
 interface CachedBackgroundToken {
   token: string;
   cachedAt: string;
+}
+
+function getJwtExpiryMs(token: string): number | null {
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
+    const json = JSON.parse(
+      typeof atob === 'function'
+        ? atob(padded)
+        : Buffer.from(padded, 'base64').toString('utf8')
+    );
+    if (typeof json?.exp === 'number') {
+      return json.exp * 1000;
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
 
 function parseCachedToken(rawValue: string | null): CachedBackgroundToken | null {
@@ -31,8 +52,13 @@ function parseCachedToken(rawValue: string | null): CachedBackgroundToken | null
   }
 }
 
-function isCachedTokenFresh(cachedAt: string): boolean {
-  const cachedAtMs = Date.parse(cachedAt);
+function isCachedTokenFresh(cached: CachedBackgroundToken): boolean {
+  const expMs = getJwtExpiryMs(cached.token);
+  if (expMs !== null) {
+    return Date.now() < expMs - JWT_EXP_SAFETY_MARGIN_MS;
+  }
+
+  const cachedAtMs = Date.parse(cached.cachedAt);
   if (Number.isNaN(cachedAtMs)) {
     return false;
   }
@@ -106,7 +132,7 @@ export async function getBackgroundToken(): Promise<string | null> {
       return null;
     }
 
-    if (!isCachedTokenFresh(cachedToken.cachedAt)) {
+    if (!isCachedTokenFresh(cachedToken)) {
       debugLogger.warn('AUTH', 'BackgroundAuth: cached background token expired');
       await clearBackgroundToken();
       return null;

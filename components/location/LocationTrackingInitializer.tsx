@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { DEFAULT_ROW_COMPARATOR, useQuery } from '@powersync/react-native';
-import { useAuth } from '@clerk/clerk-expo';
+import { useAuth, useUser } from '@clerk/clerk-expo';
 import type { TechnicianTrackingWindow } from '@/types';
 import { usePowerSyncStatus } from '@/providers/PowerSyncProvider';
 import { getBackgroundToken } from '@/services/background/BackgroundAuth';
@@ -11,11 +11,16 @@ const COORDINATOR_TICK_MS = 60 * 1000;
 
 export function LocationTrackingInitializer() {
   const { isLoaded, isSignedIn, userId } = useAuth();
+  const { isLoaded: isUserLoaded, user } = useUser();
   const { isInitialized } = usePowerSyncStatus();
   const [tick, setTick] = useState(0);
   const hasCachedTokenRef = useRef(false);
+  const hasStoppedForSignedOutRef = useRef(false);
+  const hasStoppedForNonTechnicianRef = useRef(false);
 
-  const isReady = isLoaded && isSignedIn && isInitialized;
+  const isManager = user?.publicMetadata?.isManager === true;
+  const isTechnician = user?.publicMetadata?.isTechnician === true && !isManager;
+  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isTechnician;
   const windowsQuery = useQuery<TechnicianTrackingWindow>(
     isReady
       ? `SELECT * FROM techniciantrackingwindows
@@ -36,9 +41,32 @@ export function LocationTrackingInitializer() {
 
     if (!isSignedIn) {
       hasCachedTokenRef.current = false;
+      hasStoppedForNonTechnicianRef.current = false;
+      if (hasStoppedForSignedOutRef.current) {
+        return;
+      }
+      hasStoppedForSignedOutRef.current = true;
       void locationTrackingCoordinator.stop('signed-out');
       return;
     }
+
+    hasStoppedForSignedOutRef.current = false;
+
+    if (!isUserLoaded) {
+      return;
+    }
+
+    if (!isTechnician) {
+      hasCachedTokenRef.current = false;
+      if (hasStoppedForNonTechnicianRef.current) {
+        return;
+      }
+      hasStoppedForNonTechnicianRef.current = true;
+      void locationTrackingCoordinator.stop('not-technician');
+      return;
+    }
+
+    hasStoppedForNonTechnicianRef.current = false;
 
     if (!isInitialized) {
       return;
@@ -50,7 +78,7 @@ export function LocationTrackingInitializer() {
 
     hasCachedTokenRef.current = true;
     void getBackgroundToken();
-  }, [isInitialized, isLoaded, isSignedIn]);
+  }, [isInitialized, isLoaded, isSignedIn, isTechnician, isUserLoaded]);
 
   useEffect(() => {
     if (!isReady) {

@@ -16,10 +16,10 @@ export function ProfileHeader({ imageUrl, fullName, username, email }: ProfileHe
         {imageUrl && (
           <Image
             source={{ uri: imageUrl }}
-            className='w-24 h-24 rounded-full mb-4 border-2 border-gray-200 dark:border-gray-800'
+            className='w-24 h-24 rounded-full mb-4 border-2 border-amber-300 dark:border-amber-500'
           />
         )}
-        <Text variant='h4' className='mb-2'>
+        <Text variant='h4' className='mb-2 text-[#14110F] dark:text-white'>
           {fullName || username}
         </Text>
         <Text variant='muted' className='mb-1'>

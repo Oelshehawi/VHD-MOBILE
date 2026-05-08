@@ -10,6 +10,7 @@ import { generateObjectId } from '@/utils/objectId';
 import { debugLogger } from '@/utils/DebugLogger';
 import { getClerkInstance } from '@clerk/clerk-expo';
 import type { FetchLike, TokenProvider } from '../network/types';
+import type { PhotoCategoryKind } from '@/types';
 
 interface QueuePhotoInput {
   sourceUri: string;
@@ -17,6 +18,9 @@ interface QueuePhotoInput {
   type: 'before' | 'after' | 'signature' | 'estimate';
   technicianId: string;
   signerName?: string;
+  photoCategoryKey?: string | null;
+  photoCategoryLabel?: string | null;
+  photoCategoryKind?: PhotoCategoryKind | null;
   jobTitle: string;
   scheduledStartAtUtc: string;
   sourceWidth?: number;
@@ -47,6 +51,29 @@ interface QueuedAttachmentRecord extends AttachmentRecord {
   startDate: string;
   uploadOwner?: string | null;
   uploadClaimedAt?: number | null;
+  retryCount?: number | null;
+  lastError?: string | null;
+  nextRetryAt?: number | null;
+  failedAt?: number | null;
+  errorCategory?: string | null;
+}
+
+type FailureCategory = 'permanent' | 'transient_exhausted';
+
+const RETRY_BACKOFF_SCHEDULE_MS = [
+  60 * 1000,
+  5 * 60 * 1000,
+  30 * 60 * 1000,
+  2 * 60 * 60 * 1000,
+  12 * 60 * 60 * 1000
+];
+const MAX_TRANSIENT_RETRIES = RETRY_BACKOFF_SCHEDULE_MS.length;
+
+class PermanentUploadError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'PermanentUploadError';
+  }
 }
 
 type UploadResult =
@@ -149,9 +176,6 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
   }
 
   trigger(): void {
-    void debugLogger.debug('UPLOAD', 'Photo queue triggered by interval/manual trigger', {
-      queueInstance: this.instanceLabel
-    });
     void this.processQueue({ triggerSource: 'interval/manual-trigger' });
     void this.expireCache();
   }
@@ -259,15 +283,29 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     await this.powersync.writeTransaction(async (tx) => {
       for (const { id, filename, localPath, mediaType, size, photo } of preparedFiles) {
         await tx.execute(
-          `INSERT INTO photos (id, scheduleId, cloudinaryUrl, type, technicianId, timestamp, signerName)
-           VALUES (?, ?, NULL, ?, ?, ?, ?)`,
+          `INSERT INTO photos (
+             id,
+             scheduleId,
+             cloudinaryUrl,
+             type,
+             technicianId,
+             timestamp,
+             signerName,
+             photoCategoryKey,
+             photoCategoryLabel,
+             photoCategoryKind
+           )
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
           [
             id,
             photo.scheduleId,
             photo.type,
             photo.technicianId,
             timestamp,
-            photo.signerName || null
+            photo.signerName || null,
+            photo.photoCategoryKey || null,
+            photo.photoCategoryLabel || null,
+            photo.photoCategoryKind || null
           ]
         );
 
@@ -390,14 +428,6 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     this.isProcessing = true;
 
     try {
-      void debugLogger.info('UPLOAD', 'Photo queue processing started', {
-        queueInstance: this.instanceLabel,
-        triggerSource,
-        workerRunId,
-        deadlineMs,
-        maxBatches
-      });
-
       while (true) {
         if (deadlineMs !== undefined && Date.now() >= deadlineMs) {
           stoppedBecause = 'deadline';
@@ -413,16 +443,20 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         const excludeAttemptedClause =
           attemptedIds.length > 0 ? ` AND id NOT IN (${attemptedIds.map(() => '?').join(', ')})` : '';
         const staleClaimBefore = Date.now() - UPLOAD_CLAIM_LEASE_MS;
+        const nowMs = Date.now();
         const queuedCandidates = await this.powersync.getAll<QueuedAttachmentRecord>(
-          `SELECT id, filename, local_uri, media_type, photoType, jobTitle, startDate, uploadOwner, uploadClaimedAt
+          `SELECT id, filename, local_uri, media_type, photoType, jobTitle, startDate, uploadOwner, uploadClaimedAt, retryCount, lastError, nextRetryAt, failedAt, errorCategory
                      FROM ${this.table}
                      WHERE (state = ? OR state = ?)
+                       AND failedAt IS NULL
+                       AND (nextRetryAt IS NULL OR nextRetryAt <= ?)
                        AND (uploadOwner IS NULL OR uploadClaimedAt IS NULL OR uploadClaimedAt < ?)
                        ${excludeAttemptedClause}
                      LIMIT ?`,
           [
             AttachmentState.QUEUED_UPLOAD,
             AttachmentState.QUEUED_SYNC,
+            nowMs,
             staleClaimBefore,
             ...attemptedIds,
             this.CONCURRENT_UPLOADS
@@ -436,8 +470,10 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
             const remainingQueuedRows = await this.powersync.getAll<{ count: number }>(
               `SELECT COUNT(*) as count
                          FROM ${this.table}
-                         WHERE state = ? OR state = ?`,
-              [AttachmentState.QUEUED_UPLOAD, AttachmentState.QUEUED_SYNC]
+                         WHERE (state = ? OR state = ?)
+                           AND failedAt IS NULL
+                           AND (nextRetryAt IS NULL OR nextRetryAt <= ?)`,
+              [AttachmentState.QUEUED_UPLOAD, AttachmentState.QUEUED_SYNC, Date.now()]
             );
             const remainingQueuedCount = Number(remainingQueuedRows[0]?.count ?? 0);
 
@@ -492,16 +528,41 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         });
 
         // Get all signed URLs in one batch request
-        const signedUrls = await this.getBatchSignedUploadUrls(
-          queued.map((att) => ({
-            photoId: att.id,
-            fileName: att.filename,
-            mediaType: att.media_type || 'image/jpeg',
-            type: att.photoType,
-            jobTitle: att.jobTitle,
-            startDate: att.startDate
-          }))
-        );
+        let signedUrls: SignedUploadUrl[];
+        try {
+          signedUrls = await this.getBatchSignedUploadUrls(
+            queued.map((att) => ({
+              photoId: att.id,
+              fileName: att.filename,
+              mediaType: att.media_type || 'image/jpeg',
+              type: att.photoType,
+              jobTitle: att.jobTitle,
+              startDate: att.startDate
+            }))
+          );
+        } catch (signedUrlError) {
+          const reason =
+            signedUrlError instanceof Error ? signedUrlError.message : String(signedUrlError);
+          void debugLogger.warn('UPLOAD', 'Failed to fetch batch signed URLs; releasing claims', {
+            queueInstance: this.instanceLabel,
+            triggerSource,
+            workerRunId,
+            batchNumber: processedBatches,
+            count: queued.length,
+            reason
+          });
+          await this.recordTransientFailure(
+            queued.map((att) => att.id),
+            reason
+          );
+          await this.releaseUploadClaims(
+            queued.map((att) => att.id),
+            uploadRunOwner
+          );
+          failed += queued.length;
+          stoppedBecause = 'empty';
+          break;
+        }
 
         // Create map for lookup
         const urlMap = new Map(signedUrls.map((s) => [s.filename ?? s.fileName ?? '', s]));
@@ -519,25 +580,32 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
 
         const photoUpdates: Array<{ id: string; secureUrl: string }> = [];
         const syncedIds: string[] = [];
-        const failedIds: string[] = [];
+        const transientFailures: Array<{ id: string; reason: string }> = [];
+        const permanentFailures: Array<{ id: string; reason: string }> = [];
 
         for (const [index, result] of uploadResults.entries()) {
           if (result.status !== 'fulfilled') {
             const attachment = queued[index];
             const reason =
               result.reason instanceof Error ? result.reason.message : String(result.reason);
-            void debugLogger.warn('UPLOAD', 'Photo upload attempt failed; leaving queued for retry', {
+            const isPermanent = result.reason instanceof PermanentUploadError;
+            void debugLogger.warn('UPLOAD', 'Photo upload attempt failed', {
               queueInstance: this.instanceLabel,
               triggerSource,
               workerRunId,
               batchNumber: processedBatches,
               id: attachment?.id,
               filename: attachment?.filename,
-              reason
+              reason,
+              isPermanent
             });
             failed += 1;
             if (attachment?.id) {
-              failedIds.push(attachment.id);
+              if (isPermanent) {
+                permanentFailures.push({ id: attachment.id, reason });
+              } else {
+                transientFailures.push({ id: attachment.id, reason });
+              }
             }
             continue;
           }
@@ -566,16 +634,35 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
               ]);
             }
             for (const id of syncedIds) {
-              await tx.execute(`UPDATE ${this.table} SET state = ?, uploadOwner = NULL, uploadClaimedAt = NULL WHERE id = ?`, [
-                AttachmentState.SYNCED,
-                id
-              ]);
+              await tx.execute(
+                `UPDATE ${this.table}
+                    SET state = ?, uploadOwner = NULL, uploadClaimedAt = NULL,
+                        retryCount = 0, lastError = NULL, nextRetryAt = NULL,
+                        failedAt = NULL, errorCategory = NULL
+                  WHERE id = ?`,
+                [AttachmentState.SYNCED, id]
+              );
             }
           });
         }
 
-        if (failedIds.length > 0) {
-          await this.releaseUploadClaims(failedIds, uploadRunOwner);
+        if (permanentFailures.length > 0) {
+          await this.recordPermanentFailure(permanentFailures);
+        }
+
+        if (transientFailures.length > 0) {
+          await this.recordTransientFailure(
+            transientFailures.map((failure) => failure.id),
+            transientFailures[0]?.reason ?? 'transient upload failure'
+          );
+        }
+
+        const releaseIds = [
+          ...transientFailures.map((failure) => failure.id),
+          ...permanentFailures.map((failure) => failure.id)
+        ];
+        if (releaseIds.length > 0) {
+          await this.releaseUploadClaims(releaseIds, uploadRunOwner);
         }
 
         void debugLogger.debug('UPLOAD', 'Photo queue batch processed', {
@@ -591,18 +678,20 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     } finally {
       this.isProcessing = false;
 
-      void debugLogger.info('UPLOAD', 'Photo queue processing complete', {
-        queueInstance: this.instanceLabel,
-        triggerSource,
-        workerRunId,
-        attempted,
-        succeeded,
-        failed,
-        stoppedBecause,
-        batchesProcessed: processedBatches,
-        uniqueAttachmentCount: uniqueAttachmentIds.size,
-        repeatAttemptCount
-      });
+      if (attempted > 0 || failed > 0 || stoppedBecause !== 'empty') {
+        void debugLogger.info('UPLOAD', 'Photo queue processing complete', {
+          queueInstance: this.instanceLabel,
+          triggerSource,
+          workerRunId,
+          attempted,
+          succeeded,
+          failed,
+          stoppedBecause,
+          batchesProcessed: processedBatches,
+          uniqueAttachmentCount: uniqueAttachmentIds.size,
+          repeatAttemptCount
+        });
+      }
     }
 
     return {
@@ -640,7 +729,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
 
     const hasFile = await this.storage.fileExists(localUri);
     if (!hasFile) {
-      throw new Error(`Local file missing for ${attachment.id}`);
+      throw new PermanentUploadError(`Local file missing for ${attachment.id}`);
     }
 
     const uploadFile = new File(localUri);
@@ -677,9 +766,12 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         return { id: attachment.id, secureUrl: signedUrl.expectedSecureUrl };
       }
 
-      throw new Error(
-        `Cloudinary upload failed: ${uploadResponse.status} ${this.getCloudinaryErrorMessage(responseData)}`
-      );
+      const message = `Cloudinary upload failed: ${uploadResponse.status} ${this.getCloudinaryErrorMessage(responseData)}`;
+      const status = uploadResponse.status;
+      if (status === 400 || status === 413 || status === 415) {
+        throw new PermanentUploadError(message);
+      }
+      throw new Error(message);
     }
 
     const secureUrl = responseData?.secure_url as string | undefined;
@@ -786,6 +878,74 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
           AND id IN (${ids.map(() => '?').join(', ')})`,
       [uploadRunOwner, ...ids]
     );
+  }
+
+  private async recordTransientFailure(ids: string[], reason: string): Promise<void> {
+    if (ids.length === 0) return;
+
+    const errorMessage = reason.slice(0, 500);
+
+    await this.powersync.writeTransaction(async (tx) => {
+      for (const id of ids) {
+        const rows = await tx.getAll<{ retryCount: number | null }>(
+          `SELECT retryCount FROM ${this.table} WHERE id = ?`,
+          [id]
+        );
+        const previous = Number(rows[0]?.retryCount ?? 0);
+        const nextRetryCount = previous + 1;
+
+        if (nextRetryCount >= MAX_TRANSIENT_RETRIES) {
+          await tx.execute(
+            `UPDATE ${this.table}
+                SET retryCount = ?, lastError = ?, nextRetryAt = NULL,
+                    failedAt = ?, errorCategory = ?
+              WHERE id = ?`,
+            [nextRetryCount, errorMessage, Date.now(), 'transient_exhausted' as FailureCategory, id]
+          );
+          continue;
+        }
+
+        const backoff =
+          RETRY_BACKOFF_SCHEDULE_MS[Math.min(previous, RETRY_BACKOFF_SCHEDULE_MS.length - 1)];
+        const nextRetryAt = Date.now() + backoff;
+
+        await tx.execute(
+          `UPDATE ${this.table}
+              SET retryCount = ?, lastError = ?, nextRetryAt = ?
+            WHERE id = ?`,
+          [nextRetryCount, errorMessage, nextRetryAt, id]
+        );
+      }
+    });
+  }
+
+  private async recordPermanentFailure(
+    failures: Array<{ id: string; reason: string }>
+  ): Promise<void> {
+    if (failures.length === 0) return;
+
+    await this.powersync.writeTransaction(async (tx) => {
+      for (const failure of failures) {
+        await tx.execute(
+          `UPDATE ${this.table}
+              SET failedAt = ?, errorCategory = ?, lastError = ?, nextRetryAt = NULL
+            WHERE id = ?`,
+          [Date.now(), 'permanent' as FailureCategory, failure.reason.slice(0, 500), failure.id]
+        );
+      }
+    });
+  }
+
+  async retryFailedAttachment(id: string): Promise<void> {
+    await this.powersync.execute(
+      `UPDATE ${this.table}
+          SET state = ?, retryCount = 0, lastError = NULL, nextRetryAt = NULL,
+              failedAt = NULL, errorCategory = NULL,
+              uploadOwner = NULL, uploadClaimedAt = NULL
+        WHERE id = ?`,
+      [AttachmentState.QUEUED_UPLOAD, id]
+    );
+    this.trigger();
   }
 
   private async clearUploadClaims(reason: string): Promise<void> {

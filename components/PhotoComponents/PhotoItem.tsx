@@ -1,4 +1,4 @@
-import { TouchableOpacity, View, Text, ActivityIndicator } from 'react-native';
+import { TouchableOpacity, View, Text, ActivityIndicator, Alert } from 'react-native';
 import { PhotoType } from '@/utils/photos';
 import { useState, useEffect } from 'react';
 import { FastImageWrapper } from '@/components/common/FastImageWrapper';
@@ -24,7 +24,29 @@ export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: 
   const [resolvedUrl, setResolvedUrl] = useState<string>('');
   const system = useSystem();
 
-  const isLoading = photo.cloudinaryUrl === null;
+  const isFailed = !!photo.failedAt && photo.cloudinaryUrl === null;
+  const isLoading = photo.cloudinaryUrl === null && !isFailed;
+
+  const handleFailedPress = () => {
+    Alert.alert(
+      'Upload failed',
+      photo.lastError || 'This photo could not be uploaded.',
+      [
+        {
+          text: 'Retry',
+          onPress: () => {
+            void system?.attachmentQueue?.retryFailedAttachment(photo.id);
+          }
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => onDelete(photo.id)
+        },
+        { text: 'Cancel', style: 'cancel' }
+      ]
+    );
+  };
 
   useEffect(() => {
     const resolveUrl = async () => {
@@ -100,6 +122,19 @@ export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: 
               </Text>
             </View>
           </View>
+        )}
+
+        {isFailed && (
+          <TouchableOpacity
+            onPress={handleFailedPress}
+            className='absolute inset-0 flex items-center justify-center bg-red-900/60'
+            activeOpacity={0.7}
+          >
+            <View className='bg-red-700 px-3 py-2 rounded-lg items-center'>
+              <Text className='text-white text-xs font-bold'>Upload failed</Text>
+              <Text className='text-white/90 text-[10px] mt-1'>Tap to retry</Text>
+            </View>
+          </TouchableOpacity>
         )}
 
         <View className='absolute bottom-0 left-0 right-0 bg-black/40 py-1'>

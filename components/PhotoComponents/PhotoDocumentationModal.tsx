@@ -1,195 +1,296 @@
-import { useState } from 'react';
-import { View, Modal, ScrollView, Pressable } from 'react-native';
+import { useMemo, useState } from 'react';
+import { Modal, Pressable, ScrollView, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { PhotoCapture } from '../PhotoComponents/PhotoCapture';
-import { JobPhotoHistory } from './JobPhotoHistory';
 import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import type { ReportStatus } from '@/types/report';
 import { Text } from '@/components/ui/text';
-import { cn } from '@/lib/utils';
-import { openReport } from '@/utils/openReport';
-import { isScheduleReportRequired } from '@/utils/schedules';
+import type { EquipmentProfile, PhotoCategoryKind } from '@/types';
+import {
+  buildDocumentationCategories,
+  getCategoryIcon,
+  type DocumentationCategory
+} from '@/utils/equipmentCategories';
+import { PhotoCapture } from './PhotoCapture';
+import { JobPhotoHistory } from './JobPhotoHistory';
 
-// Tab type for the modal navigation
-type TabType = 'before' | 'after' | 'history';
+type DocumentationMode = 'before' | 'after';
 
 interface PhotoDocumentationModalProps {
   visible: boolean;
   onClose: () => void;
   scheduleId: string;
+  serviceJobId?: string | null;
   jobTitle: string;
   scheduledStartAtUtc: string;
-  timeZone?: string | null;
-  requiresReport?: boolean | number | string | null;
   technicianId: string;
+  initialMode?: DocumentationMode;
+}
+
+interface PhotoCountRow {
+  type: DocumentationMode;
+  photoCategoryKey: string | null;
+  count: number | null;
+}
+
+function categoryTone(kind: PhotoCategoryKind) {
+  if (kind === 'hood' || kind === 'hoodGroup') return '#D97706';
+  if (kind === 'exhaustFan') return '#2563EB';
+  if (kind === 'ecologyUnit') return '#059669';
+  return '#6B7280';
+}
+
+function getCount(
+  counts: ReadonlyArray<Readonly<PhotoCountRow>>,
+  mode: DocumentationMode,
+  categoryKey: string | null
+): number {
+  return Number(
+    counts.find((row) => row.type === mode && row.photoCategoryKey === categoryKey)?.count ?? 0
+  );
 }
 
 export function PhotoDocumentationModal({
   visible,
   onClose,
   scheduleId,
+  serviceJobId,
   jobTitle,
   scheduledStartAtUtc,
-  timeZone,
-  requiresReport,
-  technicianId
+  technicianId,
+  initialMode = 'before'
 }: PhotoDocumentationModalProps) {
-  const [activeTab, setActiveTab] = useState<TabType>('before');
   const insets = useSafeAreaInsets();
-  const showReportAction = isScheduleReportRequired({ requiresReport });
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const iconColor = isDark ? '#F2EFEA' : '#14110F';
+  const chevronColor = isDark ? '#C9C3BA' : '#76706A';
+  const [activeMode, setActiveMode] = useState<DocumentationMode>(initialMode);
+  const [selectedCategory, setSelectedCategory] = useState<DocumentationCategory | null>(null);
+  const [showLegacyCurrentVisit, setShowLegacyCurrentVisit] = useState(false);
 
-  const { data: photoCounts = [] } = useQuery<{
-    beforeCount: number | null;
-    afterCount: number | null;
-  }>(
-    scheduleId
-      ? `SELECT
-                 SUM(CASE WHEN type = 'before' THEN 1 ELSE 0 END) as beforeCount,
-                 SUM(CASE WHEN type = 'after' THEN 1 ELSE 0 END) as afterCount
-               FROM photos
-               WHERE scheduleId = ?`
-      : `SELECT 0 as beforeCount, 0 as afterCount`,
-    [scheduleId],
+  const { data: profiles = [] } = useQuery<EquipmentProfile>(
+    serviceJobId
+      ? `SELECT * FROM equipmentprofiles WHERE serviceJobId = ? LIMIT 1`
+      : `SELECT * FROM equipmentprofiles WHERE 0`,
+    [serviceJobId || ''],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
-  const { data: reportStatusRows = [] } = useQuery<{
-    reportStatus: ReportStatus | null;
-  }>(
+  const profile = profiles[0] ?? null;
+  const categories = useMemo(() => buildDocumentationCategories(profile), [profile]);
+
+  const { data: photoCounts = [] } = useQuery<PhotoCountRow>(
     scheduleId
-      ? `SELECT reportStatus FROM reports WHERE scheduleId = ? ORDER BY dateCompleted DESC LIMIT 1`
-      : `SELECT NULL as reportStatus`,
-    [scheduleId],
+      ? `SELECT type, photoCategoryKey, COUNT(*) as count
+           FROM photos
+           WHERE scheduleId = ? AND type IN ('before', 'after')
+           GROUP BY type, photoCategoryKey`
+      : `SELECT NULL as type, NULL as photoCategoryKey, 0 as count WHERE 0`,
+    [scheduleId || ''],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
-  const beforeCount = Number(photoCounts[0]?.beforeCount ?? 0);
-  const afterCount = Number(photoCounts[0]?.afterCount ?? 0);
-  const reportStatus = reportStatusRows[0]?.reportStatus ?? null;
-  const isReportCompleteState = reportStatus === 'in_progress' || reportStatus === 'completed';
+  const totalBefore = useMemo(
+    () => photoCounts.reduce((sum, row) => sum + (row.type === 'before' ? Number(row.count ?? 0) : 0), 0),
+    [photoCounts]
+  );
+  const totalAfter = useMemo(
+    () => photoCounts.reduce((sum, row) => sum + (row.type === 'after' ? Number(row.count ?? 0) : 0), 0),
+    [photoCounts]
+  );
+  const legacyCurrentVisitCount = getCount(photoCounts, activeMode, null);
 
-  // Handle close with logging
   const handleClose = () => {
+    setSelectedCategory(null);
+    setShowLegacyCurrentVisit(false);
     onClose();
   };
 
-  // Handle tab change with logging
-  const handleTabChange = (tab: TabType) => {
-    setActiveTab(tab);
-  };
-
-  const handleGoToReport = () => {
-    handleClose();
-    openReport({
-      scheduleId,
-      jobTitle,
-      scheduledStartAtUtc,
-      timeZone,
-      technicianId
-    });
-  };
+  const headerTitle = selectedCategory
+    ? selectedCategory.label
+    : showLegacyCurrentVisit
+      ? 'Uncategorized'
+      : 'Photos';
 
   if (!visible) return null;
 
   return (
     <Modal
       visible={visible}
-      onRequestClose={onClose}
+      onRequestClose={handleClose}
       presentationStyle='fullScreen'
       animationType='slide'
     >
-      <View className='flex-1 bg-gray-50' style={{ paddingTop: insets.top }}>
-        {/* Header */}
-        <View className='flex-row items-center justify-between bg-emerald-900 p-4 shadow-sm'>
-          <Text className='flex-1 text-xl font-bold text-white'>{jobTitle}</Text>
-          <Pressable
-            onPress={handleClose}
-            hitSlop={{ top: 12, right: 12, bottom: 12, left: 12 }}
-            className='h-11 w-11 items-center justify-center rounded-2xl bg-white/20 active:bg-white/30'
-          >
-            <Ionicons name='close' size={24} color='white' />
-          </Pressable>
-        </View>
-
-        {/* Tabs */}
-        <View className='flex-row border-b border-gray-200 bg-white'>
-          {['before', 'after', 'history'].map((tab) => (
-            <Pressable
-              key={tab}
-              onPress={() => handleTabChange(tab as TabType)}
-              className={cn(
-                'flex-1 px-4 py-4',
-                activeTab === tab && 'border-b-2 border-emerald-900'
-              )}
-            >
-              <Text
-                className={cn(
-                  'text-center font-semibold',
-                  activeTab === tab ? 'text-emerald-900' : 'text-gray-500'
-                )}
+      <View className='flex-1 bg-[#F7F5F1] dark:bg-gray-950' style={{ paddingTop: insets.top }}>
+        <View className='border-b border-black/10 bg-[#F7F5F1] px-4 py-3 dark:border-white/10 dark:bg-gray-950'>
+          <View className='flex-row items-center gap-3'>
+            {(selectedCategory || showLegacyCurrentVisit) && (
+              <Pressable
+                onPress={() => {
+                  setSelectedCategory(null);
+                  setShowLegacyCurrentVisit(false);
+                }}
+                className='h-10 w-10 items-center justify-center rounded-xl border border-black/15 bg-white dark:border-white/20 dark:bg-[#16140F]'
               >
-                {tab === 'before'
-                  ? `Before Photos${beforeCount ? ` (${beforeCount})` : ''}`
-                  : tab === 'after'
-                    ? `After Photos${afterCount ? ` (${afterCount})` : ''}`
-                    : 'Job History'}
+                <Ionicons name='chevron-back' size={20} color={iconColor} />
+              </Pressable>
+            )}
+            <View className='flex-1'>
+              <Text className='text-2xl font-bold text-[#14110F] dark:text-white'>
+                {headerTitle}
               </Text>
+              <Text className='mt-1 text-xs font-medium text-gray-500' numberOfLines={1}>
+                {activeMode === 'before' ? 'Before' : 'After'} documentation - {jobTitle}
+              </Text>
+            </View>
+            <Pressable
+              onPress={handleClose}
+              hitSlop={10}
+              className='h-10 w-10 items-center justify-center rounded-xl border border-black/15 bg-white dark:border-white/20 dark:bg-[#16140F]'
+            >
+              <Ionicons name='close' size={22} color={iconColor} />
             </Pressable>
-          ))}
+          </View>
+
+          <View className='mt-3 flex-row rounded-xl bg-[#F0EDE6] p-1 dark:bg-[#16140F]'>
+            {[
+              { key: 'before' as const, label: `Before - ${totalBefore}` },
+              { key: 'after' as const, label: `After - ${totalAfter}` }
+            ].map((tab) => (
+              <Pressable
+                key={tab.key}
+                onPress={() => {
+                  setActiveMode(tab.key);
+                  setSelectedCategory(null);
+                  setShowLegacyCurrentVisit(false);
+                }}
+                className={`flex-1 rounded-lg py-3 ${activeMode === tab.key ? 'bg-white dark:bg-[#2A261D]' : ''}`}
+              >
+                <Text
+                  className={`text-center text-sm font-bold ${
+                    activeMode === tab.key
+                      ? 'text-[#14110F] dark:text-white'
+                      : 'text-gray-500 dark:text-gray-400'
+                  }`}
+                >
+                  {tab.label}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
         </View>
 
-        {/* Content */}
-        {activeTab === 'before' || activeTab === 'after' ? (
-          <View className='flex-1'>
-            <ScrollView
-              className='flex-1 px-4 py-4'
-              contentContainerStyle={{
-                paddingBottom: activeTab === 'after' ? 120 : insets.bottom + 16
-              }}
-            >
-              <PhotoCapture
-                technicianId={technicianId}
-                type={activeTab}
-                jobTitle={jobTitle}
-                scheduledStartAtUtc={scheduledStartAtUtc}
-                scheduleId={scheduleId}
-                allowAdd
-              />
-            </ScrollView>
-            {activeTab === 'after' && showReportAction && (
-              <View
-                className={cn(
-                  'border-t px-4 pt-3',
-                  isReportCompleteState
-                    ? 'border-emerald-200 bg-emerald-50'
-                    : 'border-gray-200 bg-white'
-                )}
-                style={{ paddingBottom: insets.bottom + 12 }}
-              >
-                <Text className='text-base font-bold text-gray-900'>
-                  {isReportCompleteState ? 'Report Completed' : 'Complete Report'}
-                </Text>
-                <Text className='mt-1 text-xs text-gray-500'>
-                  {isReportCompleteState
-                    ? 'Report submitted and pending admin review.'
-                    : 'Submit your report after photos are uploaded.'}
-                </Text>
-                {!isReportCompleteState && (
+        {selectedCategory || showLegacyCurrentVisit ? (
+          <ScrollView
+            className='flex-1 px-4 py-4'
+            contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
+          >
+            <PhotoCapture
+              technicianId={technicianId}
+              type={activeMode}
+              jobTitle={jobTitle}
+              scheduledStartAtUtc={scheduledStartAtUtc}
+              scheduleId={scheduleId}
+              photoCategoryKey={selectedCategory?.key ?? null}
+              photoCategoryLabel={selectedCategory?.label ?? 'Uncategorized'}
+              photoCategoryKind={selectedCategory?.kind ?? null}
+              allowAdd
+            />
+          </ScrollView>
+        ) : (
+          <ScrollView
+            className='flex-1'
+            contentContainerStyle={{ paddingBottom: insets.bottom + 28 }}
+          >
+            <View className='px-4 pt-4'>
+              {profile && (
+                <View className='mb-3 flex-row items-center gap-2 rounded-xl bg-blue-50 px-3 py-2 dark:bg-blue-950/40'>
+                  <Ionicons name='construct-outline' size={16} color='#2563EB' />
+                  <Text className='flex-1 text-xs font-medium text-blue-800 dark:text-blue-200'>
+                    Categories from equipment profile
+                  </Text>
+                </View>
+              )}
+
+              <Text className='mb-3 text-xs font-bold uppercase tracking-widest text-gray-500'>
+                Current Visit By Category
+              </Text>
+              <View className='gap-3'>
+                {categories.map((category) => {
+                  const count = getCount(photoCounts, activeMode, category.key);
+                  const color = categoryTone(category.kind);
+
+                  return (
+                    <Pressable
+                      key={category.key}
+                      onPress={() => setSelectedCategory(category)}
+                      className='rounded-2xl border border-black/10 bg-white p-4 active:bg-gray-50 dark:border-white/10 dark:bg-[#16140F] dark:active:bg-[#1F1C16]'
+                    >
+                      <View className='flex-row items-center gap-3'>
+                        <View
+                          className='h-12 w-12 items-center justify-center rounded-xl'
+                          style={{ backgroundColor: `${color}22` }}
+                        >
+                          <Ionicons name={getCategoryIcon(category.kind) as any} size={24} color={color} />
+                        </View>
+                        <View className='flex-1'>
+                          <Text className='text-base font-semibold text-[#14110F] dark:text-white'>
+                            {category.label}
+                          </Text>
+                          <Text className='mt-1 text-xs font-medium text-gray-500'>
+                            {count} {activeMode} photo{count === 1 ? '' : 's'}
+                          </Text>
+                        </View>
+                        <View className='flex-row items-center gap-2'>
+                          {count === 0 && (
+                            <View className='rounded-full bg-amber-100 px-2 py-1'>
+                              <Text className='text-xs font-semibold text-amber-900'>needs photo</Text>
+                            </View>
+                          )}
+                          <Ionicons name='chevron-forward' size={18} color={chevronColor} />
+                        </View>
+                      </View>
+                    </Pressable>
+                  );
+                })}
+
+                {legacyCurrentVisitCount > 0 && (
                   <Pressable
-                    onPress={handleGoToReport}
-                    className='mt-3 w-full rounded-xl bg-emerald-700 px-4 py-3 active:bg-emerald-800'
+                    onPress={() => setShowLegacyCurrentVisit(true)}
+                    className='rounded-2xl border border-dashed border-black/20 bg-white p-4 dark:border-white/20 dark:bg-[#16140F]'
                   >
-                    <Text className='text-center font-semibold text-white'>Go to Report</Text>
+                    <View className='flex-row items-center gap-3'>
+                      <View className='h-12 w-12 items-center justify-center rounded-xl bg-gray-100 dark:bg-[#2A261D]'>
+                        <Ionicons name='images-outline' size={24} color={chevronColor} />
+                      </View>
+                      <View className='flex-1'>
+                        <Text className='text-base font-semibold text-[#14110F] dark:text-white'>
+                          Uncategorized current-visit photos
+                        </Text>
+                        <Text className='mt-1 text-xs font-medium text-gray-500'>
+                          {legacyCurrentVisitCount} legacy photo{legacyCurrentVisitCount === 1 ? '' : 's'}
+                        </Text>
+                      </View>
+                      <Ionicons name='chevron-forward' size={18} color={chevronColor} />
+                    </View>
                   </Pressable>
                 )}
               </View>
+            </View>
+
+            {serviceJobId && (
+              <View className='mt-6 px-4'>
+                <Text className='mb-3 text-xs font-bold uppercase tracking-widest text-gray-500'>
+                  Previous Visits
+                </Text>
+                <JobPhotoHistory
+                  scheduleId={scheduleId}
+                  serviceJobId={serviceJobId}
+                  jobTitle={jobTitle}
+                />
+              </View>
             )}
-          </View>
-        ) : (
-          <View className='flex-1 px-4 pt-4' style={{ paddingBottom: insets.bottom + 16 }}>
-            <JobPhotoHistory scheduleId={scheduleId} jobTitle={jobTitle} />
-          </View>
+          </ScrollView>
         )}
       </View>
     </Modal>

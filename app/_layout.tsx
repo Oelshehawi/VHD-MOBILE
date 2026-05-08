@@ -17,12 +17,13 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { BottomSheetModalProvider } from '@gorhom/bottom-sheet';
 import { PowerSyncProvider, usePowerSyncStatus } from '../providers/PowerSyncProvider';
 import { registerBackgroundSyncTask, unregisterBackgroundSyncTask } from '@/services/background';
-import { runBoundedBackgroundSync } from '@/services/background/BackgroundSyncRunner';
+import { runForegroundStartupRecovery } from '@/services/sync/StartupRecovery';
 import { initImageCache } from '@/utils/imageCache';
 import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
 import { PushNotificationInitializer } from '@/components/notifications/PushNotificationInitializer';
 import { LocationTrackingInitializer } from '@/components/location/LocationTrackingInitializer';
+import { SyncToastListener } from '@/components/sync/SyncToastListener';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
@@ -204,11 +205,10 @@ function BackgroundSyncLifecycle() {
     }
 
     startupRecoveryRunRef.current = true;
-    void debugLogger.info('SYNC', 'Background sync lifecycle triggering startup recovery run', {
-      reason: 'app-startup',
-      maxMs: 8000
+    void debugLogger.info('SYNC', 'Triggering foreground startup recovery', {
+      reason: 'app-startup'
     });
-    void runBoundedBackgroundSync({ reason: 'app-startup', maxMs: 8000 });
+    void runForegroundStartupRecovery();
   }, [isLoaded, isSignedIn, isInitialized]);
 
   useEffect(() => {
@@ -291,6 +291,7 @@ export default function RootLayout() {
                   <LocationTrackingInitializer />
                   <PushNotificationInitializer />
                   <PowerSyncStatusBanner />
+                  <SyncToastListener />
                   <BottomSheetModalProvider>
                     <Stack screenOptions={{ headerShown: false }}>
                       <Stack.Screen name='(tabs)' options={{ headerShown: false }} />

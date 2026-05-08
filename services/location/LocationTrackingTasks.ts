@@ -286,6 +286,11 @@ export async function syncGeofences(regions: Location.LocationRegion[]): Promise
   });
 }
 
+function isBackgroundLocationAuthorizationError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes('Not authorized to use background location services');
+}
+
 export async function stopGeofencing(): Promise<void> {
   try {
     const started = await Location.hasStartedGeofencingAsync(LOCATION_GEOFENCE_TASK_NAME);
@@ -294,7 +299,10 @@ export async function stopGeofencing(): Promise<void> {
       debugLogger.info('LOCATION', 'Stopped location geofencing');
     }
   } catch (error) {
-    debugLogger.warn('LOCATION', 'Failed to stop location geofencing', {
+    const log = isBackgroundLocationAuthorizationError(error)
+      ? debugLogger.debug.bind(debugLogger)
+      : debugLogger.warn.bind(debugLogger);
+    log('LOCATION', 'Failed to stop location geofencing', {
       error: error instanceof Error ? error.message : String(error)
     });
   }

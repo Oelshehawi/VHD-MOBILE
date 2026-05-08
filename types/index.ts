@@ -42,6 +42,7 @@ export interface Schedule {
   payrollPeriod?: string;
   deadRun: boolean;
   canManage?: boolean;
+  technicianNotes?: string | null;
   // Site access info
   onSiteContact?: {
     name?: string;
@@ -74,6 +75,13 @@ export interface HoodEquipment {
   notes?: string | null;
 }
 
+export interface HoodGroup {
+  id: string;
+  label?: string | null;
+  hoodIds?: string[] | string;
+  spacerNotes?: string | null;
+}
+
 export interface AirMoverEquipment {
   id: string;
   label: string;
@@ -81,22 +89,33 @@ export interface AirMoverEquipment {
   manufacturer?: string | null;
   modelNumber?: string | null;
   serialNumber?: string | null;
+  accessPoint?: string | null;
   filterGroups?: EquipmentFilterGroup[] | string;
   filterReplacementNeeded?: boolean | number | null;
+  hasHingesAndChains?: boolean | number | null;
   notes?: string | null;
 }
 
 export interface EquipmentProfile {
   id: string;
+  profileKey: string;
   serviceJobId: string;
-  profileKey?: string;
-  location?: string;
-  jobTitle?: string;
-  scopeLabel?: string;
+  clientId?: string | null;
+  normalizedLocation?: string | null;
+  location: string;
+  jobTitle?: string | null;
+  scopeLabel?: string | null;
   hoods?: HoodEquipment[] | string;
+  hoodGroups?: HoodGroup[] | string;
   airMovers?: AirMoverEquipment[] | string;
-  needsReview?: boolean | number;
-  updatedAt?: string;
+  lastSourceReportId?: string | null;
+  lastSourceScheduleId?: string | null;
+  lastObservedAt?: string | null;
+  updatedBy?: string | null;
+  source?: 'report' | 'legacyReport' | 'admin' | string | null;
+  needsReview?: boolean | number | string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface EmployeeHours {
@@ -129,9 +148,19 @@ export interface PhotoType {
   url: string;
   timestamp: string;
   technicianId: string;
-  type: 'before' | 'after' | 'estimate';
+  type: 'before' | 'after' | 'estimate' | 'signature';
   status: 'pending' | 'uploaded';
+  photoCategoryKey?: string | null;
+  photoCategoryLabel?: string | null;
+  photoCategoryKind?: PhotoCategoryKind | null;
 }
+
+export type PhotoCategoryKind =
+  | 'hood'
+  | 'hoodGroup'
+  | 'exhaustFan'
+  | 'ecologyUnit'
+  | 'other';
 
 export interface PhotosData {
   photos: PhotoType[];

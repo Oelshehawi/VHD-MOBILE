@@ -9,6 +9,7 @@ import { debugLogger } from '@/utils/DebugLogger';
 const LOCATION_EVENT_QUEUE_KEY = 'vhd_location_event_queue_v1';
 const MAX_QUEUE_ITEMS = 200;
 const MAX_FLUSH_ITEMS = 25;
+const MAX_RETRY_ATTEMPTS = 10;
 
 interface QueuedLocationEvent {
   id: string;
@@ -113,6 +114,17 @@ export async function postOrQueueLocationEvent(event: MobileLocationEvent): Prom
     return true;
   }
 
+  if (result.retryable === false) {
+    debugLogger.warn('LOCATION', 'Dropping non-retryable location event', {
+      eventType: event.eventType,
+      trackingWindowId: event.trackingWindowId,
+      scheduleId: event.scheduleId,
+      statusCode: result.statusCode,
+      error: result.error
+    });
+    return false;
+  }
+
   await enqueueLocationEvent(event, result.error);
   return false;
 }
@@ -140,15 +152,39 @@ async function flushLocationEventQueueInternal(): Promise<void> {
   const batch = queue.slice(0, MAX_FLUSH_ITEMS);
   const deferred = queue.slice(MAX_FLUSH_ITEMS);
 
+  let droppedNonRetryable = 0;
+  let droppedExhausted = 0;
+
   for (const item of batch) {
     const result = await apiClient.postLocationEvent(item.event);
     if (result.success) {
       continue;
     }
 
+    if (result.retryable === false) {
+      droppedNonRetryable += 1;
+      debugLogger.warn('LOCATION', 'Dropping non-retryable queued location event', {
+        eventType: item.event.eventType,
+        statusCode: result.statusCode,
+        error: result.error
+      });
+      continue;
+    }
+
+    const nextAttemptCount = item.attemptCount + 1;
+    if (nextAttemptCount >= MAX_RETRY_ATTEMPTS) {
+      droppedExhausted += 1;
+      debugLogger.warn('LOCATION', 'Dropping location event after max retries', {
+        eventType: item.event.eventType,
+        attemptCount: nextAttemptCount,
+        lastError: result.error
+      });
+      continue;
+    }
+
     retained.push({
       ...item,
-      attemptCount: item.attemptCount + 1,
+      attemptCount: nextAttemptCount,
       lastAttemptAt: new Date().toISOString(),
       lastError: result.error
     });
@@ -158,8 +194,10 @@ async function flushLocationEventQueueInternal(): Promise<void> {
 
   debugLogger.info('LOCATION', 'Location event queue flush completed', {
     attempted: batch.length,
-    succeeded: batch.length - retained.length,
+    succeeded: batch.length - retained.length - droppedNonRetryable - droppedExhausted,
     failed: retained.length,
+    droppedNonRetryable,
+    droppedExhausted,
     remaining: retained.length + deferred.length
   });
 }

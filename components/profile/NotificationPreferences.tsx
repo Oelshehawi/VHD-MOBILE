@@ -154,7 +154,8 @@ function NotificationToggle({
         value={value}
         onValueChange={onToggle}
         disabled={disabled}
-        trackColor={{ false: '#767577', true: '#81c784' }}
+        trackColor={{ false: '#76706A', true: '#D97706' }}
+        thumbColor={value ? '#F7F5F1' : '#F2EFEA'}
       />
     </View>
   );

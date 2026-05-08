@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { format, parseISO, getDaysInMonth, startOfMonth, getDay } from 'date-fns';
@@ -26,6 +26,8 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [selectedDate, setSelectedDate] = useState(value || '');
   const [calendarMonth, setCalendarMonth] = useState(value ? parseISO(value) : new Date());
+  const colorScheme = useColorScheme();
+  const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
 
   const generateCalendarDays = (date: Date) => {
     const firstDay = startOfMonth(date);
@@ -82,14 +84,14 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
           setCalendarMonth(value ? parseISO(value) : new Date());
           setShowDatePicker(true);
         }}
-        className={`flex-row items-center justify-between bg-white dark:bg-gray-700 p-4 rounded-lg border ${
-          error ? 'border-red-500' : 'border-gray-200 dark:border-gray-600'
+        className={`flex-row items-center justify-between rounded-xl border bg-[#F0EDE6] p-4 dark:bg-[#1F1C16] ${
+          error ? 'border-red-500' : 'border-black/10 dark:border-white/10'
         }`}
       >
         <Text className={`${value ? 'text-gray-900 dark:text-white' : 'text-gray-500'}`}>
           {displayValue}
         </Text>
-        <Ionicons name='calendar-outline' size={20} color={error ? '#ef4444' : '#666'} />
+        <Ionicons name='calendar-outline' size={20} color={error ? '#ef4444' : iconColor} />
       </TouchableOpacity>
 
       {error && <Text className='text-red-500 text-sm mt-2'>{error}</Text>}
@@ -101,23 +103,23 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
         onRequestClose={() => setShowDatePicker(false)}
       >
         <SafeAreaView className='flex-1 bg-black/50 justify-end'>
-          <View className='bg-white dark:bg-gray-800 rounded-t-xl p-6'>
+          <View className='rounded-t-2xl bg-white p-6 dark:bg-[#16140F]'>
             <View className='flex-row justify-between items-center mb-4'>
               <Text className='text-lg font-bold text-gray-900 dark:text-white'>Select Date</Text>
               <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                <Ionicons name='close' size={24} color='#666' />
+                <Ionicons name='close' size={24} color={iconColor} />
               </TouchableOpacity>
             </View>
 
             <View className='flex-row items-center justify-between mb-4 px-2'>
               <TouchableOpacity onPress={() => handleMonthChange('prev')}>
-                <Ionicons name='chevron-back' size={24} color='#3b82f6' />
+                <Ionicons name='chevron-back' size={24} color='#D97706' />
               </TouchableOpacity>
               <Text className='text-lg font-bold text-gray-900 dark:text-white'>
                 {format(calendarMonth, 'MMMM yyyy')}
               </Text>
               <TouchableOpacity onPress={() => handleMonthChange('next')}>
-                <Ionicons name='chevron-forward' size={24} color='#3b82f6' />
+                <Ionicons name='chevron-forward' size={24} color='#D97706' />
               </TouchableOpacity>
             </View>
 
@@ -156,12 +158,16 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
                         key={`${weekIndex}-${dayIndex}`}
                         onPress={() => handleDateSelect(day)}
                         className={`flex-1 aspect-square items-center justify-center rounded ${
-                          isSelected ? 'bg-blue-500' : 'bg-gray-50 dark:bg-gray-700'
+                          isSelected
+                            ? 'bg-[#14110F] dark:bg-amber-400'
+                            : 'bg-[#F0EDE6] dark:bg-[#1F1C16]'
                         }`}
                       >
                         <Text
                           className={`text-sm font-medium ${
-                            isSelected ? 'text-white font-bold' : 'text-gray-900 dark:text-white'
+                            isSelected
+                              ? 'font-bold text-white dark:text-[#14110F]'
+                              : 'text-gray-900 dark:text-white'
                           }`}
                         >
                           {day}
@@ -176,7 +182,7 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
             <View className='flex-row gap-3 mt-4'>
               <TouchableOpacity
                 onPress={() => setShowDatePicker(false)}
-                className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
+                className='flex-1 rounded-xl bg-[#F0EDE6] p-4 dark:bg-[#2A261D]'
               >
                 <Text className='text-center font-semibold text-gray-900 dark:text-white'>
                   Cancel
@@ -185,9 +191,13 @@ export const DatePickerInput: React.FC<DatePickerInputProps> = ({
               <TouchableOpacity
                 onPress={handleConfirm}
                 disabled={!selectedDate}
-                className={`flex-1 p-4 rounded-lg ${selectedDate ? 'bg-blue-500' : 'bg-gray-400'}`}
+                className={`flex-1 rounded-xl p-4 ${
+                  selectedDate ? 'bg-[#14110F] dark:bg-amber-400' : 'bg-gray-400'
+                }`}
               >
-                <Text className='text-center font-semibold text-white'>Confirm</Text>
+                <Text className='text-center font-semibold text-white dark:text-[#14110F]'>
+                  Confirm
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

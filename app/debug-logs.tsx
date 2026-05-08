@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import { View, TouchableOpacity, TextInput, Share, FlatList } from 'react-native';
+import { View, TouchableOpacity, TextInput, Share, FlatList, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router } from 'expo-router';
 import { Text } from '../components/ui/text';
@@ -37,28 +37,30 @@ interface PhotoRow {
   timestamp: string | null;
 }
 
-const CATEGORIES = ['ALL', 'PHOTO', 'UPLOAD', 'DATABASE', 'SYNC', 'AUTH', 'NETWORK'];
+const CATEGORIES = ['ALL', 'PHOTO', 'UPLOAD', 'DATABASE', 'SYNC', 'AUTH', 'NETWORK', 'LOCATION', 'PUSH'];
 
 const levelColors: Record<string, { bg: string; text: string }> = {
   error: {
-    bg: 'bg-red-100 dark:bg-red-900',
-    text: 'text-red-700 dark:text-red-300'
+    bg: 'bg-red-100 dark:bg-red-950/70 border border-red-200 dark:border-red-800',
+    text: 'text-red-700 dark:text-red-200'
   },
   warn: {
-    bg: 'bg-yellow-100 dark:bg-yellow-900',
-    text: 'text-yellow-700 dark:text-yellow-300'
+    bg: 'bg-amber-100 dark:bg-amber-950/70 border border-amber-200 dark:border-amber-800',
+    text: 'text-amber-800 dark:text-amber-200'
   },
   info: {
-    bg: 'bg-blue-100 dark:bg-blue-900',
-    text: 'text-blue-700 dark:text-blue-300'
+    bg: 'bg-blue-100 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800',
+    text: 'text-blue-700 dark:text-blue-200'
   },
   debug: {
-    bg: 'bg-gray-100 dark:bg-gray-800',
-    text: 'text-gray-700 dark:text-gray-300'
+    bg: 'bg-white dark:bg-[#16140F] border border-black/10 dark:border-white/10',
+    text: 'text-gray-700 dark:text-gray-200'
   }
 };
 
 export default function DebugLogsScreen() {
+  const colorScheme = useColorScheme();
+  const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
   const powerSync = usePowerSync();
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [filteredLogs, setFilteredLogs] = useState<LogEntry[]>([]);
@@ -299,7 +301,7 @@ export default function DebugLogsScreen() {
   );
 
   return (
-    <SafeAreaView className='flex-1 bg-white dark:bg-gray-950' edges={['bottom', 'left', 'right']}>
+    <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950' edges={['bottom', 'left', 'right']}>
       <Stack.Screen
         options={{
           headerShown: true,
@@ -331,7 +333,7 @@ export default function DebugLogsScreen() {
               onClearAttachments={handleClearAttachments}
             />
 
-            <View className='mb-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950 p-3'>
+            <View className='mb-3 rounded-2xl border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 p-3'>
               <Text className='text-blue-900 dark:text-blue-100 font-semibold mb-2'>
                 Background Sync (Manual)
               </Text>
@@ -342,10 +344,10 @@ export default function DebugLogsScreen() {
               <TouchableOpacity
                 onPress={handleRunManualSync}
                 disabled={backgroundActionLoading}
-                className='flex-row items-center justify-center bg-blue-600 py-3 rounded-lg'
+                className='flex-row items-center justify-center bg-[#14110F] dark:bg-amber-400 py-3 rounded-xl'
               >
-                <Ionicons name='play-outline' size={18} color='white' />
-                <Text className='text-white font-medium ml-2'>Run Manual Sync (Runner)</Text>
+                <Ionicons name='play-outline' size={18} color={colorScheme === 'dark' ? '#14110F' : '#F7F5F1'} />
+                <Text className='text-white dark:text-[#14110F] font-medium ml-2'>Run Manual Sync (Runner)</Text>
               </TouchableOpacity>
 
               {backgroundActionResult && (
@@ -357,7 +359,7 @@ export default function DebugLogsScreen() {
 
             <View className='mb-2'>
               <TextInput
-                className='bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3 text-gray-900 dark:text-gray-100'
+                className='bg-white dark:bg-[#16140F] rounded-xl px-4 py-3 text-gray-900 dark:text-gray-100 border border-black/10 dark:border-white/10'
                 placeholder='Search logs...'
                 placeholderTextColor='#9ca3af'
                 value={searchQuery}
@@ -374,14 +376,14 @@ export default function DebugLogsScreen() {
             <View className='flex-row gap-3 mb-2'>
               <TouchableOpacity
                 onPress={handleExport}
-                className='flex-1 flex-row items-center justify-center bg-blue-600 py-3 rounded-lg'
+                className='flex-1 flex-row items-center justify-center bg-[#14110F] dark:bg-amber-400 py-3 rounded-xl'
               >
-                <Ionicons name='share-outline' size={18} color='white' />
-                <Text className='text-white font-medium ml-2'>Export</Text>
+                <Ionicons name='share-outline' size={18} color={colorScheme === 'dark' ? '#14110F' : '#F7F5F1'} />
+                <Text className='text-white dark:text-[#14110F] font-medium ml-2'>Export</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={handleClear}
-                className='flex-1 flex-row items-center justify-center bg-red-600 py-3 rounded-lg'
+                className='flex-1 flex-row items-center justify-center bg-red-600 dark:bg-red-500 py-3 rounded-xl'
               >
                 <Ionicons name='trash-outline' size={18} color='white' />
                 <Text className='text-white font-medium ml-2'>Clear</Text>
@@ -390,9 +392,9 @@ export default function DebugLogsScreen() {
 
             <TouchableOpacity
               onPress={() => router.push('/debug-env')}
-              className='flex-row items-center justify-center bg-gray-100 dark:bg-gray-800 py-3 rounded-lg mb-4'
+              className='flex-row items-center justify-center bg-white dark:bg-[#16140F] py-3 rounded-xl mb-4 border border-black/10 dark:border-white/10'
             >
-              <Ionicons name='settings-outline' size={18} color='#4b5563' />
+              <Ionicons name='settings-outline' size={18} color={iconColor} />
               <Text className='text-gray-700 dark:text-gray-300 font-medium ml-2'>
                 Environment & PowerSync Tools
               </Text>

@@ -10,6 +10,7 @@ import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import type { System } from './System';
 import { debugLogger } from '@/utils/DebugLogger';
 import { cacheBackgroundToken } from '@/services/background/BackgroundAuth';
+import { SyncEventBus } from '@/services/sync/SyncEventBus';
 import type { TokenProvider } from '../network/types';
 
 type SyncMetricName =
@@ -116,10 +117,6 @@ export class BackendConnector implements PowerSyncBackendConnector {
         return null;
       }
 
-      if (__DEV__) {
-        debugLogger.debug('AUTH', 'Clerk token', { token });
-      }
-
       await cacheBackgroundToken(token);
 
       if (!this.endpoint) {
@@ -212,11 +209,18 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
     if (result.outcome === 'business_reject') {
       this.incrementSyncMetric('sync_ack_business_reject', opCount, { table, id });
+      const serverMessage = result.message || result.error || 'Server rejected the change';
       debugLogger.warn('SYNC', 'Sync business rejection (dropping op)', {
         table,
         id,
         error: result.error,
         message: result.message
+      });
+      SyncEventBus.emit({
+        type: 'business_reject',
+        table,
+        id,
+        message: serverMessage
       });
       return;
     }

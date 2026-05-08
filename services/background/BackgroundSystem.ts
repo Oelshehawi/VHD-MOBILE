@@ -2,8 +2,9 @@ import '@azure/core-asynciterator-polyfill';
 import { fetch as expoFetch } from 'expo/fetch';
 import { PowerSyncDatabase } from '@powersync/react-native';
 import { OPSqliteOpenFactory } from '@powersync/op-sqlite';
+import { AttachmentState } from '@powersync/attachments';
 import { ApiClient, getPowerSyncUrl } from '@/services/ApiClient';
-import { getBackgroundToken } from '@/services/background/BackgroundAuth';
+import { getBackgroundToken, getForegroundPowerSyncToken, cacheBackgroundToken } from '@/services/background/BackgroundAuth';
 import { BackendConnector } from '@/services/database/BackendConnector';
 import { PhotoAttachmentQueue } from '@/services/database/PhotoAttachmentQueue';
 import { AppSchema } from '@/services/database/schema';
@@ -94,7 +95,15 @@ export class BackgroundSystem {
       return false;
     }
 
-    const token = await getBackgroundToken();
+    let token = await getBackgroundToken();
+    if (!token) {
+      const fresh = await getForegroundPowerSyncToken();
+      if (fresh) {
+        await cacheBackgroundToken(fresh);
+        token = fresh;
+      }
+    }
+
     if (!token) {
       void debugLogger.warn('AUTH', 'BackgroundSystem: no background auth token available');
       return false;
@@ -118,7 +127,14 @@ export class BackgroundSystem {
     }
 
     const rows = await this.powersync.getAll<{ count: number }>(
-      `SELECT COUNT(*) as count FROM photos WHERE cloudinaryUrl IS NULL`
+      `SELECT COUNT(*) as count
+         FROM photos p
+         JOIN attachments a ON a.id = p.id
+        WHERE p.cloudinaryUrl IS NULL
+          AND (a.state = ? OR a.state = ?)
+          AND a.failedAt IS NULL
+          AND (a.nextRetryAt IS NULL OR a.nextRetryAt <= ?)`,
+      [AttachmentState.QUEUED_UPLOAD, AttachmentState.QUEUED_SYNC, Date.now()]
     );
 
     return Number(rows[0]?.count ?? 0);

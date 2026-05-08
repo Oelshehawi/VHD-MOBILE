@@ -511,10 +511,9 @@ export function DailyAgenda({
           visible={photoModalVisible}
           onClose={() => setPhotoModalVisible(false)}
           scheduleId={selectedSchedule.id}
+          serviceJobId={selectedSchedule.serviceJobId}
           jobTitle={selectedSchedule.jobTitle}
           scheduledStartAtUtc={getScheduleStartAtUtc(selectedSchedule)}
-          timeZone={selectedSchedule.timeZone}
-          requiresReport={selectedSchedule.requiresReport}
           technicianId={userId}
         />
       )}

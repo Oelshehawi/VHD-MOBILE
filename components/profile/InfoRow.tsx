@@ -13,7 +13,7 @@ export function InfoRow({ label, value, className }: InfoRowProps) {
       <Text variant='small' className='text-gray-600 dark:text-gray-400'>
         {label}
       </Text>
-      <Text className='text-gray-800 dark:text-gray-200'>{value}</Text>
+      <Text className='text-[#14110F] dark:text-gray-100'>{value}</Text>
     </View>
   );
 }

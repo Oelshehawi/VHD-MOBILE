@@ -1,18 +1,18 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { StatusBar, View, Text, TouchableOpacity } from 'react-native';
+import { StatusBar, View, Text, TouchableOpacity, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import { Schedule, AppointmentType } from '@/types';
 import { MonthView } from './MonthView';
-import { DailyAgenda } from './DailyAgenda';
-import { WeekView } from './WeekView';
-import { InvoiceModal } from './InvoiceModal';
-import { startOfWeek, endOfWeek, format, startOfDay } from 'date-fns';
+import { ScheduleAgendaList, ScheduleWeekAgenda } from './ScheduleWeekAgenda';
+import { JobDetailModal } from './JobDetailModal';
+import { format, startOfDay } from 'date-fns';
 import {
   getLocalDateKey,
   getScheduleDateKey,
   scheduleMatchesDateKey
 } from '@/utils/scheduleTime';
+import { ASSIGNED_TO_USER_CLAUSE } from '@/services/data/sqlFragments';
 
 interface ScheduleViewProps {
   userId: string;
@@ -21,15 +21,16 @@ interface ScheduleViewProps {
   isManager: boolean;
 }
 
-type ViewMode = 'month' | 'week' | 'day';
+type ViewMode = 'week' | 'month';
 
 export function ScheduleView({ userId, currentDate, onDateChange, isManager }: ScheduleViewProps) {
+  const colorScheme = useColorScheme();
   const [selectedDate, setSelectedDate] = useState<string>(
     startOfDay(new Date(currentDate)).toISOString()
   );
-  const [viewMode, setViewMode] = useState<ViewMode>('day'); // Changed from 'month' to 'day'
-  const [invoiceModalVisible, setInvoiceModalVisible] = useState(false);
-  const [selectedScheduleForInvoice, setSelectedScheduleForInvoice] = useState<Schedule | null>(
+  const [viewMode, setViewMode] = useState<ViewMode>('week');
+  const [jobDetailVisible, setJobDetailVisible] = useState(false);
+  const [selectedScheduleForDetail, setSelectedScheduleForDetail] = useState<Schedule | null>(
     null
   );
 
@@ -52,33 +53,16 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
          WHERE datetime(scheduledStartAtUtc)
          BETWEEN datetime(?, 'start of month', '-67 days')
            AND datetime(?, 'start of month', '+67 days')
-           AND assignedTechnicians LIKE ?
+           AND (${ASSIGNED_TO_USER_CLAUSE})
          ORDER BY scheduledStartAtUtc`,
     isManager
       ? [selectedDateParam, selectedDateParam]
-      : [selectedDateParam, selectedDateParam, `%${userId}%`],
+      : [selectedDateParam, selectedDateParam, userId ?? ''],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
   const monthSchedules = useMemo<ReadonlyArray<Schedule>>(
     () => monthQuery.data ?? [],
     [monthQuery.data]
-  );
-
-  // Get schedules for the week view (current week +/- 1 week for smooth navigation)
-  const weekStart = startOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
-  const weekEnd = endOfWeek(new Date(selectedDate), { weekStartsOn: 0 });
-  const weekQuery = useQuery<Schedule>(
-    isManager
-      ? `SELECT * FROM schedules WHERE datetime(scheduledStartAtUtc) BETWEEN datetime(?, '-1 day') AND datetime(?, '+2 days') ORDER BY scheduledStartAtUtc`
-      : `SELECT * FROM schedules WHERE datetime(scheduledStartAtUtc) BETWEEN datetime(?, '-1 day') AND datetime(?, '+2 days') AND assignedTechnicians LIKE ? ORDER BY scheduledStartAtUtc`,
-    isManager
-      ? [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd')]
-      : [format(weekStart, 'yyyy-MM-dd'), format(weekEnd, 'yyyy-MM-dd'), `%${userId}%`],
-    { rowComparator: DEFAULT_ROW_COMPARATOR }
-  );
-  const weekSchedules = useMemo<ReadonlyArray<Schedule>>(
-    () => weekQuery.data ?? [],
-    [weekQuery.data]
   );
 
   // Convert schedules to appointments format for MonthView
@@ -94,13 +78,8 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
   );
 
   const schedulesForSelectedDate = useMemo(() => {
-    if (!selectedDateParam) {
-      return [];
-    }
-
-    return monthSchedules.filter((schedule) => {
-      return scheduleMatchesDateKey(schedule, selectedDateParam);
-    });
+    if (!selectedDateParam) return [];
+    return monthSchedules.filter((schedule) => scheduleMatchesDateKey(schedule, selectedDateParam));
   }, [monthSchedules, selectedDateParam]);
 
   // Function to handle day press in the MonthView
@@ -120,131 +99,103 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
     [handleDateSelection]
   );
 
-  // Helper function to safely extract technician ID
-  const getTechnicianId = (technicians: any): string => {
-    if (typeof technicians === 'string') {
-      try {
-        const parsed = JSON.parse(technicians);
-        return Array.isArray(parsed) ? parsed[0] : technicians.split(',')[0] || '';
-      } catch {
-        return technicians.split(',')[0] || '';
-      }
-    }
-    if (Array.isArray(technicians) && technicians.length > 0) {
-      return technicians[0];
-    }
-    return '';
-  };
-
-  // Handle schedule press - open invoice modal
   const handleSchedulePress = useCallback((schedule: Schedule) => {
-    setSelectedScheduleForInvoice(schedule);
-    setInvoiceModalVisible(true);
+    setSelectedScheduleForDetail(schedule);
+    setJobDetailVisible(true);
   }, []);
 
   return (
-    <SafeAreaView edges={['top']} className='flex-1 bg-white dark:bg-gray-900'>
-      <StatusBar barStyle='light-content' backgroundColor='#22543D' />
+    <SafeAreaView edges={['top']} className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>
+      <StatusBar
+        barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'}
+        backgroundColor={colorScheme === 'dark' ? '#030712' : '#F7F5F1'}
+      />
 
       {/* Tab Navigation Bar */}
-      <View className='flex-row bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800'>
-        <TouchableOpacity
-          className={`flex-1 py-4 items-center border-b-2 ${
-            viewMode === 'day' ? 'border-blue-500' : 'border-transparent'
-          }`}
-          onPress={() => setViewMode('day')}
-        >
-          <Text
-            className={`font-semibold ${
-              viewMode === 'day' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
-            }`}
+      <View className='border-b border-black/10 bg-[#F7F5F1] px-4 pb-3 pt-2 dark:border-white/10 dark:bg-gray-950'>
+        <View className='mb-3 flex-row items-center justify-between'>
+          <Text className='text-2xl font-bold text-[#14110F] dark:text-white'>Schedule</Text>
+          <TouchableOpacity
+            onPress={() => handleDateSelection(new Date().toISOString())}
+            className='h-10 items-center justify-center rounded-xl border border-black/15 bg-white px-3 dark:border-white/20 dark:bg-[#16140F]'
           >
-            Day
-          </Text>
-        </TouchableOpacity>
+            <Text className='font-mono text-sm font-bold text-[#14110F] dark:text-white'>
+              Today
+            </Text>
+          </TouchableOpacity>
+        </View>
 
-        <TouchableOpacity
-          className={`flex-1 py-4 items-center border-b-2 ${
-            viewMode === 'week' ? 'border-blue-500' : 'border-transparent'
-          }`}
-          onPress={() => setViewMode('week')}
-        >
-          <Text
-            className={`font-semibold ${
-              viewMode === 'week' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
+        <View className='flex-row rounded-xl bg-[#F0EDE6] p-1 dark:bg-[#16140F]'>
+          <TouchableOpacity
+            className={`flex-1 rounded-lg py-3 items-center ${
+              viewMode === 'week' ? 'bg-white dark:bg-[#2A261D]' : ''
             }`}
+            onPress={() => setViewMode('week')}
           >
-            Week
-          </Text>
-        </TouchableOpacity>
+            <Text
+              className={`font-semibold ${
+                viewMode === 'week' ? 'text-[#14110F] dark:text-white' : 'text-gray-500 dark:text-gray-400'
+              }`}
+            >
+              Week
+            </Text>
+          </TouchableOpacity>
 
-        <TouchableOpacity
-          className={`flex-1 py-4 items-center border-b-2 ${
-            viewMode === 'month' ? 'border-blue-500' : 'border-transparent'
-          }`}
-          onPress={() => setViewMode('month')}
-        >
-          <Text
-            className={`font-semibold ${
-              viewMode === 'month' ? 'text-blue-500' : 'text-gray-500 dark:text-gray-400'
+          <TouchableOpacity
+            className={`flex-1 rounded-lg py-3 items-center ${
+              viewMode === 'month' ? 'bg-white dark:bg-[#2A261D]' : ''
             }`}
+            onPress={() => setViewMode('month')}
           >
-            Month
-          </Text>
-        </TouchableOpacity>
+            <Text
+              className={`font-semibold ${
+                viewMode === 'month' ? 'text-[#14110F] dark:text-white' : 'text-gray-500 dark:text-gray-400'
+              }`}
+            >
+              Month
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Conditional View Rendering */}
-      {viewMode === 'month' && (
-        <>
-          {/* Month Calendar */}
-          <MonthView
-            currentDate={currentDate}
-            onDateChange={handleDateSelection}
-            appointments={appointments}
-            onDayPress={handleDayPress}
-          />
-
-          {/* Daily Schedule - now without severe weather alert */}
-          <DailyAgenda
-            selectedDate={selectedDate}
-            schedules={schedulesForSelectedDate}
-            isManager={isManager}
-            userId={userId}
-            showSevereWeatherAlert={false} // Hide weather alert in month view
-            onInvoicePress={handleSchedulePress} // Pass callback to open invoice modal
-          />
-        </>
-      )}
-
       {viewMode === 'week' && (
-        <WeekView
-          schedules={weekSchedules}
+        <ScheduleWeekAgenda
+          schedules={monthSchedules}
           selectedDate={selectedDate}
-          onDateSelect={handleDayPress}
+          onDateChange={handleDateSelection}
           onSchedulePress={handleSchedulePress}
         />
       )}
 
-      {viewMode === 'day' && (
-        <DailyAgenda
-          selectedDate={selectedDate}
-          schedules={schedulesForSelectedDate}
-          isManager={isManager}
-          userId={userId}
-          onDateChange={handleDateSelection} // Enable navigation in day view
-          showSevereWeatherAlert={true} // Show weather alert in day view
-          onInvoicePress={handleSchedulePress} // Pass callback to open invoice modal
-        />
+      {viewMode === 'month' && (
+        <View className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>
+          <MonthView
+            currentDate={selectedDate}
+            onDateChange={handleDateSelection}
+            appointments={appointments}
+            onDayPress={handleDayPress}
+          />
+          <View className='flex-1 border-t border-black/10 pt-3 dark:border-white/10'>
+            <View className='px-4 pb-1'>
+              <Text className='text-xs font-bold uppercase tracking-widest text-gray-500 dark:text-gray-400'>
+                {format(startOfDay(new Date(selectedDate)), 'EEE, MMM d')}
+              </Text>
+            </View>
+            <ScheduleAgendaList
+              schedules={schedulesForSelectedDate}
+              onSchedulePress={handleSchedulePress}
+            />
+          </View>
+        </View>
       )}
 
-      {/* Invoice Modal */}
-      {selectedScheduleForInvoice && (
-        <InvoiceModal
-          visible={invoiceModalVisible}
-          onClose={() => setInvoiceModalVisible(false)}
-          scheduleId={selectedScheduleForInvoice.id}
-          technicianId={getTechnicianId(selectedScheduleForInvoice.assignedTechnicians)}
+      {selectedScheduleForDetail && (
+        <JobDetailModal
+          visible={jobDetailVisible}
+          onClose={() => setJobDetailVisible(false)}
+          scheduleId={selectedScheduleForDetail.id}
+          technicianId={userId}
           isManager={isManager}
         />
       )}

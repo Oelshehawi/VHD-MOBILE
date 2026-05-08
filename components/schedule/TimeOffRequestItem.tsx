@@ -23,12 +23,12 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'approved':
-        return 'bg-green-100 dark:bg-green-900';
+        return 'bg-green-50 dark:bg-green-950/40';
       case 'rejected':
-        return 'bg-red-100 dark:bg-red-900';
+        return 'bg-red-50 dark:bg-red-950/40';
       case 'pending':
       default:
-        return 'bg-yellow-100 dark:bg-yellow-900';
+        return 'bg-amber-50 dark:bg-[#1F1C16]';
     }
   };
 
@@ -60,7 +60,11 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
   const dateRange = formatDateRange(request.startDate || '', request.endDate || '');
 
   return (
-    <View className={`${getStatusColor(request.status || '')} p-4 rounded-lg mb-3`}>
+    <View
+      className={`${getStatusColor(
+        request.status || ''
+      )} mb-3 rounded-2xl border border-black/10 p-4 dark:border-white/10`}
+    >
       {/* Header with status */}
       <View className='flex-row items-center justify-between mb-3'>
         <View className='flex-row items-center flex-1'>
@@ -85,7 +89,7 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
 
       {/* Date range */}
       <View className='flex-row items-center mb-2'>
-        <Ionicons name='calendar-outline' size={16} color='#666' />
+        <Ionicons name='calendar-outline' size={16} color='#76706A' />
         <Text className='ml-2 text-gray-800 dark:text-gray-200 font-semibold'>{dateRange}</Text>
       </View>
 
@@ -126,7 +130,7 @@ export const TimeOffRequestItem: React.FC<TimeOffRequestItemProps> = ({
           {onCancel && (
             <TouchableOpacity
               onPress={() => onCancel(request.id!)}
-              className='flex-1 bg-red-500 p-3 rounded flex-row items-center justify-center'
+              className='flex-1 flex-row items-center justify-center rounded-xl bg-red-600 p-3'
             >
               <Ionicons name='trash' size={16} color='white' />
               <Text className='text-white font-semibold ml-2'>Cancel</Text>

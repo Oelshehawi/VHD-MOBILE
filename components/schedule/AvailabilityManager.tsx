@@ -6,7 +6,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  Switch
+  Switch,
+  useColorScheme
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,7 +38,7 @@ interface AvailabilityFormData {
 
 /**
  * AvailabilityManager Component
- * Main screen for managing technician availability
+ * Main screen for managing technician unavailable-time blocks
  */
 export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   onNavigateBack
@@ -45,6 +46,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const powerSync = usePowerSync();
+  const colorScheme = useColorScheme();
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showConfirmation, setShowConfirmation] = useState(false);
@@ -61,7 +63,10 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     specificDate: undefined
   });
 
-  // Fetch availability from PowerSync
+  const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
+  const primaryIconColor = colorScheme === 'dark' ? '#14110F' : '#FFFFFF';
+
+  // Fetch unavailable blocks from PowerSync
   const { data: availabilityData } = useQuery(
     `SELECT * FROM availabilities WHERE technicianId = ? ORDER BY createdAt DESC`,
     [user?.id || '']
@@ -85,15 +90,15 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     }));
   };
 
-  // Validate and save availability
+  // Validate and save unavailable block
   const handleSave = async () => {
     // Validation
-    if (!formData.startTime || !formData.endTime) {
+    if (!formData.isFullDay && (!formData.startTime || !formData.endTime)) {
       showError('Please select start and end times');
       return;
     }
 
-    if (!validateTimeRange(formData.startTime, formData.endTime)) {
+    if (!formData.isFullDay && !validateTimeRange(formData.startTime, formData.endTime)) {
       showError('Start time must be before end time');
       return;
     }
@@ -119,11 +124,12 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     const startTime12 = `${formatTimeReadable(formData.startTime)}`;
     const endTime12 = `${formatTimeReadable(formData.endTime)}`;
 
-    setConfirmationMessage(
-      `Save availability: ${
-        formData.isRecurring ? getDayName(formData.dayOfWeek!) : formData.specificDate
-      } ${startTime12} - ${endTime12}?`
-    );
+    const blockLabel = formData.isRecurring
+      ? getDayName(formData.dayOfWeek!)
+      : formData.specificDate;
+    const timeLabel = formData.isFullDay ? 'Full day' : `${startTime12} - ${endTime12}`;
+
+    setConfirmationMessage(`Save unavailable block: ${blockLabel} ${timeLabel}?`);
     setConfirmationAction(() => submitAvailability);
     setShowConfirmation(true);
   };
@@ -143,25 +149,42 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
     setIsSaving(true);
     try {
-      const availabilityId = formData.availabilityId || generateObjectId();
+      const nowIso = new Date().toISOString();
 
-      // Insert or update in PowerSync
-      await powerSync.execute(
-        `INSERT INTO availabilities (id, technicianId, dayOfWeek, startTime, endTime, isFullDay, isRecurring, specificDate, createdAt, updatedAt)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          availabilityId,
-          user.id,
-          formData.isRecurring ? (formData.dayOfWeek ?? null) : null,
-          formData.startTime,
-          formData.endTime,
-          formData.isFullDay ? 1 : 0,
-          formData.isRecurring ? 1 : 0,
-          formData.isRecurring ? null : (formData.specificDate ?? null),
-          new Date().toISOString(),
-          new Date().toISOString()
-        ]
-      );
+      if (formData.availabilityId) {
+        await powerSync.execute(
+          `UPDATE availabilities
+              SET dayOfWeek = ?, startTime = ?, endTime = ?, isFullDay = ?, isRecurring = ?, specificDate = ?, updatedAt = ?
+            WHERE id = ?`,
+          [
+            formData.isRecurring ? (formData.dayOfWeek ?? null) : null,
+            formData.startTime,
+            formData.endTime,
+            formData.isFullDay ? 1 : 0,
+            formData.isRecurring ? 1 : 0,
+            formData.isRecurring ? null : (formData.specificDate ?? null),
+            nowIso,
+            formData.availabilityId
+          ]
+        );
+      } else {
+        await powerSync.execute(
+          `INSERT INTO availabilities (id, technicianId, dayOfWeek, startTime, endTime, isFullDay, isRecurring, specificDate, createdAt, updatedAt)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            generateObjectId(),
+            user.id,
+            formData.isRecurring ? (formData.dayOfWeek ?? null) : null,
+            formData.startTime,
+            formData.endTime,
+            formData.isFullDay ? 1 : 0,
+            formData.isRecurring ? 1 : 0,
+            formData.isRecurring ? null : (formData.specificDate ?? null),
+            nowIso,
+            nowIso
+          ]
+        );
+      }
 
       // Reset form
       setFormData({
@@ -174,7 +197,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
       setIsEditing(false);
       setShowConfirmation(false);
 
-      Alert.alert('Success', 'Availability saved successfully');
+      Alert.alert('Success', 'Unavailable block saved successfully');
     } catch (error) {
       showError(error instanceof Error ? error.message : 'Unknown error');
     } finally {
@@ -182,14 +205,14 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     }
   };
 
-  // Delete availability
+  // Delete unavailable block
   const handleDelete = (availabilityId: string) => {
-    setConfirmationMessage('Delete this availability block?');
+    setConfirmationMessage('Delete this unavailable block?');
     setConfirmationAction(() => async () => {
       try {
         setIsSaving(true);
         await powerSync.execute(`DELETE FROM availabilities WHERE id = ?`, [availabilityId]);
-        Alert.alert('Success', 'Availability deleted successfully');
+        Alert.alert('Success', 'Unavailable block deleted successfully');
       } catch (error) {
         showError(error instanceof Error ? error.message : 'Failed to delete');
       } finally {
@@ -200,13 +223,13 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
     setShowConfirmation(true);
   };
 
-  // Edit availability
+  // Edit unavailable block
   const _handleEdit = (av: Availability) => {
     setFormData({
       availabilityId: av.id,
       dayOfWeek: av.dayOfWeek ?? undefined,
-      startTime: av.startTime || 'null',
-      endTime: av.endTime || 'null',
+      startTime: av.startTime || '09:00',
+      endTime: av.endTime || '17:00',
       isFullDay: av.isFullDay === 1,
       isRecurring: av.isRecurring === 1,
       specificDate: av.specificDate || undefined
@@ -221,49 +244,50 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   return (
     <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
-      className='flex-1 bg-gray-50 dark:bg-gray-900'
+      className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'
     >
-      <ScrollView className='flex-1 bg-gray-50 dark:bg-gray-900'>
+      <ScrollView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>
         <View className='p-4'>
           {/* Header */}
           <View className='flex-row items-center justify-between mb-6'>
             <View>
-              <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
-                Manage Availability
+              <Text className='text-2xl font-bold text-[#14110F] dark:text-white'>
+                Unavailable Time
               </Text>
-              <Text className='text-gray-600 dark:text-gray-400 mt-1'>
-                Set your work availability
+              <Text className='mt-1 max-w-xs text-gray-600 dark:text-gray-300'>
+                Add times you cannot work. No block means you are available.
               </Text>
             </View>
             {onNavigateBack && (
               <TouchableOpacity onPress={onNavigateBack}>
-                <Ionicons name='close' size={24} color='#666' />
+                <Ionicons name='close' size={24} color={iconColor} />
               </TouchableOpacity>
             )}
           </View>
 
           {/* Form Section */}
-          <View className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-6'>
-            <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
-              {isEditing ? 'Edit Availability' : 'Add Availability Block'}
+          <View className='mb-6 rounded-2xl border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#16140F]'>
+            <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
+              {isEditing ? 'Edit Unavailable Block' : 'Add Unavailable Block'}
             </Text>
 
             {/* Recurring toggle */}
             <View className='flex-row items-center justify-between mb-4'>
-              <Text className='text-gray-700 dark:text-gray-300 font-semibold'>
-                Recurring Pattern
+              <Text className='font-semibold text-gray-700 dark:text-gray-300'>
+                Repeats weekly
               </Text>
               <Switch
                 value={formData.isRecurring}
                 onValueChange={handleRecurringChange}
-                trackColor={{ false: '#767577', true: '#81c784' }}
+                trackColor={{ false: '#76706A', true: '#FBBF24' }}
+                thumbColor={formData.isRecurring ? '#F59E0B' : '#F2EFEA'}
               />
             </View>
 
             {/* Day of week selector (for recurring) */}
             {formData.isRecurring && (
               <View className='mb-4'>
-                <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>
+                <Text className='mb-2 font-semibold text-gray-700 dark:text-gray-300'>
                   Day of Week
                 </Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} className='mb-4'>
@@ -271,16 +295,16 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
                     <TouchableOpacity
                       key={day}
                       onPress={() => handleFieldChange('dayOfWeek', index)}
-                      className={`mr-2 p-3 rounded-lg ${
+                      className={`mr-2 rounded-xl px-4 py-3 ${
                         formData.dayOfWeek === index
-                          ? 'bg-blue-500'
-                          : 'bg-gray-200 dark:bg-gray-700'
+                          ? 'bg-[#14110F] dark:bg-amber-400'
+                          : 'bg-[#F0EDE6] dark:bg-[#1F1C16]'
                       }`}
                     >
                       <Text
                         className={
                           formData.dayOfWeek === index
-                            ? 'text-white font-semibold'
+                            ? 'font-semibold text-white dark:text-[#14110F]'
                             : 'text-gray-900 dark:text-white'
                         }
                       >
@@ -294,7 +318,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
             {!formData.isRecurring && (
               <DatePickerInput
-                label='Specific Date'
+                label='Unavailable Date'
                 value={formData.specificDate}
                 onChange={(date) => handleFieldChange('specificDate', date)}
               />
@@ -302,11 +326,14 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
             {/* Full day toggle */}
             <View className='flex-row items-center justify-between mb-4'>
-              <Text className='text-gray-700 dark:text-gray-300 font-semibold'>Full Day</Text>
+              <Text className='font-semibold text-gray-700 dark:text-gray-300'>
+                Unavailable All Day
+              </Text>
               <Switch
                 value={formData.isFullDay}
                 onValueChange={(value) => handleFieldChange('isFullDay', value)}
-                trackColor={{ false: '#767577', true: '#81c784' }}
+                trackColor={{ false: '#76706A', true: '#FBBF24' }}
+                thumbColor={formData.isFullDay ? '#F59E0B' : '#F2EFEA'}
               />
             </View>
 
@@ -314,12 +341,12 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
             {!formData.isFullDay && (
               <>
                 <TimePickerInput
-                  label='Start Time'
+                  label='Unavailable Start'
                   value={formData.startTime}
                   onChange={(time) => handleFieldChange('startTime', time)}
                 />
                 <TimePickerInput
-                  label='End Time'
+                  label='Unavailable End'
                   value={formData.endTime}
                   onChange={(time) => handleFieldChange('endTime', time)}
                 />
@@ -340,25 +367,25 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
                       isRecurring: true
                     });
                   }}
-                  className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
+                  className='flex-1 rounded-xl bg-[#F0EDE6] p-4 dark:bg-[#2A261D]'
                   disabled={isSaving}
                 >
-                  <Text className='text-center font-semibold text-gray-900 dark:text-white'>
+                  <Text className='text-center font-semibold text-[#14110F] dark:text-white'>
                     Cancel
                   </Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 onPress={handleSave}
-                className='flex-1 bg-blue-500 p-4 rounded-lg flex-row items-center justify-center'
+                className='flex-1 flex-row items-center justify-center rounded-xl bg-[#14110F] p-4 dark:bg-amber-400'
                 disabled={isSaving}
               >
                 {isSaving ? (
-                  <ActivityIndicator color='white' size='small' />
+                  <ActivityIndicator color={primaryIconColor} size='small' />
                 ) : (
                   <>
-                    <Ionicons name='checkmark' size={20} color='white' />
-                    <Text className='text-white font-semibold ml-2'>
+                    <Ionicons name='checkmark' size={20} color={primaryIconColor} />
+                    <Text className='ml-2 font-semibold text-white dark:text-[#14110F]'>
                       {isEditing ? 'Update' : 'Add'}
                     </Text>
                   </>
@@ -369,32 +396,32 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
           {/* Calendar View */}
           <View className='mb-6'>
-            <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
-              Your Availability
+            <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
+              Blocked Time
             </Text>
             <AvailabilityCalendar availability={availability} />
           </View>
 
-          {/* Availability List */}
+          {/* Unavailable block list */}
           {availability.length > 0 && (
             <View className='mb-6'>
-              <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
-                Manage Blocks
+              <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
+                Unavailability Blocks
               </Text>
               {availability.map((av) => (
                 <View
                   key={av.id}
-                  className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-3 flex-row items-center justify-between'
+                  className='mb-3 flex-row items-center justify-between rounded-2xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-[#16140F]'
                 >
                   <View className='flex-1'>
-                    <Text className='text-gray-900 dark:text-white font-semibold'>
+                    <Text className='font-semibold text-[#14110F] dark:text-white'>
                       {formatAvailabilityDisplay(av)}
                     </Text>
                   </View>
                   <View className='flex-row gap-2'>
                     <TouchableOpacity
                       onPress={() => handleDelete(av.id!)}
-                      className='p-2 bg-red-100 dark:bg-red-900 rounded-lg'
+                      className='rounded-xl bg-red-100 p-2 dark:bg-red-950/70'
                       disabled={isSaving}
                     >
                       <Ionicons name='trash' size={16} color='#ef4444' />

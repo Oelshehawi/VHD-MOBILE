@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Dimensions } from 'react-native';
+import { View, Text, Pressable, ScrollView, Dimensions } from 'react-native';
 import { format, isSameMonth, isSameDay, isToday, startOfDay } from 'date-fns';
 import { AppointmentType } from '@/types';
 import { getMonthDays } from '@/utils/calendar';
@@ -53,14 +53,14 @@ const MonthDayCell = React.memo(
     }, [onPress, date]);
 
     return (
-      <TouchableOpacity
+      <Pressable
         style={{
           width: DAY_WIDTH,
           height: DAY_HEIGHT
         }}
-        className={`border-[0.5px] border-gray-200 dark:border-gray-800 p-1 ${
-          isSelected ? 'bg-gray-100 dark:bg-gray-800' : ''
-        } ${isToday ? 'border-blue-500 border-[1.5px]' : ''}`}
+        className={`border-[0.5px] border-black/10 p-1 active:bg-gray-50 dark:border-white/10 dark:active:bg-[#1F1C16] ${
+          isSelected ? 'bg-[#14110F] dark:bg-amber-400' : 'bg-[#F7F5F1] dark:bg-gray-950'
+        } ${isToday && !isSelected ? 'border-[#14110F] dark:border-amber-400 border-[1.5px]' : ''}`}
         onPress={handlePress}
       >
         <View className='flex-1'>
@@ -72,7 +72,11 @@ const MonthDayCell = React.memo(
                 <View key={apt.id} className='mb-0.5'>
                   <View
                     className={`h-1 rounded-full ${
-                      apt.status === 'confirmed' ? 'bg-darkGreen' : 'bg-blue-500'
+                      isSelected
+                        ? 'bg-amber-200 dark:bg-[#14110F]'
+                        : apt.status === 'confirmed'
+                          ? 'bg-darkGreen'
+                          : 'bg-blue-500'
                     }`}
                   />
                 </View>
@@ -80,7 +84,7 @@ const MonthDayCell = React.memo(
             </View>
           )}
         </View>
-      </TouchableOpacity>
+      </Pressable>
     );
   }
 );
@@ -158,21 +162,25 @@ export function MonthView({ currentDate, onDateChange, appointments, onDayPress 
     isCurrentDay: boolean,
     isSelected: boolean
   ) => {
-    let baseStyle = 'text-sm ';
+    let baseStyle = 'text-sm font-mono ';
+
+    if (isSelected) {
+      return `${baseStyle}font-bold text-[#F7F5F1] dark:text-[#14110F]`;
+    }
 
     // Sunday text is red
     if (date.getDay() === 0) {
-      baseStyle += 'text-red-500 ';
+      baseStyle += 'text-red-500 dark:text-red-300 ';
     }
     // Today's date is blue and bold
     else if (isCurrentDay) {
-      baseStyle += 'text-blue-500 font-bold ';
+      baseStyle += 'text-[#14110F] dark:text-amber-400 font-bold ';
     }
     // Current month dates are dark in light mode, light in dark mode
     // Other month dates are dimmed
     else {
       baseStyle += isCurrentMonth
-        ? 'text-gray-800 dark:text-gray-200 '
+        ? 'text-[#14110F] dark:text-white '
         : 'text-gray-400 dark:text-gray-600 ';
     }
 
@@ -185,16 +193,16 @@ export function MonthView({ currentDate, onDateChange, appointments, onDayPress 
   };
 
   return (
-    <View className='flex-1 bg-white dark:bg-gray-950'>
+    <View className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>
       <MonthHeader currentDate={currentDateObj} onMonthChange={handleMonthChange} />
 
       {/* Weekday Headers */}
-      <View className='flex-row border-b border-gray-200 dark:border-gray-800'>
+      <View className='flex-row border-y border-black/10 bg-[#F0EDE6] dark:border-white/10 dark:bg-[#16140F]'>
         {WEEKDAYS.map((day) => (
           <View key={day.key} style={{ width: DAY_WIDTH }} className='py-2 items-center'>
             <Text
-              className={`text-sm font-medium ${
-                day.key === 'sun' ? 'text-red-500' : 'text-gray-600 dark:text-gray-400'
+              className={`text-xs font-bold uppercase ${
+                day.key === 'sun' ? 'text-red-500 dark:text-red-300' : 'text-gray-500 dark:text-gray-400'
               }`}
             >
               {day.label}

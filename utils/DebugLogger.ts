@@ -1,62 +1,180 @@
 import { File, Paths } from 'expo-file-system';
 
+type LogLevel = 'info' | 'warn' | 'error' | 'debug';
+
 interface LogEntry {
   timestamp: string;
-  level: 'info' | 'warn' | 'error' | 'debug';
+  level: LogLevel;
   category: string;
   message: string;
   data?: any;
+}
+
+const LOG_LEVEL_PRIORITY: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40
+};
+
+const DEFAULT_LOG_LEVEL: LogLevel = 'warn';
+const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]+?\.[A-Za-z0-9_-]+?\.[A-Za-z0-9_-]+/g;
+const EXPO_PUSH_TOKEN_PATTERN = /ExponentPushToken\[[^\]]+\]/g;
+
+function parseLogLevel(value: string | undefined): LogLevel {
+  if (value === 'debug' || value === 'info' || value === 'warn' || value === 'error') {
+    return value;
+  }
+  return DEFAULT_LOG_LEVEL;
+}
+
+function parseCategorySet(value: string | undefined): Set<string> {
+  return new Set(
+    (value ?? '')
+      .split(',')
+      .map((category) => category.trim().toUpperCase())
+      .filter(Boolean)
+  );
+}
+
+function isEnabled(value: string | undefined): boolean {
+  return value === 'true' || value === '1';
+}
+
+function isSensitiveKey(key: string): boolean {
+  const normalized = key.toLowerCase();
+  return (
+    normalized === 'token' ||
+    normalized.endsWith('token') ||
+    normalized === 'authorization' ||
+    normalized === 'authheader' ||
+    normalized === 'jwt' ||
+    normalized === 'secret' ||
+    normalized.endsWith('secret') ||
+    normalized === 'password' ||
+    normalized === 'credential' ||
+    normalized.endsWith('credential') ||
+    normalized === 'credentials'
+  );
+}
+
+function redactString(value: string): string {
+  return value
+    .replace(JWT_PATTERN, '[REDACTED_JWT]')
+    .replace(EXPO_PUSH_TOKEN_PATTERN, '[REDACTED_EXPO_PUSH_TOKEN]');
+}
+
+function redactData(value: any): any {
+  if (typeof value === 'string') {
+    return redactString(value);
+  }
+
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: redactString(value.message)
+    };
+  }
+
+  if (Array.isArray(value)) {
+    return value.map(redactData);
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, item]) => [
+      key,
+      isSensitiveKey(key) ? '[REDACTED]' : redactData(item)
+    ])
+  );
 }
 
 class DebugLogger {
   private logFilePath: string;
   private maxLogSize = 5 * 1024 * 1024; // 5MB max log file
   private maxLogEntries = 1000; // Keep last 1000 entries
+  private verboseLoggingEnabled = isEnabled(process.env.EXPO_PUBLIC_ENABLE_DEBUG_LOGS);
+  private consoleLevel = parseLogLevel(process.env.EXPO_PUBLIC_LOG_LEVEL);
+  private verboseCategories = parseCategorySet(process.env.EXPO_PUBLIC_LOG_CATEGORIES);
+  private logToFile = process.env.EXPO_PUBLIC_LOG_TO_FILE === 'true';
 
   constructor() {
     this.logFilePath = new File(Paths.document, 'debug_logs.json').uri;
   }
 
-  async log(
-    level: 'info' | 'warn' | 'error' | 'debug',
-    category: string,
-    message: string,
-    data?: any
-  ) {
+  async log(level: LogLevel, category: string, message: string, data?: any) {
+    const normalizedCategory = category.toUpperCase();
+    const shouldEmit = this.shouldEmit(level, normalizedCategory);
+    const shouldWrite = shouldEmit && (this.logToFile || LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY.warn);
+
+    if (!shouldEmit && !shouldWrite) {
+      return;
+    }
+
+    const redactedData = redactData(data);
     const entry: LogEntry = {
       timestamp: new Date().toISOString(),
       level,
-      category,
+      category: normalizedCategory,
       message,
-      data: data ? (typeof data === 'string' ? data : JSON.stringify(data)) : undefined
+      data: redactedData
+        ? typeof redactedData === 'string'
+          ? redactedData
+          : JSON.stringify(redactedData)
+        : undefined
     };
 
     try {
       // Also log to console for development
-      if (__DEV__) {
-        const consoleMessage = `[${category}] ${message}`;
+      if (__DEV__ && shouldEmit) {
+        const consoleMessage = `[${normalizedCategory}] ${message}`;
         switch (level) {
           case 'error':
-            console.error(consoleMessage, data || '');
+            console.error(consoleMessage, redactedData || '');
             break;
           case 'warn':
-            console.warn(consoleMessage, data || '');
+            console.warn(consoleMessage, redactedData || '');
             break;
           case 'debug':
-            console.debug(consoleMessage, data || '');
+            console.debug(consoleMessage, redactedData || '');
             break;
           default:
-            console.log(consoleMessage, data || '');
+            console.log(consoleMessage, redactedData || '');
         }
       }
 
-      await this.writeLogEntry(entry);
+      if (shouldWrite) {
+        await this.writeLogEntry(entry);
+      }
     } catch (error) {
       // Silent failure to prevent log errors from breaking the app
       if (__DEV__) {
         console.error('Failed to write log:', error);
       }
     }
+  }
+
+  private shouldEmit(level: LogLevel, category: string): boolean {
+    if (LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY.warn) {
+      return true;
+    }
+
+    if (!this.verboseLoggingEnabled) {
+      return false;
+    }
+
+    if (
+      this.verboseCategories.has('ALL') ||
+      this.verboseCategories.has('*') ||
+      this.verboseCategories.has(category)
+    ) {
+      return true;
+    }
+
+    return LOG_LEVEL_PRIORITY[level] >= LOG_LEVEL_PRIORITY[this.consoleLevel];
   }
 
   private async writeLogEntry(entry: LogEntry) {

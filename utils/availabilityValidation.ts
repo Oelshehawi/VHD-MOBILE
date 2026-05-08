@@ -54,9 +54,9 @@ export function isWithin14Days(date: string): boolean {
 }
 
 /**
- * Validate that availability records don't overlap
- * @param existingAvailability Array of existing availability records
- * @param newAvailability New availability record to check
+ * Validate that unavailable-time blocks don't overlap
+ * @param existingAvailability Array of existing unavailable-time blocks
+ * @param newAvailability New unavailable-time block to check
  * @returns error message if conflict found, null if no conflict
  */
 export function validateNoConflicts(
@@ -66,6 +66,7 @@ export function validateNoConflicts(
     startTime: string;
     endTime: string;
     isRecurring: boolean;
+    isFullDay?: boolean;
     specificDate?: string;
     availabilityId?: string;
   }
@@ -89,6 +90,12 @@ export function validateNoConflicts(
         existing.isRecurring &&
         newAvailability.dayOfWeek === existing.dayOfWeek
       ) {
+        if (newAvailability.isFullDay || existing.isFullDay === 1) {
+          return `Overlapping unavailable block exists for ${getDayName(
+            newAvailability.dayOfWeek!
+          )}`;
+        }
+
         const [existStartHour, existStartMin] = (existing.startTime || '').split(':').map(Number);
         const [existEndHour, existEndMin] = (existing.endTime || '').split(':').map(Number);
 
@@ -97,7 +104,7 @@ export function validateNoConflicts(
 
         // Check for overlap
         if (newStartMinutes < existEndMinutes && newEndMinutes > existStartMinutes) {
-          return `Overlapping availability block exists for ${getDayName(
+          return `Overlapping unavailable block exists for ${getDayName(
             newAvailability.dayOfWeek!
           )}`;
         }
@@ -109,6 +116,12 @@ export function validateNoConflicts(
         !existing.isRecurring &&
         newAvailability.specificDate === existing.specificDate
       ) {
+        const dateStr = format(parseISO(newAvailability.specificDate!), 'MMM d, yyyy');
+
+        if (newAvailability.isFullDay || existing.isFullDay === 1) {
+          return `Overlapping unavailable block exists on ${dateStr}`;
+        }
+
         const [existStartHour, existStartMin] = (existing.startTime || '').split(':').map(Number);
         const [existEndHour, existEndMin] = (existing.endTime || '').split(':').map(Number);
 
@@ -117,15 +130,14 @@ export function validateNoConflicts(
 
         // Check for overlap
         if (newStartMinutes < existEndMinutes && newEndMinutes > existStartMinutes) {
-          const dateStr = format(parseISO(newAvailability.specificDate!), 'MMM d, yyyy');
-          return `Overlapping availability block exists on ${dateStr}`;
+          return `Overlapping unavailable block exists on ${dateStr}`;
         }
       }
     }
 
     return null;
   } catch {
-    return 'Error validating availability';
+    return 'Error validating unavailable block';
   }
 }
 
@@ -181,26 +193,27 @@ export function formatTimeToHHmm(time: string | Date): string {
 }
 
 /**
- * Format availability for UI display
+ * Format unavailable-time block for UI display
  * @param availability Availability record
  * @returns Formatted string like "Monday 9:00 AM - 5:00 PM" or "Dec 15, 2024 2:00 PM - 6:00 PM"
  */
 export function formatAvailabilityDisplay(availability: Availability): string {
   try {
+    const isFullDay = availability.isFullDay === 1;
     const startTime = formatTo12Hour(availability.startTime || '00:00');
     const endTime = formatTo12Hour(availability.endTime || '00:00');
 
     if (availability.isRecurring && availability.dayOfWeek !== null) {
       const dayName = getDayName(availability.dayOfWeek!);
-      return `${dayName} ${startTime} - ${endTime}`;
+      return isFullDay ? `${dayName} Full day` : `${dayName} ${startTime} - ${endTime}`;
     } else if (availability.specificDate) {
       const dateStr = format(parseISO(availability.specificDate), 'MMM d, yyyy');
-      return `${dateStr} ${startTime} - ${endTime}`;
+      return isFullDay ? `${dateStr} Full day` : `${dateStr} ${startTime} - ${endTime}`;
     }
 
-    return `${startTime} - ${endTime}`;
+    return isFullDay ? 'Full day' : `${startTime} - ${endTime}`;
   } catch {
-    return 'Invalid availability';
+    return 'Invalid unavailable block';
   }
 }
 

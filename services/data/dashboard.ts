@@ -1,5 +1,6 @@
 import { useQuery } from '@powersync/react-native';
 import { Schedule, PayrollPeriod, PayrollSchedule } from '@/types';
+import { ASSIGNED_TO_USER_CLAUSE } from './sqlFragments';
 
 /**
  * Helper function to get formatted date strings with timezone handling
@@ -63,9 +64,9 @@ export function usePayrollSchedules(
       s.location
      FROM schedules s
      WHERE (? IS NULL OR s.payrollPeriod = ?)
-     AND (? = true OR s.assignedTechnicians LIKE ?)
+     AND (? = true OR (${ASSIGNED_TO_USER_CLAUSE}))
      ORDER BY s.scheduledStartAtUtc ASC`,
-    [payrollId, payrollId, isManager, userId ? `%${userId}%` : '']
+    [payrollId, payrollId, isManager, userId ?? '']
   );
 
   return query;

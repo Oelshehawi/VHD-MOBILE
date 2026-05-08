@@ -1,3 +1,4 @@
+import type { PhotoCategoryKind } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform, Alert, ToastAndroid } from 'react-native';
 
@@ -9,8 +10,14 @@ export interface PhotoType {
   timestamp: string;
   technicianId: string;
   signerName?: string | null;
+  photoCategoryKey?: string | null;
+  photoCategoryLabel?: string | null;
+  photoCategoryKind?: PhotoCategoryKind | null;
   local_uri?: string | null;
   filename?: string | null;
+  failedAt?: number | null;
+  lastError?: string | null;
+  errorCategory?: string | null;
 }
 
 export const showToast = (message: string) => {

@@ -30,6 +30,7 @@ interface JobSection {
 
 interface JobPhotoHistoryProps {
   scheduleId: string;
+  serviceJobId?: string | null;
   jobTitle: string;
 }
 
@@ -44,9 +45,12 @@ interface HistoryRow {
   timestamp: string | null;
   signerName: string | null;
   technicianId: string | null;
+  photoCategoryKey: string | null;
+  photoCategoryLabel: string | null;
+  photoCategoryKind: PhotoType['photoCategoryKind'] | null;
 }
 
-export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) {
+export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhotoHistoryProps) {
   const { width } = useWindowDimensions();
 
   const [galleryVisible, setGalleryVisible] = useState(false);
@@ -57,16 +61,26 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
   const thumbnailSize = useMemo(() => Math.floor((width - 64) / 3), [width]);
 
   const { data: historyRows = [], isLoading: isHistoryLoading } = useQuery<HistoryRow>(
-    jobTitle && scheduleId
+    serviceJobId && scheduleId
       ? `SELECT s.id as scheduleId, s.jobTitle, s.scheduledStartAtUtc, s.timeZone,
-             p.id as photoId, p.cloudinaryUrl, p.type, p.timestamp, p.signerName, p.technicianId
+             p.id as photoId, p.cloudinaryUrl, p.type, p.timestamp, p.signerName, p.technicianId,
+             p.photoCategoryKey, p.photoCategoryLabel, p.photoCategoryKind
+           FROM schedules s
+           LEFT JOIN photos p
+             ON p.scheduleId = s.id AND p.cloudinaryUrl IS NOT NULL
+           WHERE s.serviceJobId = ? AND s.id != ?
+           ORDER BY s.scheduledStartAtUtc DESC, p.timestamp ASC`
+      : jobTitle && scheduleId
+      ? `SELECT s.id as scheduleId, s.jobTitle, s.scheduledStartAtUtc, s.timeZone,
+             p.id as photoId, p.cloudinaryUrl, p.type, p.timestamp, p.signerName, p.technicianId,
+             p.photoCategoryKey, p.photoCategoryLabel, p.photoCategoryKind
            FROM schedules s
            LEFT JOIN photos p
              ON p.scheduleId = s.id AND p.cloudinaryUrl IS NOT NULL
            WHERE s.jobTitle = ? AND s.id != ?
            ORDER BY s.scheduledStartAtUtc DESC, p.timestamp ASC`
       : `SELECT s.id as scheduleId FROM schedules s WHERE 0`,
-    [jobTitle?.trim(), scheduleId],
+    serviceJobId && scheduleId ? [serviceJobId, scheduleId] : [jobTitle?.trim(), scheduleId],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
@@ -114,7 +128,10 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
         type: row.type,
         timestamp: row.timestamp || new Date().toISOString(),
         technicianId: row.technicianId || '',
-        signerName: row.signerName ?? null
+        signerName: row.signerName ?? null,
+        photoCategoryKey: row.photoCategoryKey,
+        photoCategoryLabel: row.photoCategoryLabel,
+        photoCategoryKind: row.photoCategoryKind
       };
 
       if (photo.type === 'before') section.beforePhotos.push(photo);
@@ -279,15 +296,41 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
       };
 
       const config = sectionConfig[photoType];
+      const groupedPhotos = photos.reduce<Map<string, PhotoType[]>>((groups, photo) => {
+        const label = photo.photoCategoryLabel || 'Uncategorized';
+        const next = groups.get(label) ?? [];
+        next.push(photo);
+        groups.set(label, next);
+        return groups;
+      }, new Map());
 
       return (
         <View className='mb-4'>
-          <Text className='text-sm font-medium mb-2 text-gray-600'>
+          <Text className='text-sm font-medium mb-2 text-gray-600 dark:text-gray-300'>
             <Ionicons name={config.icon as any} size={16} color={config.color} /> {config.title}
           </Text>
-          <View className='flex-row flex-wrap'>
-            {photos.map((photo, index) => renderPhotoItem(photo, jobSection, photoType, index))}
-          </View>
+          {Array.from(groupedPhotos.entries()).map(([categoryLabel, categoryPhotos]) => (
+            <View key={`${jobSection.id}-${photoType}-${categoryLabel}`} className='mb-2'>
+              {categoryLabel !== 'Uncategorized' && (
+                <Text className='mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500 dark:text-gray-400'>
+                  {categoryLabel}
+                </Text>
+              )}
+              <View className='flex-row flex-wrap'>
+                {categoryPhotos.map((photo) =>
+                  renderPhotoItem(
+                    photo,
+                    jobSection,
+                    photoType,
+                    Math.max(
+                      0,
+                      photos.findIndex((entry) => entry.id === photo.id)
+                    )
+                  )
+                )}
+              </View>
+            </View>
+          ))}
         </View>
       );
     },
@@ -297,10 +340,10 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
   const renderJobCard = useCallback(
     (jobSection: JobSection) => {
       return (
-        <View className='bg-white rounded-xl p-4 mb-4 shadow-sm border border-gray-100'>
+        <View className='mb-4 rounded-2xl border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#16140F]'>
           <View className='flex-row items-center mb-3'>
             <View className='w-2.5 h-2.5 rounded-full bg-blue-500 mr-2.5' />
-            <Text className='text-base font-semibold text-gray-800'>{jobSection.date}</Text>
+            <Text className='text-base font-semibold text-gray-800 dark:text-white'>{jobSection.date}</Text>
           </View>
 
           {renderPhotoSection(jobSection.beforePhotos, jobSection, 'before')}
@@ -316,7 +359,7 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
     return (
       <View className='flex-1 justify-center items-center'>
         <ActivityIndicator size='large' color='#0891b2' />
-        <Text className='mt-3 text-gray-500 text-base'>Loading previous jobs...</Text>
+        <Text className='mt-3 text-gray-500 dark:text-gray-400 text-base'>Loading previous jobs...</Text>
       </View>
     );
   }
@@ -324,20 +367,20 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
   if (jobSections.length === 0 && estimatePhotos.length > 0) {
     return (
       <View className='flex-1 p-2'>
-        <View className='bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4'>
+        <View className='bg-amber-50 border border-amber-200 rounded-xl p-3 mb-4 dark:border-amber-900/60 dark:bg-amber-950/30'>
           <View className='flex-row items-center mb-1'>
             <Ionicons name='information-circle' size={18} color='#d97706' />
-            <Text className='text-amber-800 font-semibold ml-2'>First Time Job</Text>
+            <Text className='text-amber-800 font-semibold ml-2 dark:text-amber-200'>First Time Job</Text>
           </View>
-          <Text className='text-amber-700 text-sm'>
+          <Text className='text-amber-700 text-sm dark:text-amber-300'>
             No previous job history. Showing reference photos from the estimate.
           </Text>
         </View>
 
-        <View className='bg-white rounded-xl p-4 shadow-sm border border-gray-100'>
+        <View className='rounded-2xl border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#16140F]'>
           <View className='flex-row items-center mb-3'>
             <Ionicons name='images-outline' size={20} color='#8b5cf6' />
-            <Text className='text-base font-semibold text-gray-800 ml-2'>
+            <Text className='text-base font-semibold text-gray-800 ml-2 dark:text-white'>
               Estimate Reference Photos ({estimatePhotos.length})
             </Text>
           </View>
@@ -409,7 +452,7 @@ export function JobPhotoHistory({ scheduleId, jobTitle }: JobPhotoHistoryProps) 
     return (
       <View className='flex-1 items-center justify-center py-8'>
         <Ionicons name='image-outline' size={48} color='#9ca3af' />
-        <Text className='text-gray-500 mt-2'>No previous job photos found</Text>
+        <Text className='text-gray-500 dark:text-gray-400 mt-2'>No previous job photos found</Text>
       </View>
     );
   }

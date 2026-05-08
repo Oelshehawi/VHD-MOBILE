@@ -100,9 +100,18 @@ export class LocationTrackingCoordinator {
   }
 
   async stop(reason: string): Promise<void> {
-    await stopLocationUpdates();
-    await stopGeofencing();
     const state = await readLocationTrackingState();
+    const hadActiveLocationUpdates =
+      state.activeLocationWindowIds.length > 0 || Boolean(state.locationUpdatesStartedAt);
+    const hadGeofences = state.geofenceRegions.length > 0;
+
+    if (hadActiveLocationUpdates) {
+      await stopLocationUpdates();
+    }
+    if (hadGeofences) {
+      await stopGeofencing();
+    }
+
     await updateLocationTrackingState((current) => ({
       ...current,
       activeLocationWindowIds: [],
@@ -119,7 +128,11 @@ export class LocationTrackingCoordinator {
       }
     }
 
-    debugLogger.info('LOCATION', 'Location tracking coordinator stopped', { reason });
+    debugLogger.info('LOCATION', 'Location tracking coordinator stopped', {
+      reason,
+      hadActiveLocationUpdates,
+      hadGeofences
+    });
   }
 
   private async syncInternal(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
@@ -138,7 +151,9 @@ export class LocationTrackingCoordinator {
 
     if (relevantWindows.length === 0) {
       await this.stopExpiredTracking(existingState.activeLocationWindowIds, existingState.windows);
-      await stopGeofencing();
+      if (existingState.geofenceRegions.length > 0) {
+        await stopGeofencing();
+      }
       await updateLocationTrackingState((state) => ({
         ...state,
         windows: [],
@@ -161,7 +176,9 @@ export class LocationTrackingCoordinator {
     const permissionState = await this.ensureLocationPermission(relevantWindows[0]);
     if (permissionState !== 'granted') {
       await this.stopExpiredTracking(existingState.activeLocationWindowIds, existingState.windows);
-      await stopGeofencing();
+      if (existingState.geofenceRegions.length > 0) {
+        await stopGeofencing();
+      }
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: [],
@@ -262,7 +279,9 @@ export class LocationTrackingCoordinator {
         locationUpdatesStartedAt: state.locationUpdatesStartedAt ?? new Date().toISOString()
       }));
     } else {
-      await stopLocationUpdates();
+      if (previousActiveWindowIds.length > 0) {
+        await stopLocationUpdates();
+      }
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: [],
@@ -290,7 +309,9 @@ export class LocationTrackingCoordinator {
     previousActiveWindowIds: string[],
     previousWindows: PersistedTrackingWindow[]
   ): Promise<void> {
-    await stopLocationUpdates();
+    if (previousActiveWindowIds.length > 0) {
+      await stopLocationUpdates();
+    }
 
     for (const windowId of previousActiveWindowIds) {
       const window = previousWindows.find((item) => item.id === windowId);

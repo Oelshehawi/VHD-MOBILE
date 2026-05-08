@@ -25,13 +25,15 @@ export function LogCategoryFilter({
         <TouchableOpacity
           onPress={() => onSelect(item)}
           className={`px-3 py-0.5 rounded-full ${
-            selectedCategory === item ? 'bg-blue-600' : 'bg-gray-200 dark:bg-gray-700'
+            selectedCategory === item
+              ? 'bg-[#14110F] dark:bg-amber-400'
+              : 'bg-white dark:bg-[#16140F] border border-black/10 dark:border-white/10'
           }`}
         >
           <Text
             className={
               selectedCategory === item
-                ? 'text-white font-medium'
+                ? 'text-white dark:text-[#14110F] font-medium'
                 : 'text-gray-700 dark:text-gray-300'
             }
           >

@@ -68,7 +68,7 @@ export function UploadDiagnosticsPanel({
   }, 0);
 
   return (
-    <View className='mb-4 rounded-xl bg-gray-100 dark:bg-gray-900 border border-gray-200 dark:border-gray-800'>
+    <View className='mb-4 rounded-2xl bg-white dark:bg-[#16140F] border border-black/10 dark:border-white/10'>
       <TouchableOpacity
         onPress={() => setExpanded((prev) => !prev)}
         className='flex-row items-center justify-between px-4 py-3'
@@ -86,16 +86,16 @@ export function UploadDiagnosticsPanel({
             <View className='flex-row gap-2'>
               <TouchableOpacity
                 onPress={onRefresh}
-                className='px-3 py-1 rounded-full bg-blue-600'
+                className='px-3 py-1 rounded-full bg-[#14110F] dark:bg-amber-400'
                 disabled={loading}
               >
-                <Text className='text-white text-xs font-semibold'>
+                <Text className='text-white dark:text-[#14110F] text-xs font-semibold'>
                   {loading ? 'Refreshing...' : 'Refresh'}
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={onClearAttachments}
-                className='px-3 py-1 rounded-full bg-red-600'
+                className='px-3 py-1 rounded-full bg-red-600 dark:bg-red-500'
                 disabled={loading}
               >
                 <Text className='text-white text-xs font-semibold'>Clear Queued Attachments</Text>

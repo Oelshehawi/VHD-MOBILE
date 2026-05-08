@@ -6,7 +6,8 @@ import {
   TouchableOpacity,
   Alert,
   ActivityIndicator,
-  TextInput
+  TextInput,
+  useColorScheme
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,6 +34,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
   const { user } = useUser();
   const insets = useSafeAreaInsets();
   const powerSync = usePowerSync();
+  const colorScheme = useColorScheme();
   const [isEditing, setIsEditing] = useState(false);
   const [editingRequestId, setEditingRequestId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -53,6 +55,8 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
     [user?.id || '']
   );
   const requests = (requestsData as TimeOffRequest[]) || [];
+  const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
+  const primaryIconColor = colorScheme === 'dark' ? '#14110F' : '#FFFFFF';
 
   // Handle form changes
   const handleDateRangeChange = (startDate: string, endDate: string) => {
@@ -106,25 +110,31 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
 
     setIsSaving(true);
     try {
-      const requestId = editingRequestId || generateObjectId();
-
-      // Insert only to PowerSync - BackendConnector will handle the API sync
-      await powerSync.execute(
-        `INSERT INTO timeoffrequests (id, technicianId, startDate, endDate, reason, status, requestedAt, reviewedAt, reviewedBy, notes)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          requestId,
-          user.id,
-          formData.startDate,
-          formData.endDate,
-          formData.reason,
-          'pending',
-          new Date().toISOString(),
-          null,
-          null,
-          null
-        ]
-      );
+      if (editingRequestId) {
+        await powerSync.execute(
+          `UPDATE timeoffrequests
+              SET startDate = ?, endDate = ?, reason = ?
+            WHERE id = ?`,
+          [formData.startDate, formData.endDate, formData.reason, editingRequestId]
+        );
+      } else {
+        await powerSync.execute(
+          `INSERT INTO timeoffrequests (id, technicianId, startDate, endDate, reason, status, requestedAt, reviewedAt, reviewedBy, notes)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [
+            generateObjectId(),
+            user.id,
+            formData.startDate,
+            formData.endDate,
+            formData.reason,
+            'pending',
+            new Date().toISOString(),
+            null,
+            null,
+            null
+          ]
+        );
+      }
 
       // Reset form
       setFormData({
@@ -188,30 +198,30 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
   return (
     <View
       style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
-      className='flex-1 bg-gray-50 dark:bg-gray-900'
+      className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'
     >
       <ScrollView className='flex-1'>
         <View className='p-4'>
           {/* Header */}
           <View className='flex-row items-center justify-between mb-6'>
             <View>
-              <Text className='text-2xl font-bold text-gray-900 dark:text-white'>
+              <Text className='text-2xl font-bold text-[#14110F] dark:text-white'>
                 Time Off Requests
               </Text>
-              <Text className='text-gray-600 dark:text-gray-400 mt-1'>
+              <Text className='mt-1 text-gray-600 dark:text-gray-300'>
                 Manage your time-off requests
               </Text>
             </View>
             {onNavigateBack && (
               <TouchableOpacity onPress={onNavigateBack}>
-                <Ionicons name='close' size={24} color='#666' />
+                <Ionicons name='close' size={24} color={iconColor} />
               </TouchableOpacity>
             )}
           </View>
 
           {/* Form Section */}
-          <View className='bg-white dark:bg-gray-800 p-4 rounded-lg mb-6'>
-            <Text className='text-lg font-bold text-gray-900 dark:text-white mb-4'>
+          <View className='mb-6 rounded-2xl border border-black/10 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#16140F]'>
+            <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
               {isEditing ? 'Edit Request' : 'Submit New Request'}
             </Text>
 
@@ -224,13 +234,13 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
 
             {/* Reason */}
             <View className='mb-4'>
-              <Text className='text-gray-700 dark:text-gray-300 font-semibold mb-2'>
+              <Text className='mb-2 font-semibold text-gray-700 dark:text-gray-300'>
                 Reason for Time Off
               </Text>
               <TextInput
-                className='bg-gray-50 dark:bg-gray-700 text-gray-900 dark:text-white p-4 rounded-lg border border-gray-200 dark:border-gray-600'
+                className='rounded-xl border border-black/10 bg-[#F0EDE6] p-4 text-gray-900 dark:border-white/10 dark:bg-[#1F1C16] dark:text-white'
                 placeholder='e.g., Vacation, Medical, Personal'
-                placeholderTextColor='#999'
+                placeholderTextColor={colorScheme === 'dark' ? '#9CA3AF' : '#76706A'}
                 value={formData.reason}
                 onChangeText={handleReasonChange}
                 multiline
@@ -251,25 +261,25 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
                       reason: ''
                     });
                   }}
-                  className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
+                  className='flex-1 rounded-xl bg-[#F0EDE6] p-4 dark:bg-[#2A261D]'
                   disabled={isSaving}
                 >
-                  <Text className='text-center font-semibold text-gray-900 dark:text-white'>
+                  <Text className='text-center font-semibold text-[#14110F] dark:text-white'>
                     Cancel
                   </Text>
                 </TouchableOpacity>
               )}
               <TouchableOpacity
                 onPress={handleSubmit}
-                className='flex-1 bg-blue-500 p-4 rounded-lg flex-row items-center justify-center'
+                className='flex-1 flex-row items-center justify-center rounded-xl bg-[#14110F] p-4 dark:bg-amber-400'
                 disabled={isSaving}
               >
                 {isSaving ? (
-                  <ActivityIndicator color='white' size='small' />
+                  <ActivityIndicator color={primaryIconColor} size='small' />
                 ) : (
                   <>
-                    <Ionicons name='send' size={20} color='white' />
-                    <Text className='text-white font-semibold ml-2'>
+                    <Ionicons name='send' size={20} color={primaryIconColor} />
+                    <Text className='ml-2 font-semibold text-white dark:text-[#14110F]'>
                       {isEditing ? 'Update' : 'Submit'}
                     </Text>
                   </>
@@ -323,9 +333,9 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
 
           {/* Empty state */}
           {requests.length === 0 && (
-            <View className='bg-gray-100 dark:bg-gray-800 p-6 rounded-lg items-center'>
+            <View className='items-center rounded-2xl border border-black/10 bg-white p-6 dark:border-white/10 dark:bg-[#16140F]'>
               <Ionicons name='calendar-outline' size={48} color='#999' />
-              <Text className='text-gray-600 dark:text-gray-400 text-center mt-4'>
+              <Text className='mt-4 text-center text-gray-600 dark:text-gray-300'>
                 No time-off requests yet. Submit your first request above.
               </Text>
             </View>

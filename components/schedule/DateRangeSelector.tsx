@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, Modal, ScrollView } from 'react-native';
+import { View, Text, TouchableOpacity, Modal, ScrollView, useColorScheme } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { formatDateRange, isWithin14Days } from '../../utils/availabilityValidation';
@@ -30,6 +30,8 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
   const [startDateSelected, setStartDateSelected] = useState(startDate || '');
   const [endDateSelected, setEndDateSelected] = useState(endDate || '');
   const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const colorScheme = useColorScheme();
+  const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
 
   // Generate calendar days for the current month
   const generateCalendarDays = (date: Date) => {
@@ -130,13 +132,13 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
       {/* Month/Year Header with Navigation */}
       <View className='flex-row items-center justify-between mb-4 px-2'>
         <TouchableOpacity onPress={() => handleMonthChange('prev')}>
-          <Ionicons name='chevron-back' size={24} color='#3b82f6' />
+          <Ionicons name='chevron-back' size={24} color='#D97706' />
         </TouchableOpacity>
         <Text className='text-lg font-bold text-gray-900 dark:text-white'>
           {format(calendarMonth, 'MMMM yyyy')}
         </Text>
         <TouchableOpacity onPress={() => handleMonthChange('next')}>
-          <Ionicons name='chevron-forward' size={24} color='#3b82f6' />
+          <Ionicons name='chevron-forward' size={24} color='#D97706' />
         </TouchableOpacity>
       </View>
 
@@ -177,14 +179,14 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
                   onPress={() => day !== null && handleDateSelect(day)}
                   className={`flex-1 aspect-square items-center justify-center rounded ${
                     isDisabled
-                      ? 'bg-gray-100 dark:bg-gray-700 opacity-50'
+                      ? 'bg-[#F0EDE6] opacity-50 dark:bg-[#1F1C16]'
                       : isSelectedStart || isSelectedEnd
-                        ? 'bg-blue-500'
+                        ? 'bg-[#14110F] dark:bg-amber-400'
                         : inRange
-                          ? 'bg-blue-200 dark:bg-blue-800'
+                          ? 'bg-amber-100 dark:bg-amber-950/70'
                           : isCurrentDay
-                            ? 'bg-blue-100 dark:bg-blue-900'
-                            : 'bg-gray-50 dark:bg-gray-700'
+                            ? 'bg-amber-50 dark:bg-[#2A261D]'
+                            : 'bg-[#F0EDE6] dark:bg-[#1F1C16]'
                   }`}
                 >
                   <Text
@@ -192,7 +194,7 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
                       isDisabled
                         ? 'text-gray-400 dark:text-gray-600'
                         : isSelectedStart || isSelectedEnd
-                          ? 'text-white font-bold'
+                          ? 'font-bold text-white dark:text-[#14110F]'
                           : 'text-gray-900 dark:text-white'
                     }`}
                   >
@@ -206,7 +208,7 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
       </View>
 
       {/* Selection Status */}
-      <View className='mt-4 p-3 bg-blue-50 dark:bg-blue-900/30 rounded-lg'>
+      <View className='mt-4 rounded-xl bg-amber-50 p-3 dark:bg-amber-950/30'>
         <Text className='text-xs text-gray-700 dark:text-gray-300 text-center'>
           {!startDateSelected && 'Select start date (14+ days from today)'}
           {startDateSelected && !endDateSelected && `Start: ${startDateSelected} → Select end date`}
@@ -229,8 +231,8 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
           setStartDateSelected(startDate || '');
           setEndDateSelected(endDate || '');
         }}
-        className={`flex-row items-center justify-between bg-white dark:bg-gray-700 p-4 rounded-lg border ${
-          error ? 'border-red-500' : 'border-gray-200 dark:border-gray-600'
+        className={`flex-row items-center justify-between rounded-xl border bg-[#F0EDE6] p-4 dark:bg-[#1F1C16] ${
+          error ? 'border-red-500' : 'border-black/10 dark:border-white/10'
         }`}
       >
         <Text
@@ -238,7 +240,7 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
         >
           {displayValue}
         </Text>
-        <Ionicons name='calendar-outline' size={20} color={error ? '#ef4444' : '#666'} />
+        <Ionicons name='calendar-outline' size={20} color={error ? '#ef4444' : iconColor} />
       </TouchableOpacity>
 
       {error && <Text className='text-red-500 text-sm mt-2'>{error}</Text>}
@@ -251,13 +253,13 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
         onRequestClose={() => setShowDatePicker(false)}
       >
         <SafeAreaView className='flex-1 bg-black/50 justify-end'>
-          <View className='bg-white dark:bg-gray-800 rounded-t-xl p-6'>
+          <View className='rounded-t-2xl bg-white p-6 dark:bg-[#16140F]'>
             <View className='flex-row justify-between items-center mb-4'>
               <Text className='text-lg font-bold text-gray-900 dark:text-white'>
                 Select Date Range
               </Text>
               <TouchableOpacity onPress={() => setShowDatePicker(false)}>
-                <Ionicons name='close' size={24} color='#666' />
+                <Ionicons name='close' size={24} color={iconColor} />
               </TouchableOpacity>
             </View>
 
@@ -272,7 +274,7 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
                   handleReset();
                   setShowDatePicker(false);
                 }}
-                className='flex-1 bg-gray-300 dark:bg-gray-600 p-4 rounded-lg'
+                className='flex-1 rounded-xl bg-[#F0EDE6] p-4 dark:bg-[#2A261D]'
               >
                 <Text className='text-center font-semibold text-gray-900 dark:text-white'>
                   Cancel
@@ -281,11 +283,15 @@ export const DateRangeSelector: React.FC<DateRangeSelectorProps> = ({
               <TouchableOpacity
                 onPress={handleConfirm}
                 disabled={!startDateSelected || !endDateSelected}
-                className={`flex-1 p-4 rounded-lg ${
-                  startDateSelected && endDateSelected ? 'bg-blue-500' : 'bg-gray-400'
+                className={`flex-1 rounded-xl p-4 ${
+                  startDateSelected && endDateSelected
+                    ? 'bg-[#14110F] dark:bg-amber-400'
+                    : 'bg-gray-400'
                 }`}
               >
-                <Text className='text-center font-semibold text-white'>Confirm</Text>
+                <Text className='text-center font-semibold text-white dark:text-[#14110F]'>
+                  Confirm
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
