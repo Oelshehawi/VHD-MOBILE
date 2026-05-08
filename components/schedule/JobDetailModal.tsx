@@ -15,6 +15,7 @@ import { openMaps } from '@/utils/dashboard';
 import { openReport } from '@/utils/openReport';
 import { isScheduleReportRequired } from '@/utils/schedules';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
+import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -207,6 +208,21 @@ export function JobDetailModal({
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
+  const { data: trackingWindowRows = [] } = useQuery<{ id: string }>(
+    scheduleId
+      ? `SELECT id FROM techniciantrackingwindows WHERE scheduleId = ? AND status IN ('planned', 'active') LIMIT 1`
+      : `SELECT '' as id WHERE 0`,
+    [scheduleId || ''],
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
+  );
+  const hasTrackingWindow = trackingWindowRows.length > 0;
+  const permissionState = useLocationPermissionState();
+  const trackingPermissionWarn =
+    hasTrackingWindow &&
+    permissionState !== null &&
+    permissionState.kind !== 'granted' &&
+    permissionState.kind !== 'unavailable';
+
   const { data: reportRows = [] } = useQuery<{ reportStatus: ReportStatus | null }>(
     scheduleId
       ? `SELECT reportStatus FROM reports WHERE scheduleId = ? ORDER BY dateCompleted DESC LIMIT 1`
@@ -317,6 +333,15 @@ export function JobDetailModal({
                   warn={signatureCount === 0}
                   onPress={() => setSignatureVisible(true)}
                 />
+                {trackingPermissionWarn && (
+                  <DetailRow
+                    icon='location-outline'
+                    label='Location tracking unavailable'
+                    detail='Permission missing. Tap to update settings.'
+                    warn
+                    onPress={() => Linking.openSettings().catch(() => undefined)}
+                  />
+                )}
                 {reportRequired && (
                   <DetailRow
                     icon='document-text-outline'

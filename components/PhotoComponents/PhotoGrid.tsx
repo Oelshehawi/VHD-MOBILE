@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text } from 'react-native';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { PhotoType } from '@/utils/photos';
 import { PhotoItem } from './PhotoItem';
 
@@ -10,24 +11,52 @@ interface PhotoGridProps {
 }
 
 export function PhotoGrid({ photos, onDeletePhoto, onPhotoPress }: PhotoGridProps) {
-  const [deletingPhotoIds, setDeletingPhotoIds] = useState<string[]>([]);
+  const deletingPhotoIdsRef = useRef<Set<string>>(new Set());
+  const deleteTimeoutsRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const [deletingPhotoIds, setDeletingPhotoIds] = useState<ReadonlySet<string>>(() => new Set());
 
-  const handleDelete = (photoId: string) => {
-    if (deletingPhotoIds.includes(photoId)) return;
+  useEffect(() => {
+    const deleteTimeouts = deleteTimeoutsRef.current;
+    return () => {
+      deleteTimeouts.forEach((timeout) => clearTimeout(timeout));
+      deleteTimeouts.clear();
+    };
+  }, []);
 
-    setDeletingPhotoIds((prev) => [...prev, photoId]);
-    onDeletePhoto(photoId);
+  const handleDelete = useCallback(
+    (photoId: string) => {
+      if (deletingPhotoIdsRef.current.has(photoId)) return;
 
-    setTimeout(() => {
-      setDeletingPhotoIds((prev) => prev.filter((id) => id !== photoId));
-    }, 5000);
-  };
+      const nextDeleting = new Set(deletingPhotoIdsRef.current);
+      nextDeleting.add(photoId);
+      deletingPhotoIdsRef.current = nextDeleting;
+      setDeletingPhotoIds(nextDeleting);
+      onDeletePhoto(photoId);
+
+      const timeout = setTimeout(() => {
+        const next = new Set(deletingPhotoIdsRef.current);
+        next.delete(photoId);
+        deletingPhotoIdsRef.current = next;
+        deleteTimeoutsRef.current.delete(photoId);
+        setDeletingPhotoIds(next);
+      }, 5000);
+      deleteTimeoutsRef.current.set(photoId, timeout);
+    },
+    [onDeletePhoto]
+  );
 
   const EmptyState = useMemo(
     () => (
-      <View className='h-[150px] bg-gray-50 rounded-xl justify-center items-center border border-gray-200 border-dashed my-2'>
-        <Text className='text-base font-medium text-gray-400 mb-1'>No photos yet</Text>
-        <Text className='text-xs text-gray-400'>Tap "Add Photos" to get started</Text>
+      <View className='my-2 h-[150px] items-center justify-center rounded-xl border border-dashed border-gray-300 bg-gray-50 px-5 dark:border-white/15 dark:bg-[#16140F]'>
+        <View className='mb-3 h-11 w-11 items-center justify-center rounded-full bg-white shadow-sm dark:bg-[#2A261D]'>
+          <Ionicons name='images-outline' size={22} color='#8A857D' />
+        </View>
+        <Text className='mb-1 text-base font-semibold text-gray-700 dark:text-[#F2EFEA]'>
+          No photos yet
+        </Text>
+        <Text className='text-center text-xs font-medium text-gray-500 dark:text-[#C9C3BA]'>
+          Tap Add Photos to get started
+        </Text>
       </View>
     ),
     []
@@ -46,7 +75,7 @@ export function PhotoGrid({ photos, onDeletePhoto, onPhotoPress }: PhotoGridProp
           index={index}
           onPhotoPress={onPhotoPress}
           onDelete={handleDelete}
-          isDeleting={deletingPhotoIds.includes(photo.id)}
+          isDeleting={deletingPhotoIds.has(photo.id)}
         />
       ))}
     </View>

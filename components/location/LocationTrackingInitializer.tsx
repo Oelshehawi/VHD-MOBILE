@@ -1,16 +1,15 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { DEFAULT_ROW_COMPARATOR, useQuery } from '@powersync/react-native';
+import { useEffect, useRef, useState } from 'react';
 import { useAuth, useUser } from '@clerk/clerk-expo';
-import type { TechnicianTrackingWindow } from '@/types';
 import { usePowerSyncStatus } from '@/providers/PowerSyncProvider';
 import { getBackgroundToken } from '@/services/background/BackgroundAuth';
 import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
+import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { debugLogger } from '@/utils/DebugLogger';
 
 const COORDINATOR_TICK_MS = 60 * 1000;
 
 export function LocationTrackingInitializer() {
-  const { isLoaded, isSignedIn, userId } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const { isLoaded: isUserLoaded, user } = useUser();
   const { isInitialized } = usePowerSyncStatus();
   const [tick, setTick] = useState(0);
@@ -21,18 +20,6 @@ export function LocationTrackingInitializer() {
   const isManager = user?.publicMetadata?.isManager === true;
   const isTechnician = user?.publicMetadata?.isTechnician === true && !isManager;
   const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isTechnician;
-  const windowsQuery = useQuery<TechnicianTrackingWindow>(
-    isReady
-      ? `SELECT * FROM techniciantrackingwindows
-         WHERE technicianId = ?
-           AND status IN ('planned', 'active')
-         ORDER BY startsAtUtc ASC`
-      : `SELECT * FROM techniciantrackingwindows WHERE 0`,
-    [userId || ''],
-    { rowComparator: DEFAULT_ROW_COMPARATOR }
-  );
-
-  const windows = useMemo(() => windowsQuery.data ?? [], [windowsQuery.data]);
 
   useEffect(() => {
     if (!isLoaded) {
@@ -97,12 +84,12 @@ export function LocationTrackingInitializer() {
       return;
     }
 
-    void locationTrackingCoordinator.sync(windows).catch((error) => {
-      debugLogger.error('LOCATION', 'Location tracking coordinator sync failed', {
+    void refreshLocationTracking(tick === 0 ? 'mount' : 'foreground').catch((error) => {
+      debugLogger.error('LOCATION', 'Location tracking refresh failed', {
         error: error instanceof Error ? error.message : String(error)
       });
     });
-  }, [isReady, tick, windows]);
+  }, [isReady, tick]);
 
   return null;
 }

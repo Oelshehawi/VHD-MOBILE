@@ -18,15 +18,16 @@ import {
   toPersistedWindows,
   updateLocationTrackingState
 } from '@/services/location/LocationTrackingState';
-import type { PersistedTrackingWindow } from '@/services/location/LocationTrackingState';
+import type {
+  PermissionState,
+  PersistedTrackingWindow
+} from '@/services/location/LocationTrackingState';
 import {
   getRelevantTrackingWindows,
   isTravelWindowActive
 } from '@/services/location/trackingWindowUtils';
 
 const PERMISSION_DENIED_EVENT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-
-type PermissionState = 'granted' | 'denied' | 'unavailable';
 
 function shouldSendPermissionDenied(lastSentAt?: string): boolean {
   if (!lastSentAt) {
@@ -174,7 +175,7 @@ export class LocationTrackingCoordinator {
     }));
 
     const permissionState = await this.ensureLocationPermission(relevantWindows[0]);
-    if (permissionState !== 'granted') {
+    if (permissionState.kind !== 'granted') {
       await this.stopExpiredTracking(existingState.activeLocationWindowIds, existingState.windows);
       if (existingState.geofenceRegions.length > 0) {
         await stopGeofencing();
@@ -211,36 +212,74 @@ export class LocationTrackingCoordinator {
     });
   }
 
+  private async persistPermissionState(state: PermissionState): Promise<void> {
+    await updateLocationTrackingState((current) => ({
+      ...current,
+      lastKnownPermissionState: state
+    }));
+  }
+
+  async checkLocationPermissionStatus(): Promise<PermissionState> {
+    const state = await this.readPermissionStateFromOs();
+    await this.persistPermissionState(state);
+    return state;
+  }
+
+  private async readPermissionStateFromOs(): Promise<PermissionState> {
+    const servicesEnabled = await Location.hasServicesEnabledAsync();
+    if (!servicesEnabled) {
+      return { kind: 'services-disabled' };
+    }
+
+    const foreground = await Location.getForegroundPermissionsAsync();
+    if (!foreground.granted) {
+      return { kind: 'foreground-denied', canAskAgain: foreground.canAskAgain };
+    }
+
+    const background = await Location.getBackgroundPermissionsAsync();
+    if (!background.granted) {
+      return { kind: 'background-denied', canAskAgain: background.canAskAgain };
+    }
+
+    return { kind: 'granted' };
+  }
+
   private async ensureLocationPermission(
     windowForDeniedEvent: ParsedTrackingWindow
   ): Promise<PermissionState> {
     const servicesEnabled = await Location.hasServicesEnabledAsync();
     if (!servicesEnabled) {
       await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
-      return 'unavailable';
+      const state: PermissionState = { kind: 'services-disabled' };
+      await this.persistPermissionState(state);
+      return state;
     }
 
     const foregroundPermission = await Location.getForegroundPermissionsAsync();
-    const foregroundStatus = foregroundPermission.granted
-      ? foregroundPermission
-      : await Location.requestForegroundPermissionsAsync();
-
-    if (!foregroundStatus.granted) {
+    if (!foregroundPermission.granted) {
       await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
-      return 'denied';
+      const state: PermissionState = {
+        kind: 'foreground-denied',
+        canAskAgain: foregroundPermission.canAskAgain
+      };
+      await this.persistPermissionState(state);
+      return state;
     }
 
     const backgroundPermission = await Location.getBackgroundPermissionsAsync();
-    const backgroundStatus = backgroundPermission.granted
-      ? backgroundPermission
-      : await Location.requestBackgroundPermissionsAsync();
-
-    if (!backgroundStatus.granted) {
+    if (!backgroundPermission.granted) {
       await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
-      return 'denied';
+      const state: PermissionState = {
+        kind: 'background-denied',
+        canAskAgain: backgroundPermission.canAskAgain
+      };
+      await this.persistPermissionState(state);
+      return state;
     }
 
-    return 'granted';
+    const granted: PermissionState = { kind: 'granted' };
+    await this.persistPermissionState(granted);
+    return granted;
   }
 
   private async sendPermissionDeniedIfNeeded(window: ParsedTrackingWindow): Promise<void> {

@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, Alert } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { ImageManipulator } from 'expo-image-manipulator';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { PhotoGrid } from './PhotoGrid';
 import { PhotoCaptureModal } from './PhotoCaptureModal';
 import { CameraCaptureModal } from './CameraCaptureModal';
@@ -135,15 +136,20 @@ export function PhotoCapture({
     }));
   }, [photos, type, resolvePhotoUrl]);
 
-  const handlePhotoPress = (index: number) => {
-    setShowModal(false);
-    setPhotoToDelete(null);
+  const handlePhotoPress = useCallback(
+    (index: number) => {
+      if (photos.length === 0) return;
 
-    const images = prepareGalleryImages();
-    setGalleryImages(images);
+      setShowModal(false);
+      setPhotoToDelete(null);
 
-    openGallery(index);
-  };
+      const images = prepareGalleryImages();
+      setGalleryImages(images);
+      setGalleryIndex(index);
+      setGalleryVisible(true);
+    },
+    [photos.length, prepareGalleryImages]
+  );
 
   const getGallerySubtitle = useCallback(
     (index: number) => {
@@ -353,18 +359,11 @@ export function PhotoCapture({
     }
   };
 
-  const handleDeleteRequest = (photoId: string) => {
+  const handleDeleteRequest = useCallback((photoId: string) => {
     setShowModal(false);
     setGalleryVisible(false);
     setPhotoToDelete({ id: photoId });
-  };
-
-  const openGallery = (photoIndex: number = 0) => {
-    if (photos.length === 0) return;
-
-    setGalleryIndex(photoIndex);
-    setGalleryVisible(true);
-  };
+  }, []);
 
   const isLoading = externalLoading || isUploading || isQueryLoading;
   const showProcessingModal = externalLoading || isUploading;
@@ -402,10 +401,25 @@ export function PhotoCapture({
               setGalleryVisible(false);
               setShowModal(true);
             }}
-            className={`px-4 py-2 rounded-lg ${type === 'before' ? 'bg-blue-500' : 'bg-green-500'}`}
+            className={`min-h-10 flex-row items-center gap-2 rounded-xl px-4 py-2.5 shadow-sm ${
+              isLoading
+                ? 'bg-gray-300 dark:bg-[#2A261D]'
+                : type === 'before'
+                  ? 'bg-blue-600 active:bg-blue-700 dark:bg-blue-400 dark:active:bg-blue-300'
+                  : 'bg-emerald-600 active:bg-emerald-700 dark:bg-emerald-400 dark:active:bg-emerald-300'
+            }`}
             disabled={isLoading}
           >
-            <Text className='text-white font-semibold text-sm'>
+            <Ionicons
+              name={isLoading ? 'sync-outline' : 'camera-outline'}
+              size={16}
+              color={isLoading ? '#8A857D' : '#ffffff'}
+            />
+            <Text
+              className={`text-sm font-bold ${
+                isLoading ? 'text-gray-600 dark:text-[#C9C3BA]' : 'text-white'
+              }`}
+            >
               {isLoading ? 'Processing...' : 'Add Photos'}
             </Text>
           </TouchableOpacity>

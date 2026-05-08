@@ -1,6 +1,6 @@
 import { TouchableOpacity, View, Text, ActivityIndicator, Alert } from 'react-native';
 import { PhotoType } from '@/utils/photos';
-import { useState, useEffect } from 'react';
+import { memo, useCallback, useEffect, useState } from 'react';
 import { FastImageWrapper } from '@/components/common/FastImageWrapper';
 import { useSystem } from '@/services/database/System';
 import { File, Paths } from 'expo-file-system';
@@ -19,7 +19,7 @@ interface PhotoItemProps {
   isDeleting: boolean;
 }
 
-export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: PhotoItemProps) {
+function PhotoItemComponent({ photo, index, onPhotoPress, onDelete, isDeleting }: PhotoItemProps) {
   const [imageError, setImageError] = useState(false);
   const [resolvedUrl, setResolvedUrl] = useState<string>('');
   const system = useSystem();
@@ -27,7 +27,15 @@ export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: 
   const isFailed = !!photo.failedAt && photo.cloudinaryUrl === null;
   const isLoading = photo.cloudinaryUrl === null && !isFailed;
 
-  const handleFailedPress = () => {
+  const handlePhotoPress = useCallback(() => {
+    onPhotoPress?.(index);
+  }, [index, onPhotoPress]);
+
+  const handleDeletePress = useCallback(() => {
+    onDelete(photo.id);
+  }, [onDelete, photo.id]);
+
+  const handleFailedPress = useCallback(() => {
     Alert.alert(
       'Upload failed',
       photo.lastError || 'This photo could not be uploaded.',
@@ -46,7 +54,7 @@ export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: 
         { text: 'Cancel', style: 'cancel' }
       ]
     );
-  };
+  }, [onDelete, photo.id, photo.lastError, system?.attachmentQueue]);
 
   useEffect(() => {
     const resolveUrl = async () => {
@@ -88,14 +96,14 @@ export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: 
   return (
     <View className='w-1/3 aspect-square p-1'>
       <TouchableOpacity
-        onPress={() => onPhotoPress?.(index)}
-        className='flex-1 rounded-xl overflow-hidden bg-gray-100 relative shadow-sm'
+        onPress={handlePhotoPress}
+        className='flex-1 rounded-xl overflow-hidden bg-gray-100 relative shadow-sm dark:bg-[#1F1C16]'
         activeOpacity={0.8}
         disabled={isDeleting}
       >
         {imageError || !resolvedUrl ? (
-          <View className='w-full h-full bg-gray-200 items-center justify-center'>
-            <Text className='text-gray-500 font-medium'>Image</Text>
+          <View className='w-full h-full bg-gray-200 items-center justify-center dark:bg-[#2A261D]'>
+            <Text className='text-gray-500 font-medium dark:text-gray-300'>Image</Text>
           </View>
         ) : resolvedUrl.startsWith('file:') ? (
           <Image
@@ -147,7 +155,7 @@ export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: 
         </View>
 
         <TouchableOpacity
-          onPress={() => onDelete(photo.id)}
+          onPress={handleDeletePress}
           className={`absolute top-2 right-2 ${
             isLoading ? 'bg-gray-400' : 'bg-red-500'
           } w-[22px] h-[22px] rounded-full items-center justify-center opacity-90`}
@@ -160,3 +168,5 @@ export function PhotoItem({ photo, index, onPhotoPress, onDelete, isDeleting }: 
     </View>
   );
 }
+
+export const PhotoItem = memo(PhotoItemComponent);

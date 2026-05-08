@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { View, Text, Pressable, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
 import { PhotoType } from '@/utils/photos';
@@ -26,6 +26,11 @@ interface JobSection {
   beforePhotos: PhotoType[];
   afterPhotos: PhotoType[];
   signaturePhotos: PhotoType[];
+}
+
+interface GroupedPhoto {
+  photo: PhotoType;
+  index: number;
 }
 
 interface JobPhotoHistoryProps {
@@ -95,8 +100,10 @@ export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhoto
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
-  const jobSections = useMemo(() => {
-    if (!historyRows.length) return [];
+  const { jobSections, preloadUrls } = useMemo(() => {
+    if (!historyRows.length) {
+      return { jobSections: [] as JobSection[], preloadUrls: [] as string[] };
+    }
 
     const sections = new Map<string, JobSection>();
     const photoUrls: string[] = [];
@@ -152,12 +159,28 @@ export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhoto
         section.beforePhotos.length || section.afterPhotos.length || section.signaturePhotos.length
     );
 
-    if (photoUrls.length > 0) {
-      preloadImages(photoUrls.slice(0, 20));
-    }
-
-    return sectionList;
+    return {
+      jobSections: sectionList,
+      preloadUrls: photoUrls.slice(0, 20)
+    };
   }, [historyRows]);
+
+  useEffect(() => {
+    if (preloadUrls.length === 0) return;
+    preloadImages(preloadUrls);
+  }, [preloadUrls]);
+
+  const estimateGalleryImages = useMemo(
+    () =>
+      estimatePhotos
+        .map((photo) => ({
+          uri: photo.cloudinaryUrl || '',
+          title: 'Estimate Photo',
+          type: 'estimate' as const
+        }))
+        .filter((image) => image.uri),
+    [estimatePhotos]
+  );
 
   const openGallery = useCallback(
     (
@@ -296,10 +319,10 @@ export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhoto
       };
 
       const config = sectionConfig[photoType];
-      const groupedPhotos = photos.reduce<Map<string, PhotoType[]>>((groups, photo) => {
+      const groupedPhotos = photos.reduce<Map<string, GroupedPhoto[]>>((groups, photo, index) => {
         const label = photo.photoCategoryLabel || 'Uncategorized';
         const next = groups.get(label) ?? [];
-        next.push(photo);
+        next.push({ photo, index });
         groups.set(label, next);
         return groups;
       }, new Map());
@@ -317,16 +340,8 @@ export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhoto
                 </Text>
               )}
               <View className='flex-row flex-wrap'>
-                {categoryPhotos.map((photo) =>
-                  renderPhotoItem(
-                    photo,
-                    jobSection,
-                    photoType,
-                    Math.max(
-                      0,
-                      photos.findIndex((entry) => entry.id === photo.id)
-                    )
-                  )
+                {categoryPhotos.map(({ photo, index }) =>
+                  renderPhotoItem(photo, jobSection, photoType, index)
                 )}
               </View>
             </View>
@@ -397,14 +412,7 @@ export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhoto
                 <Pressable
                   key={photo.id || `estimate-${index}`}
                   onPress={() => {
-                    const images = estimatePhotos
-                      .map((p) => ({
-                        uri: p.cloudinaryUrl || '',
-                        title: 'Estimate Photo',
-                        type: 'estimate' as const
-                      }))
-                      .filter((image) => image.uri);
-                    setGalleryImages(images);
+                    setGalleryImages(estimateGalleryImages);
                     setGalleryIndex(index);
                     setGalleryJobDate('Estimate');
                     setGalleryVisible(true);

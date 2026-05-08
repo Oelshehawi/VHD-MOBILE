@@ -1,6 +1,7 @@
 import * as BackgroundTask from 'expo-background-task';
 import * as TaskManager from 'expo-task-manager';
 import { runBoundedBackgroundSync } from '@/services/background/BackgroundSyncRunner';
+import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { debugLogger } from '@/utils/DebugLogger';
 
 export const BACKGROUND_SYNC_TASK_NAME = 'com.braille71.vhdapp.background-sync';
@@ -40,6 +41,14 @@ if (!TaskManager.isTaskDefined(BACKGROUND_SYNC_TASK_NAME)) {
         reason: 'expo-background-task',
         maxMs: 25000
       });
+
+      try {
+        await refreshLocationTracking('background-task');
+      } catch (refreshError) {
+        void debugLogger.warn('LOCATION', 'Background-task location refresh failed', {
+          error: refreshError instanceof Error ? refreshError.message : String(refreshError)
+        });
+      }
 
       if (result.success) {
         void debugLogger.info('SYNC', 'Expo background sync task completed', result);

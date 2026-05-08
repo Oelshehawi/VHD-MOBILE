@@ -5,6 +5,7 @@ import { Text } from '../../components/ui/text';
 import { Card, CardHeader, CardTitle, CardContent } from '../../components/ui/Card';
 import { ProfileHeader } from '../../components/profile/ProfileHeader';
 import { OfflineBanner } from '../../components/profile/OfflineBanner';
+import { LocationPermissionBanner } from '../../components/location/LocationPermissionBanner';
 import { InfoRow } from '../../components/profile/InfoRow';
 import { NotificationPreferences } from '../../components/profile/NotificationPreferences';
 import { useAuth, useUser } from '@clerk/clerk-expo';
@@ -166,6 +167,7 @@ export default function ProfileScreen() {
         <Stack.Screen options={{ headerShown: false }} />
         <View className='flex-1'>
           <OfflineBanner visible={isOffline} />
+          <LocationPermissionBanner />
 
           <ProfileHeader
             imageUrl={displayUser.imageUrl}

@@ -23,6 +23,8 @@ import { ThemeProvider } from '@/providers/ThemeProvider';
 import { requestAppPermissions } from '@/utils/permissions';
 import { PushNotificationInitializer } from '@/components/notifications/PushNotificationInitializer';
 import { LocationTrackingInitializer } from '@/components/location/LocationTrackingInitializer';
+import { LocationPermissionGate } from '@/components/location/LocationPermissionGate';
+import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { SyncToastListener } from '@/components/sync/SyncToastListener';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
@@ -248,6 +250,7 @@ function BackgroundSyncLifecycle() {
           previousAppState: previousState,
           nextAppState: nextState
         });
+        void refreshLocationTracking('app-resume');
       }
     });
 
@@ -320,6 +323,7 @@ export default function RootLayout() {
                         }}
                       />
                     </Stack>
+                    <LocationPermissionGate />
                     <PortalHost />
                   </BottomSheetModalProvider>
                 </PowerSyncProvider>
