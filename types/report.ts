@@ -2,40 +2,47 @@ export type ReportStatus = 'draft' | 'in_progress' | 'completed';
 
 export type TriState = 'Yes' | 'No' | 'N/A';
 
-export type FilterType = 'baffle' | 'longDrawer' | 'singleDrawer' | 'mesh' | 'other';
+export type InspectionItemKey =
+  | 'hoodInteriorCleaned'
+  | 'plenumCleaned'
+  | 'filtersCleanedScope'
+  | 'ductCleaned'
+  | 'adequateAccessPanels'
+  | 'exhaustFanCleaned'
+  | 'fireSuppressionNozzlesClear';
 
-export type FanAccessReason = 'accessDenied' | 'unsafe' | 'noRoofAccess' | 'locked' | 'other';
+export type InspectionItems = Record<InspectionItemKey, TriState>;
 
-export interface EquipmentDetails {
-  numberOfHoods?: number;
-  numberOfFilters?: number;
-  numberOfFans?: number;
-  filterTypes?: string;
-  // Backward compatibility for local legacy report rows.
-  otherFilterType?: string;
+export type DeficiencyKey =
+  | 'filtersRequireReplacement'
+  | 'missingFilters'
+  | 'accessPanelsMissingOrInadequate'
+  | 'fireSuppressionNozzlesObstructed'
+  | 'inaccessibleDuctOrArea'
+  | 'exhaustFanNotAccessible'
+  | 'exhaustFanNotOperatingOrAbnormal'
+  | 'fanVibrationOrMotorConcern'
+  | 'hingesOrChainsMissing'
+  | 'roofGreaseContainmentIssue'
+  | 'ecologyUnitServiceRequired'
+  | 'other';
+
+export interface ReportDeficiencies {
+  tags: DeficiencyKey[];
+  notes?: string;
 }
 
 export interface ReportSavePayload {
   scheduleId: string;
-  invoiceId: string;
+  invoiceId?: string;
   technicianId: string;
   dateCompleted: string;
-  reportStatus: ReportStatus;
-  jobTitle?: string;
-  location?: string;
-  cookingVolume: 'High' | 'Medium' | 'Low';
+  reportStatus: Extract<ReportStatus, 'draft' | 'in_progress'>;
+  jobTitle: string;
+  location: string;
+  inspectionItems: InspectionItems;
   recommendedCleaningFrequency?: number;
-  comments?: string;
-  cleaningDetails?: {
-    hoodCleaned?: boolean | null;
-    filtersCleaned?: boolean | null;
-    ductworkCleaned?: boolean | null;
-    fanCleaned?: boolean | null;
-  };
-  equipmentDetails?: EquipmentDetails;
-  inspectionItems?: {
-    adequateAccessPanels?: TriState;
-    safeAccessToFan?: TriState;
-    fanAccessReason?: FanAccessReason | string;
-  };
+  recommendations?: string;
+  greaseLevel?: number;
+  deficiencies?: ReportDeficiencies;
 }

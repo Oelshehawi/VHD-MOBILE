@@ -125,11 +125,14 @@ const reports = new Table(
     jobTitle: column.text,
     location: column.text,
     cookingVolume: column.text, // 'High' | 'Medium' | 'Low'
+    greaseLevel: column.integer,
     recommendedCleaningFrequency: column.integer,
-    comments: column.text,
+    comments: column.text, // Legacy only; new mobile closeouts use recommendations
+    recommendations: column.text,
     // Nested objects stored as JSON text
     cleaningDetails: column.text, // JSON: { hoodCleaned, filtersCleaned, ductworkCleaned, fanCleaned }
-    inspectionItems: column.text, // JSON: { adequateAccessPanels, safeAccessToFan, fanAccessReason }
+    inspectionItems: column.text, // JSON: canonical closeout checklist
+    deficiencies: column.text, // JSON: { tags, notes }
     equipmentDetails: column.text // JSON: { numberOfHoods, numberOfFilters, numberOfFans, filterTypes }
   },
   { indexes: { schedules: ['scheduleId'] } }

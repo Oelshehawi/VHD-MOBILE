@@ -149,35 +149,84 @@ export class BackendConnector implements PowerSyncBackendConnector {
    */
   private parseReportJsonFields<T extends Record<string, any>>(data: T): T {
     const result: Record<string, any> = { ...data };
-
-    // Parse cleaningDetails if it's a string
-    if (typeof result.cleaningDetails === 'string') {
+    const canonicalInspectionKeys = [
+      'hoodInteriorCleaned',
+      'plenumCleaned',
+      'filtersCleanedScope',
+      'ductCleaned',
+      'adequateAccessPanels',
+      'exhaustFanCleaned',
+      'fireSuppressionNozzlesClear'
+    ] as const;
+    const parseJsonField = (field: string) => {
+      if (typeof result[field] !== 'string') return;
       try {
-        result.cleaningDetails = JSON.parse(result.cleaningDetails);
+        result[field] = JSON.parse(result[field]);
       } catch {
-        debugLogger.warn('SYNC', 'Failed to parse cleaningDetails JSON');
+        debugLogger.warn('SYNC', `Failed to parse ${field} JSON`);
+      }
+    };
+
+    parseJsonField('cleaningDetails');
+    parseJsonField('inspectionItems');
+    parseJsonField('deficiencies');
+
+    const inspectionItems =
+      result.inspectionItems &&
+      typeof result.inspectionItems === 'object' &&
+      !Array.isArray(result.inspectionItems)
+        ? result.inspectionItems
+        : {};
+    const cleaningDetails =
+      result.cleaningDetails &&
+      typeof result.cleaningDetails === 'object' &&
+      !Array.isArray(result.cleaningDetails)
+        ? result.cleaningDetails
+        : {};
+
+    result.inspectionItems = {
+      hoodInteriorCleaned: this.mapLegacyReportBoolean(
+        inspectionItems.hoodInteriorCleaned ?? cleaningDetails.hoodCleaned
+      ),
+      plenumCleaned: this.mapLegacyReportBoolean(inspectionItems.plenumCleaned),
+      filtersCleanedScope: this.mapLegacyReportBoolean(
+        inspectionItems.filtersCleanedScope ?? cleaningDetails.filtersCleaned
+      ),
+      ductCleaned: this.mapLegacyReportBoolean(
+        inspectionItems.ductCleaned ?? cleaningDetails.ductworkCleaned
+      ),
+      adequateAccessPanels: this.mapLegacyReportBoolean(inspectionItems.adequateAccessPanels),
+      exhaustFanCleaned: this.mapLegacyReportBoolean(
+        inspectionItems.exhaustFanCleaned ?? cleaningDetails.fanCleaned
+      ),
+      fireSuppressionNozzlesClear: this.mapLegacyReportBoolean(
+        inspectionItems.fireSuppressionNozzlesClear
+      )
+    };
+
+    for (const key of Object.keys(result.inspectionItems)) {
+      if (!canonicalInspectionKeys.includes(key as (typeof canonicalInspectionKeys)[number])) {
+        delete result.inspectionItems[key];
       }
     }
 
-    // Parse inspectionItems if it's a string
-    if (typeof result.inspectionItems === 'string') {
-      try {
-        result.inspectionItems = JSON.parse(result.inspectionItems);
-      } catch {
-        debugLogger.warn('SYNC', 'Failed to parse inspectionItems JSON');
-      }
+    if (!result.recommendations && typeof result.comments === 'string') {
+      result.recommendations = result.comments;
     }
 
-    // Parse equipmentDetails if it's a string
-    if (typeof result.equipmentDetails === 'string') {
-      try {
-        result.equipmentDetails = JSON.parse(result.equipmentDetails);
-      } catch {
-        debugLogger.warn('SYNC', 'Failed to parse equipmentDetails JSON');
-      }
-    }
+    delete result.comments;
+    delete result.cleaningDetails;
+    delete result.equipmentDetails;
+    delete result.cookingVolume;
 
     return result as T;
+  }
+
+  private mapLegacyReportBoolean(value: unknown): 'Yes' | 'No' | 'N/A' {
+    if (value === 'Yes' || value === 'No' || value === 'N/A') return value;
+    if (value === true || value === 1 || value === '1') return 'Yes';
+    if (value === false || value === 0 || value === '0') return 'No';
+    return 'N/A';
   }
 
   private incrementSyncMetric(
