@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Linking,
   Modal,
   Platform,
@@ -27,16 +28,7 @@ import { invoiceLinksToSchedule } from '@/utils/invoices';
 import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
 import { canMarkChequeReceived } from '@/utils/invoicePayment';
 import { formatDateReadable, formatVancouverTimestamp } from '@/utils/date';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle
-} from '@/components/ui/alert-dialog';
+import { ApiClient } from '@/services/ApiClient';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -184,15 +176,18 @@ export function JobDetailModal({
   const [photoMode, setPhotoMode] = useState<'before' | 'after' | null>(null);
   const [signatureVisible, setSignatureVisible] = useState(false);
   const [invoiceDetailsVisible, setInvoiceDetailsVisible] = useState(false);
-  const [showChequeConfirmModal, setShowChequeConfirmModal] = useState(false);
   const [isMarkingCheque, setIsMarkingCheque] = useState(false);
   const [chequeError, setChequeError] = useState<string | null>(null);
+  const [isSendingInvoice, setIsSendingInvoice] = useState(false);
+  const [sendInvoiceMessage, setSendInvoiceMessage] = useState<string | null>(null);
+  const [sendInvoiceError, setSendInvoiceError] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       setInvoiceDetailsVisible(false);
-      setShowChequeConfirmModal(false);
       setChequeError(null);
+      setSendInvoiceMessage(null);
+      setSendInvoiceError(null);
     }
   }, [scheduleId, visible]);
 
@@ -264,7 +259,6 @@ export function JobDetailModal({
     try {
       setIsMarkingCheque(true);
       setChequeError(null);
-      setShowChequeConfirmModal(false);
 
       await powerSync.execute(
         `UPDATE invoices SET status = ?, paymentMethod = ?, paymentDatePaid = ? WHERE id = ?`,
@@ -277,6 +271,62 @@ export function JobDetailModal({
     } finally {
       setIsMarkingCheque(false);
     }
+  };
+
+  const confirmMarkChequeAsPaid = () => {
+    if (!invoice?.id || !canMarkChequeReceived(invoice) || isMarkingCheque) return;
+
+    Alert.alert(
+      'Confirm Cheque Received',
+      `Mark this invoice as paid by cheque for "${invoice.jobTitle || schedule?.jobTitle || ''}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Confirm Payment',
+          onPress: markChequeAsPaid
+        }
+      ]
+    );
+  };
+
+  const sendInvoice = async () => {
+    if (!invoice?.id || isSendingInvoice) return;
+
+    try {
+      setIsSendingInvoice(true);
+      setSendInvoiceError(null);
+      setSendInvoiceMessage(null);
+
+      const result = await new ApiClient().sendInvoice(scheduleId, technicianId);
+      if (!result.success) {
+        setSendInvoiceError(result.error || 'Failed to send invoice. Please try again.');
+        return;
+      }
+
+      setSendInvoiceMessage('Invoice sent successfully.');
+    } catch (error) {
+      setSendInvoiceError(
+        error instanceof Error ? error.message : 'Failed to send invoice. Please try again.'
+      );
+    } finally {
+      setIsSendingInvoice(false);
+    }
+  };
+
+  const confirmSendInvoice = () => {
+    if (!invoice?.id || isSendingInvoice) return;
+
+    Alert.alert(
+      'Send Invoice',
+      `Send invoice ${invoice.invoiceId || ''} for "${invoice.jobTitle || schedule?.jobTitle || ''}"?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: sendInvoice
+        }
+      ]
+    );
   };
 
   if (!visible) return null;
@@ -597,7 +647,7 @@ export function JobDetailModal({
 
                         {canReceiveCheque && (
                           <Pressable
-                            onPress={() => setShowChequeConfirmModal(true)}
+                            onPress={confirmMarkChequeAsPaid}
                             disabled={isMarkingCheque}
                             className={`mt-4 flex-row items-center justify-center gap-2 rounded-xl px-4 py-4 ${
                               isMarkingCheque ? 'bg-gray-400 dark:bg-gray-700' : 'bg-[#14110F] dark:bg-amber-400'
@@ -618,6 +668,41 @@ export function JobDetailModal({
                           <View className='mt-3 rounded-xl bg-red-50 p-3 dark:bg-red-950/40'>
                             <Text className='text-sm font-medium text-red-800 dark:text-red-200'>
                               {chequeError}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+
+                      <View className='mt-4 border-t border-black/10 pt-4 dark:border-white/10'>
+                        <Pressable
+                          onPress={confirmSendInvoice}
+                          disabled={isSendingInvoice}
+                          className={`flex-row items-center justify-center gap-2 rounded-xl px-4 py-4 ${
+                            isSendingInvoice ? 'bg-gray-400 dark:bg-gray-700' : 'bg-emerald-600 dark:bg-emerald-400'
+                          }`}
+                        >
+                          {isSendingInvoice ? (
+                            <ActivityIndicator size='small' color={invertedIconColor} />
+                          ) : (
+                            <Ionicons name='send-outline' size={18} color={invertedIconColor} />
+                          )}
+                          <Text className='font-bold text-white dark:text-[#14110F]'>
+                            {isSendingInvoice ? 'Sending...' : 'Send invoice'}
+                          </Text>
+                        </Pressable>
+
+                        {sendInvoiceMessage && (
+                          <View className='mt-3 rounded-xl bg-emerald-50 p-3 dark:bg-emerald-950/40'>
+                            <Text className='text-sm font-medium text-emerald-800 dark:text-emerald-200'>
+                              {sendInvoiceMessage}
+                            </Text>
+                          </View>
+                        )}
+
+                        {sendInvoiceError && (
+                          <View className='mt-3 rounded-xl bg-red-50 p-3 dark:bg-red-950/40'>
+                            <Text className='text-sm font-medium text-red-800 dark:text-red-200'>
+                              {sendInvoiceError}
                             </Text>
                           </View>
                         )}
@@ -658,29 +743,6 @@ export function JobDetailModal({
             onClose={() => setSignatureVisible(false)}
           />
         )}
-
-        <AlertDialog open={showChequeConfirmModal} onOpenChange={setShowChequeConfirmModal}>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                <Text className='text-lg font-semibold'>Confirm Cheque Received</Text>
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                <Text className='text-muted-foreground'>
-                  Mark this invoice as paid by cheque for "{invoice?.jobTitle || schedule?.jobTitle || ''}"?
-                </Text>
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isMarkingCheque}>
-                <Text>Cancel</Text>
-              </AlertDialogCancel>
-              <AlertDialogAction onPress={markChequeAsPaid} disabled={isMarkingCheque}>
-                <Text>{isMarkingCheque ? 'Updating...' : 'Confirm Payment'}</Text>
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
       </View>
     </Modal>
   );

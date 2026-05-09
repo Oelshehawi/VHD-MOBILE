@@ -162,15 +162,6 @@ export type PhotoCategoryKind =
   | 'ecologyUnit'
   | 'other';
 
-export interface PhotosData {
-  photos: PhotoType[];
-  pendingOps: any[];
-}
-
-export interface PhotoQueryResult {
-  photos: string; // PowerSync returns photos as a JSON string
-}
-
 export interface SignatureType {
   id: string;
   url: string;
@@ -191,12 +182,9 @@ export interface InvoiceType {
   notes?: string;
   serviceJobIds?: string[] | string;
   visitIds?: string[] | string;
-  photos?: string;
-  signature?: string;
   frequency?: number;
   status?: 'pending' | 'overdue' | 'paid';
   clientId?: string;
-  // Payment info
   paymentMethod?: 'eft' | 'e-transfer' | 'cheque' | 'credit-card' | 'other';
   paymentDatePaid?: string;
   paymentNotes?: string;
