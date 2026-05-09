@@ -1,7 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Linking, Modal, Platform, Pressable, ScrollView, useColorScheme, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  useColorScheme,
+  View
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useQuery, DEFAULT_ROW_COMPARATOR } from '@powersync/react-native';
+import { useQuery, DEFAULT_ROW_COMPARATOR, usePowerSync } from '@powersync/react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '@/components/ui/text';
 import type { InvoiceType, Schedule } from '@/types';
@@ -16,6 +25,18 @@ import { openReport } from '@/utils/openReport';
 import { isScheduleReportRequired } from '@/utils/schedules';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
 import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
+import { canMarkChequeReceived } from '@/utils/invoicePayment';
+import { formatDateReadable, formatVancouverTimestamp } from '@/utils/date';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from '@/components/ui/alert-dialog';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -155,6 +176,7 @@ export function JobDetailModal({
   isManager
 }: JobDetailModalProps) {
   const insets = useSafeAreaInsets();
+  const powerSync = usePowerSync();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const iconColor = isDark ? '#F2EFEA' : '#14110F';
@@ -162,10 +184,15 @@ export function JobDetailModal({
   const [photoMode, setPhotoMode] = useState<'before' | 'after' | null>(null);
   const [signatureVisible, setSignatureVisible] = useState(false);
   const [invoiceDetailsVisible, setInvoiceDetailsVisible] = useState(false);
+  const [showChequeConfirmModal, setShowChequeConfirmModal] = useState(false);
+  const [isMarkingCheque, setIsMarkingCheque] = useState(false);
+  const [chequeError, setChequeError] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible) {
       setInvoiceDetailsVisible(false);
+      setShowChequeConfirmModal(false);
+      setChequeError(null);
     }
   }, [scheduleId, visible]);
 
@@ -231,6 +258,27 @@ export function JobDetailModal({
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
+  const markChequeAsPaid = async () => {
+    if (!invoice?.id || !canMarkChequeReceived(invoice)) return;
+
+    try {
+      setIsMarkingCheque(true);
+      setChequeError(null);
+      setShowChequeConfirmModal(false);
+
+      await powerSync.execute(
+        `UPDATE invoices SET status = ?, paymentMethod = ?, paymentDatePaid = ? WHERE id = ?`,
+        ['paid', 'cheque', formatVancouverTimestamp(), invoice.id]
+      );
+    } catch (error) {
+      setChequeError(
+        error instanceof Error ? error.message : 'Failed to mark cheque as received. Please try again.'
+      );
+    } finally {
+      setIsMarkingCheque(false);
+    }
+  };
+
   if (!visible) return null;
 
   const beforeCount = Number(photoRows[0]?.beforeCount ?? 0);
@@ -242,6 +290,20 @@ export function JobDetailModal({
   const reportDone = !reportRequired || reportStatus === 'in_progress' || reportStatus === 'completed';
   const onSiteContact = parseOnSiteContact(schedule?.onSiteContact);
   const startAtUtc = getScheduleStartAtUtc(schedule ?? {});
+  const canReceiveCheque = invoice ? canMarkChequeReceived(invoice) : false;
+  const paymentDate = formatDateReadable(invoice?.paymentDatePaid);
+  const paymentStatusLabel =
+    invoice?.status === 'paid'
+      ? invoice.paymentMethod === 'cheque'
+        ? 'Cheque received'
+        : 'Payment received'
+      : 'Payment not received';
+  const paymentStatusDetail =
+    invoice?.status === 'paid'
+      ? paymentDate
+        ? `Received ${paymentDate}`
+        : 'Invoice is marked paid'
+      : 'Mark cheque once it is in hand';
 
   return (
     <Modal visible={visible} onRequestClose={onClose} animationType='slide' presentationStyle='fullScreen'>
@@ -432,37 +494,36 @@ export function JobDetailModal({
                 <Text className='mb-3 text-xs font-bold uppercase tracking-widest text-gray-500'>
                   Billing
                 </Text>
-                <Pressable
-                  onPress={
-                    isManager && invoice
-                      ? () => setInvoiceDetailsVisible((current) => !current)
-                      : undefined
-                  }
-                  disabled={!isManager || !invoice}
-                  className='rounded-2xl border border-black/10 bg-white p-4 active:bg-gray-50 dark:border-white/10 dark:bg-[#16140F] dark:active:bg-[#1F1C16]'
-                >
+                <View className='rounded-2xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-[#16140F]'>
                   {invoice ? (
                     <>
-                      <View className='flex-row items-center justify-between gap-3'>
-                        <View className='flex-1'>
-                          <Text className='text-base font-semibold text-[#14110F] dark:text-white'>
-                            {invoice.invoiceId}
-                          </Text>
-                          <Text className='mt-1 text-xs font-medium text-gray-500 dark:text-gray-400'>
-                            {isManager ? 'Tap to view invoice pricing' : invoice.status || 'pending'}
-                          </Text>
+                      <Pressable
+                        onPress={
+                          isManager ? () => setInvoiceDetailsVisible((current) => !current) : undefined
+                        }
+                        disabled={!isManager}
+                      >
+                        <View className='flex-row items-center justify-between gap-3'>
+                          <View className='flex-1'>
+                            <Text className='text-base font-semibold text-[#14110F] dark:text-white'>
+                              {invoice.invoiceId}
+                            </Text>
+                            <Text className='mt-1 text-xs font-medium text-gray-500 dark:text-gray-400'>
+                              {isManager ? 'Tap to view invoice pricing' : invoice.status || 'pending'}
+                            </Text>
+                          </View>
+                          <View className='flex-row items-center gap-2'>
+                            <StatusBadge done={invoice.status === 'paid'} label={invoice.status || 'linked'} />
+                            {isManager && (
+                              <Ionicons
+                                name={invoiceDetailsVisible ? 'chevron-up' : 'chevron-down'}
+                                size={18}
+                                color={iconColor}
+                              />
+                            )}
+                          </View>
                         </View>
-                        <View className='flex-row items-center gap-2'>
-                          <StatusBadge done={invoice.status === 'paid'} label={invoice.status || 'linked'} />
-                          {isManager && (
-                            <Ionicons
-                              name={invoiceDetailsVisible ? 'chevron-up' : 'chevron-down'}
-                              size={18}
-                              color={iconColor}
-                            />
-                          )}
-                        </View>
-                      </View>
+                      </Pressable>
                       {isManager && invoiceDetailsVisible && (
                         <View className='mt-4 border-t border-black/10 pt-4 dark:border-white/10'>
                           <View className='gap-3'>
@@ -509,6 +570,58 @@ export function JobDetailModal({
                           </View>
                         </View>
                       )}
+                      <View className='mt-4 border-t border-black/10 pt-4 dark:border-white/10'>
+                        <View className='flex-row items-center gap-3'>
+                          <View
+                            className={`h-10 w-10 items-center justify-center rounded-xl ${
+                              invoice.status === 'paid'
+                                ? 'bg-emerald-100 dark:bg-emerald-950/70'
+                                : 'bg-[#F0EDE6] dark:bg-gray-800'
+                            }`}
+                          >
+                            <Ionicons
+                              name={invoice.status === 'paid' ? 'checkmark' : 'cash-outline'}
+                              size={20}
+                              color={invoice.status === 'paid' ? '#047857' : iconColor}
+                            />
+                          </View>
+                          <View className='flex-1'>
+                            <Text className='text-sm font-semibold text-[#14110F] dark:text-white'>
+                              {paymentStatusLabel}
+                            </Text>
+                            <Text className='mt-1 text-xs font-medium text-gray-500 dark:text-gray-400'>
+                              {paymentStatusDetail}
+                            </Text>
+                          </View>
+                        </View>
+
+                        {canReceiveCheque && (
+                          <Pressable
+                            onPress={() => setShowChequeConfirmModal(true)}
+                            disabled={isMarkingCheque}
+                            className={`mt-4 flex-row items-center justify-center gap-2 rounded-xl px-4 py-4 ${
+                              isMarkingCheque ? 'bg-gray-400 dark:bg-gray-700' : 'bg-[#14110F] dark:bg-amber-400'
+                            }`}
+                          >
+                            {isMarkingCheque ? (
+                              <ActivityIndicator size='small' color={invertedIconColor} />
+                            ) : (
+                              <Ionicons name='cash-outline' size={18} color={invertedIconColor} />
+                            )}
+                            <Text className='font-bold text-[#F7F5F1] dark:text-[#14110F]'>
+                              {isMarkingCheque ? 'Updating...' : 'Mark cheque received'}
+                            </Text>
+                          </Pressable>
+                        )}
+
+                        {chequeError && (
+                          <View className='mt-3 rounded-xl bg-red-50 p-3 dark:bg-red-950/40'>
+                            <Text className='text-sm font-medium text-red-800 dark:text-red-200'>
+                              {chequeError}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
                     </>
                   ) : (
                     <Text className='text-sm font-medium text-gray-500 dark:text-gray-400'>
@@ -517,7 +630,7 @@ export function JobDetailModal({
                         : 'No invoice linked yet.'}
                     </Text>
                   )}
-                </Pressable>
+                </View>
               </View>
             )}
           </ScrollView>
@@ -545,6 +658,29 @@ export function JobDetailModal({
             onClose={() => setSignatureVisible(false)}
           />
         )}
+
+        <AlertDialog open={showChequeConfirmModal} onOpenChange={setShowChequeConfirmModal}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                <Text className='text-lg font-semibold'>Confirm Cheque Received</Text>
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                <Text className='text-muted-foreground'>
+                  Mark this invoice as paid by cheque for "{invoice?.jobTitle || schedule?.jobTitle || ''}"?
+                </Text>
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isMarkingCheque}>
+                <Text>Cancel</Text>
+              </AlertDialogCancel>
+              <AlertDialogAction onPress={markChequeAsPaid} disabled={isMarkingCheque}>
+                <Text>{isMarkingCheque ? 'Updating...' : 'Confirm Payment'}</Text>
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </View>
     </Modal>
   );
