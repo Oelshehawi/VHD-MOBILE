@@ -1,7 +1,8 @@
 {
   "name": "vhd-app",
   "main": "expo-router/entry",
-  "version": "1.0.0",
+  "version": "2.0.0",
+  "packageManager": "pnpm@10.22.0",
   "scripts": {
     "start": "expo start -c",
     "android": "expo run:android",
