@@ -136,18 +136,41 @@ type ReportRow = {
   equipmentDetails: string | null;
 };
 
+type ReportScreenParams = {
+  scheduleId?: string;
+  jobTitle?: string;
+  scheduledStartAtUtc?: string;
+  startDateTime?: string;
+  timeZone?: string;
+  technicianId?: string;
+};
+
+interface ReportCloseoutContentProps {
+  params: ReportScreenParams;
+  onClose: () => void;
+  showStackHeader?: boolean;
+}
+
 export default function ReportScreen() {
+  const params = useLocalSearchParams<ReportScreenParams>();
+
+  return (
+    <ReportCloseoutContent
+      params={params}
+      onClose={() => router.back()}
+      showStackHeader
+    />
+  );
+}
+
+export function ReportCloseoutContent({
+  params,
+  onClose,
+  showStackHeader = false
+}: ReportCloseoutContentProps) {
   const { user } = useUser();
   const powerSync = usePowerSync();
   const insets = useSafeAreaInsets();
-  const params = useLocalSearchParams<{
-    scheduleId?: string;
-    jobTitle?: string;
-    scheduledStartAtUtc?: string;
-    startDateTime?: string;
-    timeZone?: string;
-    technicianId?: string;
-  }>();
 
   const scheduleId = typeof params.scheduleId === 'string' ? params.scheduleId : '';
   const technicianId =
@@ -377,7 +400,7 @@ export default function ReportScreen() {
           );
         }
       });
-      router.back();
+      onClose();
     } catch (error) {
       setSubmitError(error instanceof Error ? error.message : 'Failed to save report');
     } finally {
@@ -387,13 +410,15 @@ export default function ReportScreen() {
 
   return (
     <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950' edges={['bottom', 'left', 'right']}>
-      <Stack.Screen
-        options={{
-          headerShown: true,
-          title: 'Report Closeout',
-          headerBackTitle: 'Back'
-        }}
-      />
+      {showStackHeader && (
+        <Stack.Screen
+          options={{
+            headerShown: true,
+            title: 'Report Closeout',
+            headerBackTitle: 'Back'
+          }}
+        />
+      )}
       <KeyboardAvoidingView
         className='flex-1'
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -483,23 +508,6 @@ export default function ReportScreen() {
                     onChange={onChange}
                   />
                 </View>
-              )}
-            />
-          </View>
-
-          <View className='mt-8'>
-            <Text className='text-xl font-semibold text-gray-900 dark:text-white'>Recommendations</Text>
-            <Controller
-              control={control}
-              name='recommendations'
-              render={({ field: { onChange, value } }) => (
-                <TextInput
-                  value={value}
-                  onChangeText={onChange}
-                  placeholder='Recommended follow-up work'
-                  className='mt-3 min-h-[96px] rounded-xl border border-black/10 bg-white px-3 py-2 text-base text-gray-900 dark:border-white/10 dark:bg-[#16140F] dark:text-white'
-                  multiline
-                />
               )}
             />
           </View>

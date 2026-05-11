@@ -22,13 +22,13 @@ import { TechnicianNotes } from './TechnicianNotes';
 import { EquipmentProfilePanel } from './EquipmentProfilePanel';
 import { formatScheduleTime, getScheduleStartAtUtc } from '@/utils/scheduleTime';
 import { openMaps } from '@/utils/dashboard';
-import { openReport } from '@/utils/openReport';
 import { isScheduleReportRequired } from '@/utils/schedules';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
 import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
 import { canMarkChequeReceived } from '@/utils/invoicePayment';
 import { formatDateReadable, formatVancouverTimestamp } from '@/utils/date';
 import { ApiClient } from '@/services/ApiClient';
+import { ServiceReportModal } from './ServiceReportModal';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -181,6 +181,7 @@ export function JobDetailModal({
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
   const [sendInvoiceMessage, setSendInvoiceMessage] = useState<string | null>(null);
   const [sendInvoiceError, setSendInvoiceError] = useState<string | null>(null);
+  const [reportVisible, setReportVisible] = useState(false);
 
   useEffect(() => {
     if (visible) {
@@ -329,6 +330,11 @@ export function JobDetailModal({
     );
   };
 
+  const handleOpenReport = () => {
+    if (!schedule) return;
+    setReportVisible(true);
+  };
+
   if (!visible) return null;
 
   const beforeCount = Number(photoRows[0]?.beforeCount ?? 0);
@@ -461,15 +467,7 @@ export function JobDetailModal({
                     detail={reportDone ? 'Started or submitted' : 'Required'}
                     done={reportDone}
                     warn={!reportDone}
-                    onPress={() =>
-                      openReport({
-                        scheduleId,
-                        jobTitle: schedule.jobTitle,
-                        scheduledStartAtUtc: startAtUtc,
-                        timeZone: schedule.timeZone,
-                        technicianId
-                      })
-                    }
+                    onPress={handleOpenReport}
                   />
                 )}
               </View>
@@ -741,6 +739,18 @@ export function JobDetailModal({
             schedule={schedule}
             visible={signatureVisible}
             onClose={() => setSignatureVisible(false)}
+          />
+        )}
+
+        {schedule && (
+          <ServiceReportModal
+            visible={reportVisible}
+            onClose={() => setReportVisible(false)}
+            scheduleId={scheduleId}
+            jobTitle={schedule.jobTitle}
+            scheduledStartAtUtc={startAtUtc}
+            timeZone={schedule.timeZone}
+            technicianId={technicianId}
           />
         )}
       </View>
