@@ -15,6 +15,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
 import { router } from 'expo-router';
 import NetInfo from '@react-native-community/netinfo';
+import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { AvailabilityManager } from '../../components/schedule/AvailabilityManager';
@@ -115,6 +116,7 @@ export default function ProfileScreen() {
 
   // Use cached data when offline
   const displayUser = isOffline ? cachedUser : user;
+  const appVersion = Constants.expoConfig?.version || 'Unknown';
 
   const WorkRow = ({
     icon,
@@ -225,7 +227,7 @@ export default function ProfileScreen() {
             <CardContent>
               <View className='space-y-2'>
                 <TouchableOpacity onPress={handleVersionTap} activeOpacity={0.7}>
-                  <InfoRow label='Version' value='1.0.0' />
+                  <InfoRow label='Version' value={appVersion} />
                 </TouchableOpacity>
                 <InfoRow label='Update Channel' value={Updates.channel || 'development'} />
                 <InfoRow label='Update ID' value={Updates.updateId || 'No OTA update installed'} />
