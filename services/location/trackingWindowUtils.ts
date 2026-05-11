@@ -115,29 +115,33 @@ export function getRelevantTrackingWindows(
 }
 
 export function isTravelWindowActive(
-  window: Pick<ParsedTrackingWindow, 'startsAtUtc' | 'scheduledStartAtUtc'>,
+  window: Pick<ParsedTrackingWindow, 'startsAtUtc' | 'endsAtUtc'>,
   now: Date = new Date()
 ): boolean {
   const nowMs = now.getTime();
-  return Date.parse(window.startsAtUtc) <= nowMs && nowMs <= Date.parse(window.scheduledStartAtUtc);
+  return Date.parse(window.startsAtUtc) <= nowMs && nowMs <= Date.parse(window.endsAtUtc);
 }
 
-export function getPingIntervalSeconds(window: TechnicianTrackingWindow): number {
-  const fallbackSeconds = 10 * 60;
+export function getPingIntervalSeconds(
+  window: Pick<TechnicianTrackingWindow, 'pingIntervalSeconds'>
+): number {
+  const fallbackSeconds = 5 * 60;
   const value = finiteNumber(window.pingIntervalSeconds);
   if (value === null) {
     return fallbackSeconds;
   }
 
-  return Math.min(10 * 60, Math.max(5 * 60, Math.round(value)));
+  return Math.min(5 * 60, Math.max(5 * 60, Math.round(value)));
 }
 
-export function getDistanceIntervalMeters(window: TechnicianTrackingWindow): number {
-  const fallbackMeters = 750;
+export function getDistanceIntervalMeters(
+  window: Pick<TechnicianTrackingWindow, 'distanceIntervalMeters'>
+): number {
+  const fallbackMeters = 250;
   const value = finiteNumber(window.distanceIntervalMeters);
   if (value === null) {
     return fallbackMeters;
   }
 
-  return Math.min(1000, Math.max(500, Math.round(value)));
+  return Math.min(500, Math.max(100, Math.round(value)));
 }

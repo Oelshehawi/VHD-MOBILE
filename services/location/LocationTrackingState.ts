@@ -1,5 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import type { LocationRegionType, ParsedTrackingWindow } from '@/types/locationTracking';
+import type {
+  LocationEventType,
+  LocationRegionType,
+  ParsedTrackingWindow
+} from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
 
 const LOCATION_TRACKING_STATE_KEY = 'vhd_location_tracking_state_v1';
@@ -54,13 +58,25 @@ export interface PersistedGeofenceRegion {
   lng: number;
 }
 
+export interface PersistedGeofenceTransition {
+  key: string;
+  trackingWindowId: string;
+  regionType: LocationRegionType;
+  eventType: Extract<LocationEventType, 'geofence_enter' | 'geofence_exit'>;
+  recordedAt: string;
+}
+
 export interface LocationTrackingState {
   windows: PersistedTrackingWindow[];
   geofenceRegions: PersistedGeofenceRegion[];
+  geofenceSignature?: string;
+  geofenceTransitions: PersistedGeofenceTransition[];
   arrivedWindowIds: string[];
   activeLocationWindowIds: string[];
+  lastLocationPingAtByWindowId: Record<string, string>;
   permissionDeniedSentAt?: string;
   locationUpdatesStartedAt?: string;
+  locationUpdatesSignature?: string;
   lastCoordinatorRunAt?: string;
   lastKnownPermissionState?: PermissionState | null;
 }
@@ -91,12 +107,48 @@ function normalizePermissionState(value: unknown): PermissionState | null {
 const EMPTY_STATE: LocationTrackingState = {
   windows: [],
   geofenceRegions: [],
+  geofenceTransitions: [],
   arrivedWindowIds: [],
-  activeLocationWindowIds: []
+  activeLocationWindowIds: [],
+  lastLocationPingAtByWindowId: {}
 };
 
 function uniqueStrings(values: string[]): string[] {
   return Array.from(new Set(values.filter(Boolean)));
+}
+
+function normalizeGeofenceTransitions(value: unknown): PersistedGeofenceTransition[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value.filter((item): item is PersistedGeofenceTransition => {
+    if (!item || typeof item !== 'object') {
+      return false;
+    }
+
+    const candidate = item as Partial<PersistedGeofenceTransition>;
+    return (
+      typeof candidate.key === 'string' &&
+      typeof candidate.trackingWindowId === 'string' &&
+      (candidate.regionType === 'depot' || candidate.regionType === 'job') &&
+      (candidate.eventType === 'geofence_enter' || candidate.eventType === 'geofence_exit') &&
+      typeof candidate.recordedAt === 'string'
+    );
+  });
+}
+
+function normalizeLastLocationPingAt(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.entries(value).reduce<Record<string, string>>((acc, [key, timestamp]) => {
+    if (key && typeof timestamp === 'string') {
+      acc[key] = timestamp;
+    }
+    return acc;
+  }, {});
 }
 
 function normalizeState(value: Partial<LocationTrackingState> | null): LocationTrackingState {
@@ -107,15 +159,23 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
   return {
     windows: Array.isArray(value.windows) ? value.windows : [],
     geofenceRegions: Array.isArray(value.geofenceRegions) ? value.geofenceRegions : [],
+    geofenceSignature:
+      typeof value.geofenceSignature === 'string' ? value.geofenceSignature : undefined,
+    geofenceTransitions: normalizeGeofenceTransitions(value.geofenceTransitions),
     arrivedWindowIds: uniqueStrings(Array.isArray(value.arrivedWindowIds) ? value.arrivedWindowIds : []),
     activeLocationWindowIds: uniqueStrings(
       Array.isArray(value.activeLocationWindowIds) ? value.activeLocationWindowIds : []
     ),
+    lastLocationPingAtByWindowId: normalizeLastLocationPingAt(value.lastLocationPingAtByWindowId),
     permissionDeniedSentAt:
       typeof value.permissionDeniedSentAt === 'string' ? value.permissionDeniedSentAt : undefined,
     locationUpdatesStartedAt:
       typeof value.locationUpdatesStartedAt === 'string'
         ? value.locationUpdatesStartedAt
+        : undefined,
+    locationUpdatesSignature:
+      typeof value.locationUpdatesSignature === 'string'
+        ? value.locationUpdatesSignature
         : undefined,
     lastCoordinatorRunAt:
       typeof value.lastCoordinatorRunAt === 'string' ? value.lastCoordinatorRunAt : undefined,
@@ -187,4 +247,34 @@ export async function markWindowArrived(windowId: string): Promise<LocationTrack
     ...state,
     arrivedWindowIds: uniqueStrings([...state.arrivedWindowIds, windowId])
   }));
+}
+
+export async function recordGeofenceTransition(
+  transition: Omit<PersistedGeofenceTransition, 'key'>
+): Promise<{ shouldEmit: boolean; state: LocationTrackingState }> {
+  const key = `${transition.trackingWindowId}:${transition.regionType}`;
+  const nextTransition: PersistedGeofenceTransition = {
+    ...transition,
+    key
+  };
+
+  let shouldEmit = true;
+  const state = await updateLocationTrackingState((current) => {
+    const previousTransition = current.geofenceTransitions.find((item) => item.key === key);
+    shouldEmit = previousTransition?.eventType !== transition.eventType;
+
+    if (!shouldEmit) {
+      return current;
+    }
+
+    return {
+      ...current,
+      geofenceTransitions: [
+        ...current.geofenceTransitions.filter((item) => item.key !== key),
+        nextTransition
+      ]
+    };
+  });
+
+  return { shouldEmit, state };
 }

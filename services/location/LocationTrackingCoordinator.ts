@@ -72,6 +72,12 @@ function createSystemEventFromPersistedWindow(
   return createSystemEvent(window, eventType);
 }
 
+function selectActiveTravelWindows(windows: ParsedTrackingWindow[]): ParsedTrackingWindow[] {
+  return [...windows]
+    .sort((a, b) => Date.parse(a.startsAtUtc) - Date.parse(b.startsAtUtc))
+    .slice(0, 1);
+}
+
 export class LocationTrackingCoordinator {
   private syncInFlight: Promise<void> | null = null;
   private lastWindowSignature = '';
@@ -117,7 +123,11 @@ export class LocationTrackingCoordinator {
       ...current,
       activeLocationWindowIds: [],
       geofenceRegions: [],
+      geofenceSignature: undefined,
+      geofenceTransitions: [],
       windows: [],
+      lastLocationPingAtByWindowId: {},
+      locationUpdatesSignature: undefined,
       lastCoordinatorRunAt: new Date().toISOString()
     }));
 
@@ -145,9 +155,11 @@ export class LocationTrackingCoordinator {
 
     const relevantWindows = getRelevantTrackingWindows(windows);
     const existingState = await readLocationTrackingState();
-    const activeWindows = relevantWindows.filter(
-      (window) =>
-        isTravelWindowActive(window) && !existingState.arrivedWindowIds.includes(window.id)
+    const activeWindows = selectActiveTravelWindows(
+      relevantWindows.filter(
+        (window) =>
+          isTravelWindowActive(window) && !existingState.arrivedWindowIds.includes(window.id)
+      )
     );
 
     if (relevantWindows.length === 0) {
@@ -159,7 +171,11 @@ export class LocationTrackingCoordinator {
         ...state,
         windows: [],
         geofenceRegions: [],
-        activeLocationWindowIds: []
+        geofenceSignature: undefined,
+        geofenceTransitions: [],
+        activeLocationWindowIds: [],
+        lastLocationPingAtByWindowId: {},
+        locationUpdatesSignature: undefined
       }));
       debugLogger.info('LOCATION', 'No relevant tracking windows; location tasks stopped');
       return;
@@ -170,6 +186,14 @@ export class LocationTrackingCoordinator {
       windows: toPersistedWindows(relevantWindows),
       arrivedWindowIds: state.arrivedWindowIds.filter((id) =>
         relevantWindows.some((window) => window.id === id)
+      ),
+      geofenceTransitions: state.geofenceTransitions.filter((transition) =>
+        relevantWindows.some((window) => window.id === transition.trackingWindowId)
+      ),
+      lastLocationPingAtByWindowId: Object.fromEntries(
+        Object.entries(state.lastLocationPingAtByWindowId).filter(([windowId]) =>
+          relevantWindows.some((window) => window.id === windowId)
+        )
       ),
       lastCoordinatorRunAt: new Date().toISOString()
     }));
@@ -183,6 +207,11 @@ export class LocationTrackingCoordinator {
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: [],
+        geofenceRegions: [],
+        geofenceSignature: undefined,
+        geofenceTransitions: [],
+        lastLocationPingAtByWindowId: {},
+        locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));
       debugLogger.warn('LOCATION', 'Location tracking permission unavailable', {
@@ -324,6 +353,8 @@ export class LocationTrackingCoordinator {
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: [],
+        lastLocationPingAtByWindowId: {},
+        locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));
     }

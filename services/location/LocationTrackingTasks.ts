@@ -10,6 +10,7 @@ import { debugLogger } from '@/utils/DebugLogger';
 import { flushLocationEventQueue, postOrQueueLocationEvent } from './LocationEventQueue';
 import {
   markWindowArrived,
+  recordGeofenceTransition,
   readLocationTrackingState,
   updateLocationTrackingState
 } from './LocationTrackingState';
@@ -65,15 +66,41 @@ function isPersistedTravelWindowActive(
   return (
     !arrivedWindowIds.includes(window.id) &&
     Date.parse(window.startsAtUtc) <= nowMs &&
-    nowMs <= Date.parse(window.scheduledStartAtUtc)
+    nowMs <= Date.parse(window.endsAtUtc)
   );
+}
+
+function getActivePersistedTravelWindows(
+  windows: PersistedTrackingWindow[],
+  arrivedWindowIds: string[]
+): PersistedTrackingWindow[] {
+  return windows
+    .filter((window) => isPersistedTravelWindowActive(window, arrivedWindowIds))
+    .sort((a, b) => Date.parse(a.startsAtUtc) - Date.parse(b.startsAtUtc))
+    .slice(0, 1);
+}
+
+function shouldEmitLocationPing(
+  window: PersistedTrackingWindow,
+  lastLocationPingAtByWindowId: Record<string, string>,
+  recordedAtMs: number
+): boolean {
+  const lastPingAt = lastLocationPingAtByWindowId[window.id];
+  if (!lastPingAt) {
+    return true;
+  }
+
+  const lastPingAtMs = Date.parse(lastPingAt);
+  if (Number.isNaN(lastPingAtMs)) {
+    return true;
+  }
+
+  return recordedAtMs - lastPingAtMs >= getPingIntervalSeconds(window) * 1000;
 }
 
 async function stopLocationUpdatesIfNoActivePersistedWindow(reason: string): Promise<void> {
   const state = await readLocationTrackingState();
-  const activeWindows = state.windows.filter((window) =>
-    isPersistedTravelWindowActive(window, state.arrivedWindowIds)
-  );
+  const activeWindows = getActivePersistedTravelWindows(state.windows, state.arrivedWindowIds);
 
   if (activeWindows.length > 0) {
     return;
@@ -94,7 +121,8 @@ async function stopLocationUpdatesIfNoActivePersistedWindow(reason: string): Pro
   const stoppedWindowIds = state.activeLocationWindowIds;
   await updateLocationTrackingState((current) => ({
     ...current,
-    activeLocationWindowIds: []
+    activeLocationWindowIds: [],
+    locationUpdatesSignature: undefined
   }));
 
   for (const windowId of stoppedWindowIds) {
@@ -150,6 +178,30 @@ if (!TaskManager.isTaskDefined(LOCATION_GEOFENCE_TASK_NAME)) {
       return;
     }
 
+    const recordedAt = new Date().toISOString();
+    const transition = await recordGeofenceTransition({
+      trackingWindowId: metadata.trackingWindowId,
+      regionType: metadata.regionType,
+      eventType,
+      recordedAt
+    });
+
+    if (!transition.shouldEmit) {
+      debugLogger.info('LOCATION', 'Suppressed duplicate geofence transition', {
+        trackingWindowId: metadata.trackingWindowId,
+        scheduleId: metadata.scheduleId,
+        regionType: metadata.regionType,
+        eventType
+      });
+
+      if (eventType === 'geofence_enter' && metadata.regionType === 'job') {
+        await markWindowArrived(metadata.trackingWindowId);
+        await stopLocationUpdatesIfNoActivePersistedWindow('duplicate-job-geofence-enter');
+      }
+
+      return;
+    }
+
     const event: MobileLocationEvent = {
       trackingWindowId: metadata.trackingWindowId,
       scheduleId: metadata.scheduleId,
@@ -157,7 +209,7 @@ if (!TaskManager.isTaskDefined(LOCATION_GEOFENCE_TASK_NAME)) {
       regionType: metadata.regionType,
       lat: metadata.lat,
       lng: metadata.lng,
-      recordedAt: new Date().toISOString(),
+      recordedAt,
       source: 'geofence',
       platform
     };
@@ -194,8 +246,9 @@ if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {
     }
 
     const state = await readLocationTrackingState();
-    const activeWindows = state.windows.filter((window) =>
-      isPersistedTravelWindowActive(window, state.arrivedWindowIds)
+    const activeWindows = getActivePersistedTravelWindows(
+      state.windows,
+      state.arrivedWindowIds
     );
 
     if (activeWindows.length === 0) {
@@ -206,6 +259,21 @@ if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {
     await flushLocationEventQueue();
 
     for (const window of activeWindows) {
+      const recordedAt = new Date(latestLocation.timestamp).toISOString();
+      if (
+        !shouldEmitLocationPing(
+          window,
+          state.lastLocationPingAtByWindowId,
+          latestLocation.timestamp
+        )
+      ) {
+        debugLogger.debug('LOCATION', 'Skipped throttled location ping', {
+          trackingWindowId: window.id,
+          scheduleId: window.scheduleId
+        });
+        continue;
+      }
+
       const event: MobileLocationEvent = {
         trackingWindowId: window.id,
         scheduleId: window.scheduleId,
@@ -215,12 +283,19 @@ if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {
         accuracyMeters: latestLocation.coords.accuracy ?? undefined,
         speedMetersPerSecond: latestLocation.coords.speed ?? undefined,
         headingDegrees: latestLocation.coords.heading ?? undefined,
-        recordedAt: new Date(latestLocation.timestamp).toISOString(),
+        recordedAt,
         source: 'background_location',
         platform
       };
 
       await postOrQueueLocationEvent(event);
+      await updateLocationTrackingState((current) => ({
+        ...current,
+        lastLocationPingAtByWindowId: {
+          ...current.lastLocationPingAtByWindowId,
+          [window.id]: recordedAt
+        }
+      }));
     }
   });
 }
@@ -270,6 +345,28 @@ export function buildGeofenceRegions(windows: ParsedTrackingWindow[]): {
   return { regions, metadata };
 }
 
+function formatGeofenceCoordinate(value: number | undefined): string {
+  return Number.isFinite(value) ? Number(value).toFixed(6) : '';
+}
+
+function formatGeofenceRadius(value: number | undefined): string {
+  return Number.isFinite(value) ? String(Math.round(Number(value))) : '';
+}
+
+export function buildGeofenceSignature(regions: Location.LocationRegion[]): string {
+  return regions
+    .map((region) => [
+      region.identifier ?? '',
+      formatGeofenceCoordinate(region.latitude),
+      formatGeofenceCoordinate(region.longitude),
+      formatGeofenceRadius(region.radius),
+      region.notifyOnEnter === false ? '0' : '1',
+      region.notifyOnExit === false ? '0' : '1'
+    ].join(':'))
+    .sort()
+    .join('|');
+}
+
 export async function syncGeofences(regions: Location.LocationRegion[]): Promise<void> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
     return;
@@ -277,12 +374,32 @@ export async function syncGeofences(regions: Location.LocationRegion[]): Promise
 
   if (regions.length === 0) {
     await stopGeofencing();
+    await updateLocationTrackingState((state) => ({
+      ...state,
+      geofenceSignature: undefined
+    }));
+    return;
+  }
+
+  const geofenceSignature = buildGeofenceSignature(regions);
+  const state = await readLocationTrackingState();
+  const started = await Location.hasStartedGeofencingAsync(LOCATION_GEOFENCE_TASK_NAME);
+  if (started && state.geofenceSignature === geofenceSignature) {
+    debugLogger.debug('LOCATION', 'Skipped unchanged location geofence registration', {
+      regionCount: regions.length
+    });
     return;
   }
 
   await Location.startGeofencingAsync(LOCATION_GEOFENCE_TASK_NAME, regions);
+  await updateLocationTrackingState((current) => ({
+    ...current,
+    geofenceSignature
+  }));
+
   debugLogger.info('LOCATION', 'Synced location geofences', {
-    regionCount: regions.length
+    regionCount: regions.length,
+    changed: state.geofenceSignature !== geofenceSignature
   });
 }
 
@@ -315,13 +432,19 @@ export async function startLocationUpdatesForWindows(
     return;
   }
 
+  const intervalSeconds = Math.min(...windows.map(getPingIntervalSeconds));
+  const distanceMeters = Math.min(...windows.map(getDistanceIntervalMeters));
+  const locationUpdatesSignature = `${intervalSeconds}:${distanceMeters}`;
+  const state = await readLocationTrackingState();
   const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
-  if (started) {
+
+  if (started && state.locationUpdatesSignature === locationUpdatesSignature) {
     return;
   }
 
-  const intervalSeconds = Math.min(...windows.map(getPingIntervalSeconds));
-  const distanceMeters = Math.min(...windows.map(getDistanceIntervalMeters));
+  if (started) {
+    await Location.stopLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
+  }
 
   await Location.startLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME, {
     accuracy: Location.Accuracy.Balanced,
@@ -338,6 +461,11 @@ export async function startLocationUpdatesForWindows(
     }
   });
 
+  await updateLocationTrackingState((current) => ({
+    ...current,
+    locationUpdatesSignature
+  }));
+
   debugLogger.info('LOCATION', 'Started background location updates', {
     windowIds: windows.map((window) => window.id),
     intervalSeconds,
@@ -350,6 +478,10 @@ export async function stopLocationUpdates(): Promise<void> {
     const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
     if (started) {
       await Location.stopLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
+      await updateLocationTrackingState((current) => ({
+        ...current,
+        locationUpdatesSignature: undefined
+      }));
       debugLogger.info('LOCATION', 'Stopped background location updates');
     }
   } catch (error) {
