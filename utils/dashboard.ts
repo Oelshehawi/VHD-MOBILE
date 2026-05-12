@@ -1,9 +1,9 @@
 import { Schedule } from '@/types';
 import { Linking } from 'react-native';
 import {
+  DEFAULT_SCHEDULE_TIME_ZONE,
   getLocalDateKey,
   getScheduleSortTime,
-  getScheduleStartDate,
   scheduleMatchesDateKey
 } from './scheduleTime';
 
@@ -29,13 +29,17 @@ function getScheduleDurationMinutes(schedule: Schedule): number {
 }
 
 function isScheduleActiveOrUpcoming(schedule: Schedule, now: Date): boolean {
-  const startDate = getScheduleStartDate(schedule);
-  if (!startDate) return false;
+  const startSortTime = getScheduleSortTime(schedule);
+  if (!Number.isFinite(startSortTime)) return false;
 
-  if (startDate.getTime() > now.getTime()) return true;
+  const nowSortTime = getScheduleSortTime({
+    scheduledStartAtUtc: now.toISOString(),
+    timeZone: schedule.timeZone || DEFAULT_SCHEDULE_TIME_ZONE
+  });
+  if (!Number.isFinite(nowSortTime)) return false;
 
-  const endDate = new Date(startDate.getTime() + getScheduleDurationMinutes(schedule) * 60 * 1000);
-  return endDate.getTime() > now.getTime();
+  const endSortTime = startSortTime + getScheduleDurationMinutes(schedule);
+  return endSortTime > nowSortTime;
 }
 
 export const sortSchedulesByTime = (schedules: Schedule[]) => {

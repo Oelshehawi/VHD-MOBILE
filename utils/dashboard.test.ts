@@ -64,4 +64,30 @@ describe('dashboard schedule helpers', () => {
       'one-pm-job'
     ]);
   });
+
+  it('keeps midnight through 3 AM jobs at the end of the same service day', () => {
+    const now = new Date('2026-05-12T19:45:00.000Z'); // 12:45 PM Vancouver
+    const schedules = [
+      buildSchedule({
+        id: 'morning-job',
+        scheduledStartAtUtc: '2026-05-12T16:00:00.000Z',
+        hours: 2
+      }),
+      buildSchedule({
+        id: 'eight-pm-job',
+        scheduledStartAtUtc: '2026-05-13T03:00:00.000Z',
+        hours: 2
+      }),
+      buildSchedule({
+        id: 'midnight-job',
+        scheduledStartAtUtc: '2026-05-12T07:00:00.000Z',
+        hours: 2
+      })
+    ];
+
+    expect(getRemainingTodaySchedules(schedules, now).map((schedule) => schedule.id)).toEqual([
+      'eight-pm-job',
+      'midnight-job'
+    ]);
+  });
 });
