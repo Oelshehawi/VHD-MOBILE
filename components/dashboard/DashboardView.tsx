@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -10,7 +10,7 @@ import {
 import { formatDateShort } from '@/utils/date';
 import { roundHoursToBucket, formatHoursDisplay } from '@/utils/hoursFormatting';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
-import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
+import { getRemainingTodaySchedules, openMaps } from '@/utils/dashboard';
 import {
   formatScheduleDateReadable,
   formatScheduleTime,
@@ -34,6 +34,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [selectedSchedule, setSelectedSchedule] = useState<Schedule | null>(null);
   const [jobDetailVisible, setJobDetailVisible] = useState(false);
+  const [now, setNow] = useState(() => new Date());
   const googleReviewUrl = 'https://g.page/r/CRLDtlapvtO3EAE/review';
   const { colorScheme } = useTheme();
   const { data: todaySchedules = [] } = useTodaySchedules();
@@ -48,7 +49,12 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
     [payrollSchedules]
   );
 
-  const sortedTodaySchedules = sortSchedulesByTime(todaySchedules);
+  useEffect(() => {
+    const intervalId = setInterval(() => setNow(new Date()), 60 * 1000);
+    return () => clearInterval(intervalId);
+  }, []);
+
+  const remainingTodaySchedules = getRemainingTodaySchedules(todaySchedules, now);
   const parseAssignedTechnicians = (assignedTechnicians: unknown): string[] => {
     try {
       if (typeof assignedTechnicians === 'string') {
@@ -60,7 +66,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
       return [];
     }
   };
-  const visibleTodaySchedules = sortedTodaySchedules.filter((schedule) => {
+  const visibleTodaySchedules = remainingTodaySchedules.filter((schedule) => {
     if (isManager) return true;
     return parseAssignedTechnicians(schedule.assignedTechnicians).includes(userId);
   });
