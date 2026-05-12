@@ -131,7 +131,7 @@ export function getPingIntervalSeconds(
     return fallbackSeconds;
   }
 
-  return Math.min(5 * 60, Math.max(5 * 60, Math.round(value)));
+  return Math.min(600, Math.max(60, Math.round(value)));
 }
 
 export function getDistanceIntervalMeters(

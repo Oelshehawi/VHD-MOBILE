@@ -47,6 +47,9 @@ export interface PersistedTrackingWindow {
   endsAtUtc: string;
   pingIntervalSeconds: number;
   distanceIntervalMeters: number;
+  jobSiteLat?: number;
+  jobSiteLng?: number;
+  jobSiteRadiusMeters?: number;
 }
 
 export interface PersistedGeofenceRegion {
@@ -72,8 +75,12 @@ export interface LocationTrackingState {
   geofenceSignature?: string;
   geofenceTransitions: PersistedGeofenceTransition[];
   arrivedWindowIds: string[];
+  exitedWindowIds: string[];
   activeLocationWindowIds: string[];
   lastLocationPingAtByWindowId: Record<string, string>;
+  arrivalHeartbeatWindowIds: string[];
+  lastArrivalHeartbeatAtByWindowId: Record<string, string>;
+  pendingOutsideJobCheckByWindowId: Record<string, string>;
   permissionDeniedSentAt?: string;
   locationUpdatesStartedAt?: string;
   locationUpdatesSignature?: string;
@@ -109,8 +116,12 @@ const EMPTY_STATE: LocationTrackingState = {
   geofenceRegions: [],
   geofenceTransitions: [],
   arrivedWindowIds: [],
+  exitedWindowIds: [],
   activeLocationWindowIds: [],
-  lastLocationPingAtByWindowId: {}
+  lastLocationPingAtByWindowId: {},
+  arrivalHeartbeatWindowIds: [],
+  lastArrivalHeartbeatAtByWindowId: {},
+  pendingOutsideJobCheckByWindowId: {}
 };
 
 function uniqueStrings(values: string[]): string[] {
@@ -151,6 +162,19 @@ function normalizeLastLocationPingAt(value: unknown): Record<string, string> {
   }, {});
 }
 
+function normalizeStringRecord(value: unknown): Record<string, string> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return {};
+  }
+
+  return Object.entries(value).reduce<Record<string, string>>((acc, [key, item]) => {
+    if (key && typeof item === 'string') {
+      acc[key] = item;
+    }
+    return acc;
+  }, {});
+}
+
 function normalizeState(value: Partial<LocationTrackingState> | null): LocationTrackingState {
   if (!value) {
     return { ...EMPTY_STATE };
@@ -163,10 +187,20 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
       typeof value.geofenceSignature === 'string' ? value.geofenceSignature : undefined,
     geofenceTransitions: normalizeGeofenceTransitions(value.geofenceTransitions),
     arrivedWindowIds: uniqueStrings(Array.isArray(value.arrivedWindowIds) ? value.arrivedWindowIds : []),
+    exitedWindowIds: uniqueStrings(Array.isArray(value.exitedWindowIds) ? value.exitedWindowIds : []),
     activeLocationWindowIds: uniqueStrings(
       Array.isArray(value.activeLocationWindowIds) ? value.activeLocationWindowIds : []
     ),
     lastLocationPingAtByWindowId: normalizeLastLocationPingAt(value.lastLocationPingAtByWindowId),
+    arrivalHeartbeatWindowIds: uniqueStrings(
+      Array.isArray(value.arrivalHeartbeatWindowIds) ? value.arrivalHeartbeatWindowIds : []
+    ),
+    lastArrivalHeartbeatAtByWindowId: normalizeStringRecord(
+      value.lastArrivalHeartbeatAtByWindowId
+    ),
+    pendingOutsideJobCheckByWindowId: normalizeStringRecord(
+      value.pendingOutsideJobCheckByWindowId
+    ),
     permissionDeniedSentAt:
       typeof value.permissionDeniedSentAt === 'string' ? value.permissionDeniedSentAt : undefined,
     locationUpdatesStartedAt:
@@ -199,9 +233,36 @@ export async function readLocationTrackingState(): Promise<LocationTrackingState
   }
 }
 
+function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
+  const windowIds = new Set(state.windows.map((window) => window.id));
+  const filterRecord = (record: Record<string, string>): Record<string, string> => {
+    const next: Record<string, string> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (windowIds.has(key)) {
+        next[key] = value;
+      }
+    }
+    return next;
+  };
+  return {
+    ...state,
+    arrivedWindowIds: state.arrivedWindowIds.filter((id) => windowIds.has(id)),
+    exitedWindowIds: state.exitedWindowIds.filter((id) => windowIds.has(id)),
+    activeLocationWindowIds: state.activeLocationWindowIds.filter((id) => windowIds.has(id)),
+    arrivalHeartbeatWindowIds: state.arrivalHeartbeatWindowIds.filter((id) => windowIds.has(id)),
+    geofenceTransitions: state.geofenceTransitions.filter((t) => windowIds.has(t.trackingWindowId)),
+    lastLocationPingAtByWindowId: filterRecord(state.lastLocationPingAtByWindowId),
+    lastArrivalHeartbeatAtByWindowId: filterRecord(state.lastArrivalHeartbeatAtByWindowId),
+    pendingOutsideJobCheckByWindowId: filterRecord(state.pendingOutsideJobCheckByWindowId)
+  };
+}
+
 export async function writeLocationTrackingState(state: LocationTrackingState): Promise<void> {
   try {
-    await AsyncStorage.setItem(LOCATION_TRACKING_STATE_KEY, JSON.stringify(normalizeState(state)));
+    await AsyncStorage.setItem(
+      LOCATION_TRACKING_STATE_KEY,
+      JSON.stringify(pruneOrphanKeys(normalizeState(state)))
+    );
   } catch (error) {
     debugLogger.warn('LOCATION', 'Failed to write location tracking state', {
       error: error instanceof Error ? error.message : String(error)
@@ -238,15 +299,42 @@ export function toPersistedWindows(windows: ParsedTrackingWindow[]): PersistedTr
     scheduledStartAtUtc: window.scheduledStartAtUtc,
     endsAtUtc: window.endsAtUtc,
     pingIntervalSeconds: window.pingIntervalSeconds,
-    distanceIntervalMeters: window.distanceIntervalMeters
+    distanceIntervalMeters: window.distanceIntervalMeters,
+    jobSiteLat: window.jobSiteTarget.lat,
+    jobSiteLng: window.jobSiteTarget.lng,
+    jobSiteRadiusMeters: window.jobSiteTarget.radiusMeters
   }));
 }
 
 export async function markWindowArrived(windowId: string): Promise<LocationTrackingState> {
   return updateLocationTrackingState((state) => ({
     ...state,
-    arrivedWindowIds: uniqueStrings([...state.arrivedWindowIds, windowId])
+    arrivedWindowIds: uniqueStrings([...state.arrivedWindowIds, windowId]),
+    arrivalHeartbeatWindowIds: state.exitedWindowIds.includes(windowId)
+      ? state.arrivalHeartbeatWindowIds
+      : uniqueStrings([...state.arrivalHeartbeatWindowIds, windowId])
   }));
+}
+
+export async function markWindowExited(windowId: string): Promise<LocationTrackingState> {
+  return updateLocationTrackingState((state) => {
+    const {
+      [windowId]: _lastHeartbeat,
+      ...lastArrivalHeartbeatAtByWindowId
+    } = state.lastArrivalHeartbeatAtByWindowId;
+    const {
+      [windowId]: _pendingOutside,
+      ...pendingOutsideJobCheckByWindowId
+    } = state.pendingOutsideJobCheckByWindowId;
+
+    return {
+      ...state,
+      exitedWindowIds: uniqueStrings([...state.exitedWindowIds, windowId]),
+      arrivalHeartbeatWindowIds: state.arrivalHeartbeatWindowIds.filter((id) => id !== windowId),
+      lastArrivalHeartbeatAtByWindowId,
+      pendingOutsideJobCheckByWindowId
+    };
+  });
 }
 
 export async function recordGeofenceTransition(

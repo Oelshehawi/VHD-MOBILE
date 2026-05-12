@@ -2,8 +2,8 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect, useRef, useState } from 'react';
-import { AppState, Text, TouchableOpacity, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, AppState, Modal, Text, TouchableOpacity, View } from 'react-native';
 import { useUpdates } from 'expo-updates';
 import * as Updates from 'expo-updates';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -49,6 +49,10 @@ const UPDATE_PENDING_KEY = 'updatePending';
 function UpdateChecker({ children }: { children: React.ReactNode }) {
   const [isChecking, setIsChecking] = useState(true);
   const [showUpdateToast, setShowUpdateToast] = useState(false);
+  const [updateReady, setUpdateReady] = useState(false);
+  const [updateLoading, setUpdateLoading] = useState(false);
+  const updateReadyRef = useRef(false);
+  const updateLoadingRef = useRef(false);
   const { isUpdateAvailable } = useUpdates();
   const insets = useSafeAreaInsets();
 
@@ -75,24 +79,74 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
     checkIfJustUpdated();
   }, []);
 
-  // Auto-apply updates when available
+  const fetchAvailableUpdate = useCallback(async (source: string) => {
+    if (__DEV__ || updateReadyRef.current || updateLoadingRef.current) return;
+
+    try {
+      updateLoadingRef.current = true;
+      setUpdateLoading(true);
+      const update = await Updates.checkForUpdateAsync();
+      if (!update.isAvailable) {
+        return;
+      }
+
+      const fetched = await Updates.fetchUpdateAsync();
+      if (fetched.isNew) {
+        updateReadyRef.current = true;
+        setUpdateReady(true);
+        void debugLogger.info('SYNC', 'Fetched EAS update; waiting for user reload', {
+          source
+        });
+      }
+    } catch (error) {
+      void debugLogger.warn('SYNC', 'Failed to fetch EAS update', {
+        source,
+        error: error instanceof Error ? error.message : String(error)
+      });
+    } finally {
+      updateLoadingRef.current = false;
+      setUpdateLoading(false);
+    }
+  }, []);
+
+  // Download updates quietly, then let the technician choose the reload moment.
   useEffect(() => {
     if (__DEV__ || isChecking) return;
 
     if (isUpdateAvailable) {
-      const applyUpdate = async () => {
-        try {
-          await AsyncStorage.setItem(UPDATE_PENDING_KEY, 'true');
-          await Updates.fetchUpdateAsync();
-          await Updates.reloadAsync();
-        } catch (error) {
-          console.error('Error applying update:', error);
-          await AsyncStorage.removeItem(UPDATE_PENDING_KEY);
-        }
-      };
-      applyUpdate();
+      void fetchAvailableUpdate('use-updates');
     }
-  }, [isUpdateAvailable, isChecking]);
+  }, [fetchAvailableUpdate, isUpdateAvailable, isChecking]);
+
+  useEffect(() => {
+    if (__DEV__ || isChecking) return;
+
+    void fetchAvailableUpdate('mount');
+
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active') {
+        void fetchAvailableUpdate('app-active');
+      }
+    });
+
+    return () => subscription.remove();
+  }, [fetchAvailableUpdate, isChecking]);
+
+  const reloadIntoUpdate = async () => {
+    if (updateLoadingRef.current) return;
+
+    try {
+      updateLoadingRef.current = true;
+      setUpdateLoading(true);
+      await AsyncStorage.setItem(UPDATE_PENDING_KEY, 'true');
+      await Updates.reloadAsync();
+    } catch (error) {
+      console.error('Error reloading into update:', error);
+      await AsyncStorage.removeItem(UPDATE_PENDING_KEY);
+      updateLoadingRef.current = false;
+      setUpdateLoading(false);
+    }
+  };
 
   // Show nothing while checking for updates initially (keeps splash screen visible)
   if (isChecking) {
@@ -116,6 +170,38 @@ function UpdateChecker({ children }: { children: React.ReactNode }) {
           </View>
         </Animated.View>
       )}
+      <Modal
+        visible={updateReady}
+        transparent
+        animationType='fade'
+        presentationStyle='overFullScreen'
+        onRequestClose={() => {}}
+      >
+        <View className='flex-1 justify-center bg-black/60 px-6'>
+          <View
+            className='rounded-lg bg-white p-5 shadow-xl dark:bg-slate-900'
+            style={{ marginTop: insets.top, marginBottom: insets.bottom }}
+          >
+            <Text className='text-xl font-semibold text-slate-950 dark:text-white'>
+              Update ready
+            </Text>
+            <Text className='mt-2 text-sm leading-5 text-slate-600 dark:text-slate-300'>
+              Restart the app to finish installing the latest update.
+            </Text>
+            <TouchableOpacity
+              onPress={reloadIntoUpdate}
+              disabled={updateLoading}
+              className='mt-5 min-h-12 flex-row items-center justify-center rounded-md bg-emerald-700 px-4'
+            >
+              {updateLoading ? (
+                <ActivityIndicator color='#ffffff' />
+              ) : (
+                <Text className='font-semibold text-white'>Restart now</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 }

@@ -8,17 +8,20 @@ import {
 } from '@/services/location/LocationEventQueue';
 import {
   buildGeofenceRegions,
-  startLocationUpdatesForWindows,
   stopGeofencing,
-  stopLocationUpdates,
   syncGeofences
-} from '@/services/location/LocationTrackingTasks';
+} from '@/services/location/LocationGeofenceTask';
+import {
+  startLocationUpdatesForWindows,
+  stopLocationUpdates
+} from '@/services/location/locationTaskShared';
 import {
   readLocationTrackingState,
   toPersistedWindows,
   updateLocationTrackingState
 } from '@/services/location/LocationTrackingState';
 import type {
+  LocationTrackingState,
   PermissionState,
   PersistedTrackingWindow
 } from '@/services/location/LocationTrackingState';
@@ -72,10 +75,60 @@ function createSystemEventFromPersistedWindow(
   return createSystemEvent(window, eventType);
 }
 
+// We deliberately track only the earliest active travel window at a time. In
+// practice technicians have sequential jobs (visit completion expires the
+// previous window), so this is safe. If overlapping active windows ever ship,
+// revisit.
 function selectActiveTravelWindows(windows: ParsedTrackingWindow[]): ParsedTrackingWindow[] {
-  return [...windows]
-    .sort((a, b) => Date.parse(a.startsAtUtc) - Date.parse(b.startsAtUtc))
-    .slice(0, 1);
+  const sorted = [...windows].sort(
+    (a, b) => Date.parse(a.startsAtUtc) - Date.parse(b.startsAtUtc)
+  );
+  if (sorted.length > 1) {
+    debugLogger.warn('LOCATION', 'Multiple active travel windows detected; using earliest', {
+      activeWindowIds: sorted.map((w) => w.id)
+    });
+  }
+  return sorted.slice(0, 1);
+}
+
+function selectArrivalHeartbeatWindows(
+  windows: ParsedTrackingWindow[],
+  arrivedWindowIds: string[],
+  exitedWindowIds: string[]
+): ParsedTrackingWindow[] {
+  return windows.filter(
+    (window) =>
+      arrivedWindowIds.includes(window.id) &&
+      !exitedWindowIds.includes(window.id) &&
+      isTravelWindowActive(window)
+  );
+}
+
+async function readPermissionStateFromOs(): Promise<PermissionState> {
+  const servicesEnabled = await Location.hasServicesEnabledAsync();
+  if (!servicesEnabled) {
+    return { kind: 'services-disabled' };
+  }
+
+  const foreground = await Location.getForegroundPermissionsAsync();
+  if (!foreground.granted) {
+    return { kind: 'foreground-denied', canAskAgain: foreground.canAskAgain };
+  }
+
+  const background = await Location.getBackgroundPermissionsAsync();
+  if (!background.granted) {
+    return { kind: 'background-denied', canAskAgain: background.canAskAgain };
+  }
+
+  return { kind: 'granted' };
+}
+
+function hasPersistedLocationUpdates(state: LocationTrackingState): boolean {
+  return (
+    state.activeLocationWindowIds.length > 0 ||
+    state.arrivalHeartbeatWindowIds.length > 0 ||
+    Boolean(state.locationUpdatesStartedAt)
+  );
 }
 
 export class LocationTrackingCoordinator {
@@ -83,16 +136,10 @@ export class LocationTrackingCoordinator {
   private lastWindowSignature = '';
 
   sync(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
-    const signature = JSON.stringify(
-      windows.map((window) => [
-        window.id,
-        window.status,
-        window.startsAtUtc,
-        window.scheduledStartAtUtc,
-        window.endsAtUtc,
-        window.updatedAt
-      ])
-    );
+    const signature = windows
+      .map((window) => `${window.id}|${window.status}|${window.updatedAt}`)
+      .sort()
+      .join(',');
 
     if (this.syncInFlight && signature === this.lastWindowSignature) {
       return this.syncInFlight;
@@ -126,7 +173,11 @@ export class LocationTrackingCoordinator {
       geofenceSignature: undefined,
       geofenceTransitions: [],
       windows: [],
+      exitedWindowIds: [],
       lastLocationPingAtByWindowId: {},
+      arrivalHeartbeatWindowIds: [],
+      lastArrivalHeartbeatAtByWindowId: {},
+      pendingOutsideJobCheckByWindowId: {},
       locationUpdatesSignature: undefined,
       lastCoordinatorRunAt: new Date().toISOString()
     }));
@@ -161,9 +212,18 @@ export class LocationTrackingCoordinator {
           isTravelWindowActive(window) && !existingState.arrivedWindowIds.includes(window.id)
       )
     );
+    const arrivalHeartbeatWindows = selectArrivalHeartbeatWindows(
+      relevantWindows,
+      existingState.arrivedWindowIds,
+      existingState.exitedWindowIds
+    );
 
     if (relevantWindows.length === 0) {
-      await this.stopExpiredTracking(existingState.activeLocationWindowIds, existingState.windows);
+      await this.stopExpiredTracking(
+        existingState.activeLocationWindowIds,
+        existingState.windows,
+        hasPersistedLocationUpdates(existingState)
+      );
       if (existingState.geofenceRegions.length > 0) {
         await stopGeofencing();
       }
@@ -173,8 +233,12 @@ export class LocationTrackingCoordinator {
         geofenceRegions: [],
         geofenceSignature: undefined,
         geofenceTransitions: [],
+        exitedWindowIds: [],
         activeLocationWindowIds: [],
         lastLocationPingAtByWindowId: {},
+        arrivalHeartbeatWindowIds: [],
+        lastArrivalHeartbeatAtByWindowId: {},
+        pendingOutsideJobCheckByWindowId: {},
         locationUpdatesSignature: undefined
       }));
       debugLogger.info('LOCATION', 'No relevant tracking windows; location tasks stopped');
@@ -184,23 +248,16 @@ export class LocationTrackingCoordinator {
     await updateLocationTrackingState((state) => ({
       ...state,
       windows: toPersistedWindows(relevantWindows),
-      arrivedWindowIds: state.arrivedWindowIds.filter((id) =>
-        relevantWindows.some((window) => window.id === id)
-      ),
-      geofenceTransitions: state.geofenceTransitions.filter((transition) =>
-        relevantWindows.some((window) => window.id === transition.trackingWindowId)
-      ),
-      lastLocationPingAtByWindowId: Object.fromEntries(
-        Object.entries(state.lastLocationPingAtByWindowId).filter(([windowId]) =>
-          relevantWindows.some((window) => window.id === windowId)
-        )
-      ),
       lastCoordinatorRunAt: new Date().toISOString()
     }));
 
     const permissionState = await this.ensureLocationPermission(relevantWindows[0]);
     if (permissionState.kind !== 'granted') {
-      await this.stopExpiredTracking(existingState.activeLocationWindowIds, existingState.windows);
+      await this.stopExpiredTracking(
+        existingState.activeLocationWindowIds,
+        existingState.windows,
+        hasPersistedLocationUpdates(existingState)
+      );
       if (existingState.geofenceRegions.length > 0) {
         await stopGeofencing();
       }
@@ -211,6 +268,9 @@ export class LocationTrackingCoordinator {
         geofenceSignature: undefined,
         geofenceTransitions: [],
         lastLocationPingAtByWindowId: {},
+        arrivalHeartbeatWindowIds: [],
+        lastArrivalHeartbeatAtByWindowId: {},
+        pendingOutsideJobCheckByWindowId: {},
         locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));
@@ -231,6 +291,7 @@ export class LocationTrackingCoordinator {
 
     await this.syncLocationUpdates(
       activeWindows,
+      arrivalHeartbeatWindows,
       existingState.activeLocationWindowIds,
       existingState.windows
     );
@@ -238,6 +299,7 @@ export class LocationTrackingCoordinator {
     debugLogger.info('LOCATION', 'Location tracking coordinator synced', {
       relevantWindowCount: relevantWindows.length,
       activeTravelWindowCount: activeWindows.length,
+      arrivalHeartbeatWindowCount: arrivalHeartbeatWindows.length,
       geofenceRegionCount: regions.length
     });
   }
@@ -250,66 +312,20 @@ export class LocationTrackingCoordinator {
   }
 
   async checkLocationPermissionStatus(): Promise<PermissionState> {
-    const state = await this.readPermissionStateFromOs();
+    const state = await readPermissionStateFromOs();
     await this.persistPermissionState(state);
     return state;
-  }
-
-  private async readPermissionStateFromOs(): Promise<PermissionState> {
-    const servicesEnabled = await Location.hasServicesEnabledAsync();
-    if (!servicesEnabled) {
-      return { kind: 'services-disabled' };
-    }
-
-    const foreground = await Location.getForegroundPermissionsAsync();
-    if (!foreground.granted) {
-      return { kind: 'foreground-denied', canAskAgain: foreground.canAskAgain };
-    }
-
-    const background = await Location.getBackgroundPermissionsAsync();
-    if (!background.granted) {
-      return { kind: 'background-denied', canAskAgain: background.canAskAgain };
-    }
-
-    return { kind: 'granted' };
   }
 
   private async ensureLocationPermission(
     windowForDeniedEvent: ParsedTrackingWindow
   ): Promise<PermissionState> {
-    const servicesEnabled = await Location.hasServicesEnabledAsync();
-    if (!servicesEnabled) {
+    const state = await readPermissionStateFromOs();
+    if (state.kind !== 'granted') {
       await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
-      const state: PermissionState = { kind: 'services-disabled' };
-      await this.persistPermissionState(state);
-      return state;
     }
-
-    const foregroundPermission = await Location.getForegroundPermissionsAsync();
-    if (!foregroundPermission.granted) {
-      await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
-      const state: PermissionState = {
-        kind: 'foreground-denied',
-        canAskAgain: foregroundPermission.canAskAgain
-      };
-      await this.persistPermissionState(state);
-      return state;
-    }
-
-    const backgroundPermission = await Location.getBackgroundPermissionsAsync();
-    if (!backgroundPermission.granted) {
-      await this.sendPermissionDeniedIfNeeded(windowForDeniedEvent);
-      const state: PermissionState = {
-        kind: 'background-denied',
-        canAskAgain: backgroundPermission.canAskAgain
-      };
-      await this.persistPermissionState(state);
-      return state;
-    }
-
-    const granted: PermissionState = { kind: 'granted' };
-    await this.persistPermissionState(granted);
-    return granted;
+    await this.persistPermissionState(state);
+    return state;
   }
 
   private async sendPermissionDeniedIfNeeded(window: ParsedTrackingWindow): Promise<void> {
@@ -331,30 +347,45 @@ export class LocationTrackingCoordinator {
 
   private async syncLocationUpdates(
     activeWindows: ParsedTrackingWindow[],
+    arrivalHeartbeatWindows: ParsedTrackingWindow[],
     previousActiveWindowIds: string[],
     previousWindows: PersistedTrackingWindow[]
   ): Promise<void> {
     const activeWindowIds = activeWindows.map((window) => window.id);
+    const arrivalHeartbeatWindowIds = arrivalHeartbeatWindows.map((window) => window.id);
     const newlyActiveWindows = activeWindows.filter(
       (window) => !previousActiveWindowIds.includes(window.id)
     );
     const stoppedWindowIds = previousActiveWindowIds.filter((id) => !activeWindowIds.includes(id));
+    const locationUpdateWindows = [...activeWindows, ...arrivalHeartbeatWindows];
+    const persistedState = await readLocationTrackingState();
+    const hadLocationUpdates =
+      previousActiveWindowIds.length > 0 ||
+      persistedState.arrivalHeartbeatWindowIds.length > 0 ||
+      Boolean(persistedState.locationUpdatesStartedAt);
 
-    if (activeWindows.length > 0) {
-      await startLocationUpdatesForWindows(activeWindows);
+    if (locationUpdateWindows.length > 0) {
+      await startLocationUpdatesForWindows(
+        locationUpdateWindows,
+        activeWindows.length > 0 ? 'travel' : 'arrival-heartbeat'
+      );
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: activeWindowIds,
+        arrivalHeartbeatWindowIds,
         locationUpdatesStartedAt: state.locationUpdatesStartedAt ?? new Date().toISOString()
       }));
     } else {
-      if (previousActiveWindowIds.length > 0) {
+      if (hadLocationUpdates) {
         await stopLocationUpdates();
       }
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: [],
+        arrivalHeartbeatWindowIds: [],
         lastLocationPingAtByWindowId: {},
+        lastArrivalHeartbeatAtByWindowId: {},
+        pendingOutsideJobCheckByWindowId: {},
         locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));
@@ -378,9 +409,10 @@ export class LocationTrackingCoordinator {
 
   private async stopExpiredTracking(
     previousActiveWindowIds: string[],
-    previousWindows: PersistedTrackingWindow[]
+    previousWindows: PersistedTrackingWindow[],
+    hadLocationUpdates: boolean = previousActiveWindowIds.length > 0
   ): Promise<void> {
-    if (previousActiveWindowIds.length > 0) {
+    if (hadLocationUpdates) {
       await stopLocationUpdates();
     }
 

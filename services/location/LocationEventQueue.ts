@@ -10,6 +10,7 @@ const LOCATION_EVENT_QUEUE_KEY = 'vhd_location_event_queue_v1';
 const MAX_QUEUE_ITEMS = 200;
 const MAX_FLUSH_ITEMS = 25;
 const MAX_RETRY_ATTEMPTS = 10;
+const MAX_QUEUE_AGE_MS = 24 * 60 * 60 * 1000;
 
 interface QueuedLocationEvent {
   id: string;
@@ -149,8 +150,20 @@ async function flushLocationEventQueueInternal(): Promise<void> {
 
   const apiClient = createApiClient();
   const retained: QueuedLocationEvent[] = [];
-  const batch = queue.slice(0, MAX_FLUSH_ITEMS);
-  const deferred = queue.slice(MAX_FLUSH_ITEMS);
+  const nowMs = Date.now();
+  const isExpired = (item: QueuedLocationEvent): boolean => {
+    const queuedAtMs = Date.parse(item.firstQueuedAt);
+    return Number.isFinite(queuedAtMs) && nowMs - queuedAtMs > MAX_QUEUE_AGE_MS;
+  };
+  const fresh = queue.filter((item) => !isExpired(item));
+  const droppedExpired = queue.length - fresh.length;
+  if (droppedExpired > 0) {
+    debugLogger.warn('LOCATION', 'Dropping expired queued location events', {
+      droppedExpired
+    });
+  }
+  const batch = fresh.slice(0, MAX_FLUSH_ITEMS);
+  const deferred = fresh.slice(MAX_FLUSH_ITEMS);
 
   let droppedNonRetryable = 0;
   let droppedExhausted = 0;
@@ -198,6 +211,7 @@ async function flushLocationEventQueueInternal(): Promise<void> {
     failed: retained.length,
     droppedNonRetryable,
     droppedExhausted,
+    droppedExpired,
     remaining: retained.length + deferred.length
   });
 }
