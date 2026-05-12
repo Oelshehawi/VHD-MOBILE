@@ -307,7 +307,10 @@ export function buildLocationRegionIdentifier(
   return `vhd:${windowId}:${regionType}`;
 }
 
-export function buildGeofenceRegions(windows: ParsedTrackingWindow[]): {
+export function buildGeofenceRegions(
+  windows: ParsedTrackingWindow[],
+  activeDepotWindowIds: ReadonlySet<string>
+): {
   regions: Location.LocationRegion[];
   metadata: PersistedGeofenceRegion[];
 } {
@@ -316,10 +319,12 @@ export function buildGeofenceRegions(windows: ParsedTrackingWindow[]): {
   const metadata: PersistedGeofenceRegion[] = [];
 
   for (const window of selectedWindows) {
-    const targets = [
-      { regionType: 'depot' as const, target: window.depotTarget },
-      { regionType: 'job' as const, target: window.jobSiteTarget }
+    const targets: { regionType: 'depot' | 'job'; target: ParsedTrackingWindow['depotTarget'] }[] = [
+      { regionType: 'job', target: window.jobSiteTarget }
     ];
+    if (activeDepotWindowIds.has(window.id)) {
+      targets.unshift({ regionType: 'depot', target: window.depotTarget });
+    }
 
     for (const { regionType, target } of targets) {
       const identifier = buildLocationRegionIdentifier(window.id, regionType);

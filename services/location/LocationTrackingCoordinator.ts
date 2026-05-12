@@ -221,7 +221,8 @@ export class LocationTrackingCoordinator {
       return;
     }
 
-    const { regions, metadata } = buildGeofenceRegions(relevantWindows);
+    const activeDepotWindowIds = new Set(activeWindows.map((w) => w.id));
+    const { regions, metadata } = buildGeofenceRegions(relevantWindows, activeDepotWindowIds);
     await syncGeofences(regions);
     await updateLocationTrackingState((state) => ({
       ...state,

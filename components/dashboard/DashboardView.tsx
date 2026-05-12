@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -11,7 +11,12 @@ import { formatDateShort } from '@/utils/date';
 import { roundHoursToBucket, formatHoursDisplay } from '@/utils/hoursFormatting';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { sortSchedulesByTime, openMaps } from '@/utils/dashboard';
-import { formatScheduleDateReadable, formatScheduleTime, getScheduleStartAtUtc } from '@/utils/scheduleTime';
+import {
+  formatScheduleDateReadable,
+  formatScheduleTime,
+  getScheduleSortTime,
+  getScheduleStartAtUtc
+} from '@/utils/scheduleTime';
 import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
 import { useTheme } from '@/providers/ThemeProvider';
 import { ReviewQRCodeModal } from '@/components/dashboard/ReviewQRCodeModal';
@@ -37,6 +42,10 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
     currentPayroll[0]?.id,
     isManager,
     userId
+  );
+  const sortedPayrollSchedules = useMemo(
+    () => [...payrollSchedules].sort((a, b) => getScheduleSortTime(a) - getScheduleSortTime(b)),
+    [payrollSchedules]
   );
 
   const sortedTodaySchedules = sortSchedulesByTime(todaySchedules);
@@ -320,12 +329,12 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                   className='flex-row justify-between items-center bg-white dark:bg-[#2A261D] p-3 rounded-xl mt-2 border border-black/10 dark:border-white/10'
                 >
                   <Text className='text-gray-800 dark:text-gray-200 font-medium'>
-                    View {isManager ? 'All' : 'My'} Schedules ({payrollSchedules.length})
+                    View {isManager ? 'All' : 'My'} Schedules ({sortedPayrollSchedules.length})
                   </Text>
                 </TouchableOpacity>
 
                 {showSchedules && (
-                  <View className='mt-3'>{payrollSchedules.map(renderPayrollSchedule)}</View>
+                  <View className='mt-3'>{sortedPayrollSchedules.map(renderPayrollSchedule)}</View>
                 )}
               </View>
             ) : (
