@@ -3,6 +3,7 @@ import { getBackgroundToken } from '@/services/background/BackgroundAuth';
 import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
 import { debugLogger } from '@/utils/DebugLogger';
 import { system as powerSyncSystem } from '@/services/database/System';
+import { isManagerMetadata, isTechnicianMetadata } from '@/utils/userRoles';
 
 export type LocationRefreshTrigger =
   | 'foreground'
@@ -27,8 +28,8 @@ async function resolveTechnicianId(): Promise<string | null> {
       publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
     });
     const userId = clerk?.user?.id ?? null;
-    const isManager = clerk?.user?.publicMetadata?.isManager === true;
-    const isTechnician = clerk?.user?.publicMetadata?.isTechnician === true && !isManager;
+    const isManager = isManagerMetadata(clerk?.user?.publicMetadata);
+    const isTechnician = isTechnicianMetadata(clerk?.user?.publicMetadata) && !isManager;
     if (!userId || !isTechnician) {
       return null;
     }

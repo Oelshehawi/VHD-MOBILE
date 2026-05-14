@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, View } from 'react-native';
+import { Linking, Platform, Pressable, useColorScheme, View } from 'react-native';
 import * as Location from 'expo-location';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
 import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
@@ -15,6 +15,7 @@ import { getLocationPermissionCopy } from '@/components/location/locationPermiss
 import { hasRelevantLocationPermissionWindow } from '@/components/location/locationPermissionEligibility';
 import type { TechnicianTrackingWindow } from '@/types';
 import { debugLogger } from '@/utils/DebugLogger';
+import { isManagerMetadata, isTechnicianMetadata } from '@/utils/userRoles';
 
 export function LocationPermissionGate() {
   const { isLoaded, isSignedIn, userId } = useAuth();
@@ -26,9 +27,12 @@ export function LocationPermissionGate() {
   const dismissedKindRef = useRef<string | null>(null);
   const [isWorking, setIsWorking] = useState(false);
   const copy = getLocationPermissionCopy(Platform.OS);
+  const colorScheme = useColorScheme();
+  const isDark = colorScheme === 'dark';
+  const sheetBackgroundColor = isDark ? '#16140F' : '#FFFFFF';
 
-  const isManager = user?.publicMetadata?.isManager === true;
-  const isTechnician = user?.publicMetadata?.isTechnician === true && !isManager;
+  const isManager = isManagerMetadata(user?.publicMetadata);
+  const isTechnician = isTechnicianMetadata(user?.publicMetadata) && !isManager;
   const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isTechnician;
 
   const windowsQuery = useQuery<TechnicianTrackingWindow>(
@@ -149,8 +153,10 @@ export function LocationPermissionGate() {
       snapPoints={[420]}
       enablePanDownToClose
       backdropComponent={renderBackdrop}
+      backgroundStyle={{ backgroundColor: sheetBackgroundColor }}
+      handleIndicatorStyle={{ backgroundColor: isDark ? '#A8A29E' : '#78716C' }}
     >
-      <BottomSheetView className='px-6 pb-8 pt-2'>
+      <BottomSheetView className='bg-white px-6 pb-8 pt-2 dark:bg-[#16140F]'>
         <Text className='text-lg font-bold text-[#14110F] dark:text-white'>
           {copy.title}
         </Text>
@@ -210,19 +216,7 @@ export function LocationPermissionGate() {
   ) : null;
 
   if (!shouldShow || !permissionState) {
-    return (
-      <BottomSheet
-        ref={sheetRef}
-        index={-1}
-        snapPoints={['1%']}
-        enablePanDownToClose
-        backdropComponent={renderBackdrop}
-      >
-        <BottomSheetView>
-          <View />
-        </BottomSheetView>
-      </BottomSheet>
-    );
+    return null;
   }
 
   return (

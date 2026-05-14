@@ -5,6 +5,7 @@ import { getBackgroundToken } from '@/services/background/BackgroundAuth';
 import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { debugLogger } from '@/utils/DebugLogger';
+import { isManagerMetadata, isTechnicianMetadata } from '@/utils/userRoles';
 
 const COORDINATOR_TICK_MS = 60 * 1000;
 
@@ -17,8 +18,8 @@ export function LocationTrackingInitializer() {
   const hasStoppedForSignedOutRef = useRef(false);
   const hasStoppedForNonTechnicianRef = useRef(false);
 
-  const isManager = user?.publicMetadata?.isManager === true;
-  const isTechnician = user?.publicMetadata?.isTechnician === true && !isManager;
+  const isManager = isManagerMetadata(user?.publicMetadata);
+  const isTechnician = isTechnicianMetadata(user?.publicMetadata) && !isManager;
   const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isTechnician;
 
   useEffect(() => {
