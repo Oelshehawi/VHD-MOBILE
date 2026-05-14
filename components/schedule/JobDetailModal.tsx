@@ -26,7 +26,7 @@ import { isScheduleReportRequired } from '@/utils/schedules';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
 import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
 import { canMarkChequeReceived } from '@/utils/invoicePayment';
-import { formatDateReadable, formatVancouverTimestamp } from '@/utils/date';
+import { formatStoredDateReadable, formatVancouverDateAsUtcDateOnly } from '@/utils/date';
 import { ApiClient } from '@/services/ApiClient';
 import { ServiceReportModal } from './ServiceReportModal';
 
@@ -263,7 +263,7 @@ export function JobDetailModal({
 
       await powerSync.execute(
         `UPDATE invoices SET status = ?, paymentMethod = ?, paymentDatePaid = ? WHERE id = ?`,
-        ['paid', 'cheque', formatVancouverTimestamp(), invoice.id]
+        ['paid', 'cheque', formatVancouverDateAsUtcDateOnly(), invoice.id]
       );
     } catch (error) {
       setChequeError(
@@ -347,7 +347,7 @@ export function JobDetailModal({
   const onSiteContact = parseOnSiteContact(schedule?.onSiteContact);
   const startAtUtc = getScheduleStartAtUtc(schedule ?? {});
   const canReceiveCheque = invoice ? canMarkChequeReceived(invoice) : false;
-  const paymentDate = formatDateReadable(invoice?.paymentDatePaid);
+  const paymentDate = formatStoredDateReadable(invoice?.paymentDatePaid);
   const paymentStatusLabel =
     invoice?.status === 'paid'
       ? invoice.paymentMethod === 'cheque'

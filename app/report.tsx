@@ -28,6 +28,7 @@ import type {
 import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
 import { getScheduleStartAtUtc } from '@/utils/scheduleTime';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
+import { formatVancouverDateAsUtcDateOnly } from '@/utils/date';
 
 type ReportFormValues = {
   inspectionItems: InspectionItems;
@@ -349,7 +350,7 @@ export function ReportCloseoutContent({
     setIsSaving(true);
     try {
       const completedAt = new Date();
-      const payload = buildPayload(status, completedAt.toISOString());
+      const payload = buildPayload(status, formatVancouverDateAsUtcDateOnly(completedAt));
       const actualServiceDurationMinutes = calculateActualServiceDurationMinutes(
         schedule ? getScheduleStartAtUtc(schedule) : fallbackScheduledStartAtUtc,
         completedAt
