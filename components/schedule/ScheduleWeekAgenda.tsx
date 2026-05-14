@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { Pressable, ScrollView, useColorScheme, View } from 'react-native';
+import { DEFAULT_ROW_COMPARATOR, useQuery } from '@powersync/react-native';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { scheduleOnRN } from 'react-native-worklets';
 import Animated, { useAnimatedStyle, useSharedValue, withSpring } from 'react-native-reanimated';
@@ -14,6 +15,7 @@ import {
   getScheduleSortTime,
   scheduleMatchesDateKey
 } from '@/utils/scheduleTime';
+import { isScheduleReportRequired } from '@/utils/schedules';
 
 interface ScheduleWeekAgendaProps {
   selectedDate: string;
@@ -23,6 +25,51 @@ interface ScheduleWeekAgendaProps {
 }
 
 const SWIPE_THRESHOLD = 50;
+const PROGRESS_STEPS = [
+  {
+    key: 'confirmed',
+    label: 'Confirmed',
+    completeClassName: 'border-emerald-600 bg-emerald-600 dark:border-emerald-300 dark:bg-emerald-300',
+    pendingClassName: 'border-emerald-600/45 bg-emerald-100 dark:border-emerald-300/45 dark:bg-emerald-950/80'
+  },
+  {
+    key: 'photos',
+    label: 'Photos',
+    completeClassName: 'border-blue-600 bg-blue-600 dark:border-blue-300 dark:bg-blue-300',
+    pendingClassName: 'border-blue-600/45 bg-blue-100 dark:border-blue-300/45 dark:bg-blue-950/80'
+  },
+  {
+    key: 'signature',
+    label: 'Signature',
+    completeClassName: 'border-amber-500 bg-amber-500 dark:border-amber-300 dark:bg-amber-300',
+    pendingClassName: 'border-amber-500/45 bg-amber-100 dark:border-amber-300/45 dark:bg-amber-950/80'
+  },
+  {
+    key: 'report',
+    label: 'Report',
+    completeClassName: 'border-violet-600 bg-violet-600 dark:border-violet-300 dark:bg-violet-300',
+    pendingClassName: 'border-violet-600/45 bg-violet-100 dark:border-violet-300/45 dark:bg-violet-950/80'
+  }
+] as const;
+
+type JobProgress = {
+  confirmed: boolean;
+  photos: boolean;
+  signature: boolean;
+  report: boolean;
+};
+
+type PhotoProgressRow = {
+  scheduleId: string;
+  beforeCount: number | null;
+  afterCount: number | null;
+  signatureCount: number | null;
+};
+
+type ReportProgressRow = {
+  scheduleId: string;
+  reportDone: number | null;
+};
 
 function statusLabel(schedule: Schedule): { label: string; bgClassName: string; textClassName: string } {
   if (schedule.deadRun) {
@@ -34,13 +81,27 @@ function statusLabel(schedule: Schedule): { label: string; bgClassName: string; 
   return { label: 'pending', bgClassName: 'bg-amber-100 dark:bg-amber-950/70', textClassName: 'text-amber-900 dark:text-amber-200' };
 }
 
-function JobProgressDots({ hasNotes }: { hasNotes: boolean }) {
+function JobProgressDots({ hasNotes, progress }: { hasNotes: boolean; progress: JobProgress }) {
+  const states = PROGRESS_STEPS.map((step) => ({
+    ...step,
+    complete: progress[step.key]
+  }));
+  const accessibilityLabel = PROGRESS_STEPS.map(
+    (step, index) => `${step.label}: ${states[index].complete ? 'complete' : 'pending'}`
+  ).join(', ');
+
   return (
-    <View className='flex-row items-center gap-1'>
-      {[0, 1, 2, 3].map((step) => (
-        <React.Fragment key={step}>
-          <View className={`h-2 w-2 rounded-full ${step === 0 ? 'bg-[#14110F] dark:bg-white' : 'bg-black/20 dark:bg-white/25'}`} />
-          {step < 3 && <View className='h-px w-3 bg-black/10 dark:bg-white/15' />}
+    <View className='flex-row items-center gap-1' accessibilityLabel={accessibilityLabel}>
+      {states.map((step, index) => (
+        <React.Fragment key={step.key}>
+          <View
+            className={`h-2.5 w-2.5 rounded-full border ${
+              step.complete ? step.completeClassName : step.pendingClassName
+            }`}
+          />
+          {index < PROGRESS_STEPS.length - 1 && (
+            <View className='h-px w-3 bg-black/10 dark:bg-white/15' />
+          )}
         </React.Fragment>
       ))}
       {hasNotes && (
@@ -54,9 +115,11 @@ function JobProgressDots({ hasNotes }: { hasNotes: boolean }) {
 
 function ScheduleRow({
   schedule,
+  progress,
   onPress
 }: {
   schedule: Schedule;
+  progress: JobProgress;
   onPress: (schedule: Schedule) => void;
 }) {
   const colorScheme = useColorScheme();
@@ -90,7 +153,7 @@ function ScheduleRow({
             {schedule.location}
           </Text>
           <View className='mt-3 flex-row items-center justify-between gap-3'>
-            <JobProgressDots hasNotes={hasNotes} />
+            <JobProgressDots hasNotes={hasNotes} progress={progress} />
             <Ionicons name='chevron-forward' size={18} color={chevronColor} />
           </View>
         </View>
@@ -114,6 +177,63 @@ export function ScheduleAgendaList({
     () => [...schedules].sort((a, b) => getScheduleSortTime(a) - getScheduleSortTime(b)),
     [schedules]
   );
+  const scheduleIds = useMemo(
+    () => Array.from(new Set(sortedSchedules.map((schedule) => schedule.id).filter(Boolean))),
+    [sortedSchedules]
+  );
+  const scheduleIdPlaceholders = useMemo(() => scheduleIds.map(() => '?').join(','), [scheduleIds]);
+
+  const { data: photoProgressRows = [] } = useQuery<PhotoProgressRow>(
+    scheduleIds.length > 0
+      ? `SELECT
+           scheduleId,
+           SUM(CASE WHEN type = 'before' THEN 1 ELSE 0 END) as beforeCount,
+           SUM(CASE WHEN type = 'after' THEN 1 ELSE 0 END) as afterCount,
+           SUM(CASE WHEN type = 'signature' THEN 1 ELSE 0 END) as signatureCount
+         FROM photos
+         WHERE scheduleId IN (${scheduleIdPlaceholders})
+         GROUP BY scheduleId`
+      : `SELECT '' as scheduleId, 0 as beforeCount, 0 as afterCount, 0 as signatureCount WHERE 0`,
+    scheduleIds,
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
+  );
+  const { data: reportProgressRows = [] } = useQuery<ReportProgressRow>(
+    scheduleIds.length > 0
+      ? `SELECT
+           scheduleId,
+           MAX(CASE WHEN reportStatus IN ('in_progress', 'completed') THEN 1 ELSE 0 END) as reportDone
+         FROM reports
+         WHERE scheduleId IN (${scheduleIdPlaceholders})
+         GROUP BY scheduleId`
+      : `SELECT '' as scheduleId, 0 as reportDone WHERE 0`,
+    scheduleIds,
+    { rowComparator: DEFAULT_ROW_COMPARATOR }
+  );
+
+  const photoProgressByScheduleId = useMemo(() => {
+    return new Map(photoProgressRows.map((row) => [row.scheduleId, row]));
+  }, [photoProgressRows]);
+  const reportProgressByScheduleId = useMemo(() => {
+    return new Map(reportProgressRows.map((row) => [row.scheduleId, Number(row.reportDone ?? 0) > 0]));
+  }, [reportProgressRows]);
+
+  const getProgress = useCallback(
+    (schedule: Schedule): JobProgress => {
+      const photoProgress = photoProgressByScheduleId.get(schedule.id);
+      const beforeCount = Number(photoProgress?.beforeCount ?? 0);
+      const afterCount = Number(photoProgress?.afterCount ?? 0);
+      const signatureCount = Number(photoProgress?.signatureCount ?? 0);
+      const reportRequired = isScheduleReportRequired(schedule);
+
+      return {
+        confirmed: Boolean(schedule.confirmed),
+        photos: beforeCount > 0 && afterCount > 0,
+        signature: signatureCount > 0,
+        report: !reportRequired || (reportProgressByScheduleId.get(schedule.id) ?? false)
+      };
+    },
+    [photoProgressByScheduleId, reportProgressByScheduleId]
+  );
 
   return (
     <ScrollView className='flex-1 px-4' contentContainerStyle={{ paddingBottom: 28 }}>
@@ -127,7 +247,12 @@ export function ScheduleAgendaList({
       ) : (
         <View className='gap-3 pt-2'>
           {sortedSchedules.map((schedule) => (
-            <ScheduleRow key={schedule.id} schedule={schedule} onPress={onSchedulePress} />
+            <ScheduleRow
+              key={schedule.id}
+              schedule={schedule}
+              progress={getProgress(schedule)}
+              onPress={onSchedulePress}
+            />
           ))}
         </View>
       )}
