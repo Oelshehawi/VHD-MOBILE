@@ -15,6 +15,9 @@ export const ACTIVE_TRACKING_WINDOWS_SQL = `SELECT * FROM techniciantrackingwind
            AND status IN ('planned', 'active')
          ORDER BY startsAtUtc ASC`;
 
+export const COMPLETED_SCHEDULE_IDS_SQL = `SELECT id FROM schedules
+         WHERE actualServiceDurationMinutes IS NOT NULL`;
+
 let inFlight: Promise<void> | null = null;
 
 async function resolveTechnicianId(): Promise<string | null> {
@@ -53,6 +56,23 @@ async function readActiveTrackingWindows(
   }
 }
 
+async function readCompletedScheduleIds(): Promise<ReadonlySet<string> | null> {
+  const db = powerSyncSystem.powersync;
+  if (!db || typeof db.getAll !== 'function') {
+    return null;
+  }
+
+  try {
+    const rows = await db.getAll<{ id?: string | null }>(COMPLETED_SCHEDULE_IDS_SQL);
+    return new Set(rows.map((row) => row.id).filter((id): id is string => Boolean(id)));
+  } catch (error) {
+    debugLogger.warn('LOCATION', 'Failed to read completed schedules for refresh', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+    return null;
+  }
+}
+
 export async function refreshLocationTracking(trigger: LocationRefreshTrigger): Promise<void> {
   if (inFlight) {
     return inFlight;
@@ -78,11 +98,20 @@ export async function refreshLocationTracking(trigger: LocationRefreshTrigger): 
         return;
       }
 
-      await locationTrackingCoordinator.sync(windows);
+      const completedScheduleIds = await readCompletedScheduleIds();
+      if (completedScheduleIds === null) {
+        debugLogger.debug('LOCATION', 'Skipping location tracking refresh; schedules not ready', {
+          trigger
+        });
+        return;
+      }
+
+      await locationTrackingCoordinator.sync(windows, completedScheduleIds);
 
       debugLogger.info('LOCATION', 'Location tracking refresh completed', {
         trigger,
-        windowCount: windows.length
+        windowCount: windows.length,
+        completedScheduleCount: completedScheduleIds.size
       });
     } catch (error) {
       debugLogger.error('LOCATION', 'Location tracking refresh failed', {

@@ -13,6 +13,7 @@ import {
 } from './LocationTrackingState';
 import type { PersistedTrackingWindow } from './LocationTrackingState';
 import { getDistanceIntervalMeters, getPingIntervalSeconds } from './trackingWindowUtils';
+import { selectActiveTravelWindow } from './fieldStatusWindowSelection';
 
 export const LOCATION_GEOFENCE_TASK_NAME = 'com.braille71.vhdapp.location-geofence';
 export const LOCATION_UPDATES_TASK_NAME = 'com.braille71.vhdapp.location-updates';
@@ -66,15 +67,15 @@ export function isPersistedTravelWindowActive(
   );
 }
 
+// Mirrors LocationTrackingCoordinator's selected-travel-window rule so the
+// background task and the coordinator agree on the single active window.
 export function getActivePersistedTravelWindows(
   windows: PersistedTrackingWindow[],
   arrivedWindowIds: string[],
   exitedWindowIds: string[]
 ): PersistedTrackingWindow[] {
-  return windows
-    .filter((window) => isPersistedTravelWindowActive(window, arrivedWindowIds, exitedWindowIds))
-    .sort((a, b) => Date.parse(a.startsAtUtc) - Date.parse(b.startsAtUtc))
-    .slice(0, 1);
+  const selected = selectActiveTravelWindow(windows, arrivedWindowIds, exitedWindowIds);
+  return selected ? [selected] : [];
 }
 
 export function isPersistedArrivalHeartbeatWindowActive(
@@ -177,6 +178,43 @@ export function getJobSiteDistanceMeters(
       lng: location.coords.longitude
     }
   );
+}
+
+export function getDepotDistanceMeters(
+  window: PersistedTrackingWindow,
+  location: Location.LocationObject
+): number | null {
+  if (
+    typeof window.depotLat !== 'number' ||
+    typeof window.depotLng !== 'number' ||
+    typeof window.depotRadiusMeters !== 'number'
+  ) {
+    return null;
+  }
+
+  return distanceMeters(
+    {
+      lat: window.depotLat,
+      lng: window.depotLng
+    },
+    {
+      lat: location.coords.latitude,
+      lng: location.coords.longitude
+    }
+  );
+}
+
+export function isLocationInsideRadius(
+  distanceMetersValue: number,
+  radiusMeters: number,
+  accuracyMeters?: number | null
+): boolean {
+  const accuracyBuffer =
+    typeof accuracyMeters === 'number' && accuracyMeters > 0
+      ? Math.min(accuracyMeters, ARRIVAL_HEARTBEAT_ACCURACY_BUFFER_CAP_METERS)
+      : 0;
+
+  return distanceMetersValue <= radiusMeters + accuracyBuffer;
 }
 
 export async function stopLocationUpdatesIfNoActivePersistedWindow(reason: string): Promise<void> {

@@ -23,11 +23,25 @@ type GeofenceTaskData = {
   region: Location.LocationRegion;
 };
 
+// iOS allows roughly 20 monitored regions. Eight windows gives us up to
+// sixteen regions (selected depot+job, plus job regions) with room for system
+// overhead and future app-owned geofences.
+const MAX_GEOFENCE_WINDOWS = 8;
+
 export function buildLocationRegionIdentifier(
   windowId: string,
   regionType: PersistedGeofenceRegion['regionType']
 ): string {
   return `vhd:${windowId}:${regionType}`;
+}
+
+function selectGeofenceWindows(
+  windows: ParsedTrackingWindow[],
+  activeDepotWindowIds: ReadonlySet<string>
+): ParsedTrackingWindow[] {
+  const activeDepotWindows = windows.filter((window) => activeDepotWindowIds.has(window.id));
+  const otherWindows = windows.filter((window) => !activeDepotWindowIds.has(window.id));
+  return [...activeDepotWindows, ...otherWindows].slice(0, MAX_GEOFENCE_WINDOWS);
 }
 
 export function buildGeofenceRegions(
@@ -37,7 +51,7 @@ export function buildGeofenceRegions(
   regions: Location.LocationRegion[];
   metadata: PersistedGeofenceRegion[];
 } {
-  const selectedWindows = windows.slice(0, 8);
+  const selectedWindows = selectGeofenceWindows(windows, activeDepotWindowIds);
   const regions: Location.LocationRegion[] = [];
   const metadata: PersistedGeofenceRegion[] = [];
 

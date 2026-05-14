@@ -29,6 +29,9 @@ import {
   getRelevantTrackingWindows,
   isTravelWindowActive
 } from '@/services/location/trackingWindowUtils';
+import { selectActiveTravelWindow } from '@/services/location/fieldStatusWindowSelection';
+import { isWindowInCurrentTrackingGenerationRange } from '@/services/location/businessDay';
+import { emitInitialDepotEnterEvents } from '@/services/location/InitialGeofenceState';
 
 const PERMISSION_DENIED_EVENT_COOLDOWN_MS = 6 * 60 * 60 * 1000;
 
@@ -75,22 +78,6 @@ function createSystemEventFromPersistedWindow(
   return createSystemEvent(window, eventType);
 }
 
-// We deliberately track only the earliest active travel window at a time. In
-// practice technicians have sequential jobs (visit completion expires the
-// previous window), so this is safe. If overlapping active windows ever ship,
-// revisit.
-function selectActiveTravelWindows(windows: ParsedTrackingWindow[]): ParsedTrackingWindow[] {
-  const sorted = [...windows].sort(
-    (a, b) => Date.parse(a.startsAtUtc) - Date.parse(b.startsAtUtc)
-  );
-  if (sorted.length > 1) {
-    debugLogger.warn('LOCATION', 'Multiple active travel windows detected; using earliest', {
-      activeWindowIds: sorted.map((w) => w.id)
-    });
-  }
-  return sorted.slice(0, 1);
-}
-
 function selectArrivalHeartbeatWindows(
   windows: ParsedTrackingWindow[],
   arrivedWindowIds: string[],
@@ -135,18 +122,23 @@ export class LocationTrackingCoordinator {
   private syncInFlight: Promise<void> | null = null;
   private lastWindowSignature = '';
 
-  sync(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
+  sync(
+    windows: ReadonlyArray<TechnicianTrackingWindow>,
+    completedScheduleIds: ReadonlySet<string> = new Set()
+  ): Promise<void> {
     const signature = windows
       .map((window) => `${window.id}|${window.status}|${window.updatedAt}`)
       .sort()
       .join(',');
+    const completedSignature = Array.from(completedScheduleIds).sort().join(',');
+    const syncSignature = `${signature}::completed:${completedSignature}`;
 
-    if (this.syncInFlight && signature === this.lastWindowSignature) {
+    if (this.syncInFlight && syncSignature === this.lastWindowSignature) {
       return this.syncInFlight;
     }
 
-    this.lastWindowSignature = signature;
-    this.syncInFlight = this.syncInternal(windows).finally(() => {
+    this.lastWindowSignature = syncSignature;
+    this.syncInFlight = this.syncInternal(windows, completedScheduleIds).finally(() => {
       this.syncInFlight = null;
     });
 
@@ -197,28 +189,42 @@ export class LocationTrackingCoordinator {
     });
   }
 
-  private async syncInternal(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
+  private async syncInternal(
+    windows: ReadonlyArray<TechnicianTrackingWindow>,
+    completedScheduleIds: ReadonlySet<string>
+  ): Promise<void> {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
       return;
     }
 
     await flushLocationEventQueue();
 
-    const relevantWindows = getRelevantTrackingWindows(windows);
+    const now = new Date();
+    const liveWindows = windows.filter((window) => !completedScheduleIds.has(window.scheduleId));
+    const relevantWindows = getRelevantTrackingWindows(liveWindows, now);
     const existingState = await readLocationTrackingState();
-    const activeWindows = selectActiveTravelWindows(
-      relevantWindows.filter(
-        (window) =>
-          isTravelWindowActive(window) && !existingState.arrivedWindowIds.includes(window.id)
-      )
+    // Field Status tracking acts on today's service-date windows, plus
+    // next-day pre-cutoff windows whose tracking may begin before midnight.
+    // Later future windows from PowerSync must not start tracking today.
+    const currentDayWindows = relevantWindows.filter((window) =>
+      isWindowInCurrentTrackingGenerationRange(window, now)
     );
+    // One shared selection rule with the backend: the single selected travel
+    // window owns depot events and GPS pings.
+    const selectedTravelWindow = selectActiveTravelWindow(
+      currentDayWindows,
+      existingState.arrivedWindowIds,
+      existingState.exitedWindowIds,
+      now
+    );
+    const activeWindows = selectedTravelWindow ? [selectedTravelWindow] : [];
     const arrivalHeartbeatWindows = selectArrivalHeartbeatWindows(
-      relevantWindows,
+      currentDayWindows,
       existingState.arrivedWindowIds,
       existingState.exitedWindowIds
     );
 
-    if (relevantWindows.length === 0) {
+    if (currentDayWindows.length === 0) {
       await this.stopExpiredTracking(
         existingState.activeLocationWindowIds,
         existingState.windows,
@@ -241,17 +247,17 @@ export class LocationTrackingCoordinator {
         pendingOutsideJobCheckByWindowId: {},
         locationUpdatesSignature: undefined
       }));
-      debugLogger.info('LOCATION', 'No relevant tracking windows; location tasks stopped');
+      debugLogger.info('LOCATION', 'No current business-day tracking windows; location tasks stopped');
       return;
     }
 
     await updateLocationTrackingState((state) => ({
       ...state,
-      windows: toPersistedWindows(relevantWindows),
+      windows: toPersistedWindows(currentDayWindows),
       lastCoordinatorRunAt: new Date().toISOString()
     }));
 
-    const permissionState = await this.ensureLocationPermission(relevantWindows[0]);
+    const permissionState = await this.ensureLocationPermission(currentDayWindows[0]);
     if (permissionState.kind !== 'granted') {
       await this.stopExpiredTracking(
         existingState.activeLocationWindowIds,
@@ -276,18 +282,28 @@ export class LocationTrackingCoordinator {
       }));
       debugLogger.warn('LOCATION', 'Location tracking permission unavailable', {
         permissionState,
-        windowCount: relevantWindows.length
+        windowCount: currentDayWindows.length
       });
       return;
     }
 
-    const activeDepotWindowIds = new Set(activeWindows.map((w) => w.id));
-    const { regions, metadata } = buildGeofenceRegions(relevantWindows, activeDepotWindowIds);
+    // Depot geofence only for the selected travel window; job geofence for
+    // every current-day window so a direct-to-next-job arrival is recorded.
+    const selectedDepotWindowIds = new Set(activeWindows.map((w) => w.id));
+    const { regions, metadata } = buildGeofenceRegions(currentDayWindows, selectedDepotWindowIds);
     await syncGeofences(regions);
     await updateLocationTrackingState((state) => ({
       ...state,
       geofenceRegions: metadata
     }));
+
+    const platform = locationTrackingPlatform();
+    if (platform) {
+      await emitInitialDepotEnterEvents({
+        activeWindows,
+        platform
+      });
+    }
 
     await this.syncLocationUpdates(
       activeWindows,
@@ -297,7 +313,7 @@ export class LocationTrackingCoordinator {
     );
 
     debugLogger.info('LOCATION', 'Location tracking coordinator synced', {
-      relevantWindowCount: relevantWindows.length,
+      currentDayWindowCount: currentDayWindows.length,
       activeTravelWindowCount: activeWindows.length,
       arrivalHeartbeatWindowCount: arrivalHeartbeatWindows.length,
       geofenceRegionCount: regions.length

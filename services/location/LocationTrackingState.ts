@@ -47,6 +47,9 @@ export interface PersistedTrackingWindow {
   endsAtUtc: string;
   pingIntervalSeconds: number;
   distanceIntervalMeters: number;
+  depotLat?: number;
+  depotLng?: number;
+  depotRadiusMeters?: number;
   jobSiteLat?: number;
   jobSiteLng?: number;
   jobSiteRadiusMeters?: number;
@@ -81,6 +84,7 @@ export interface LocationTrackingState {
   arrivalHeartbeatWindowIds: string[];
   lastArrivalHeartbeatAtByWindowId: Record<string, string>;
   pendingOutsideJobCheckByWindowId: Record<string, string>;
+  initialDepotCheckedWindowIds: string[];
   permissionDeniedSentAt?: string;
   locationUpdatesStartedAt?: string;
   locationUpdatesSignature?: string;
@@ -121,7 +125,8 @@ const EMPTY_STATE: LocationTrackingState = {
   lastLocationPingAtByWindowId: {},
   arrivalHeartbeatWindowIds: [],
   lastArrivalHeartbeatAtByWindowId: {},
-  pendingOutsideJobCheckByWindowId: {}
+  pendingOutsideJobCheckByWindowId: {},
+  initialDepotCheckedWindowIds: []
 };
 
 function uniqueStrings(values: string[]): string[] {
@@ -201,6 +206,11 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
     pendingOutsideJobCheckByWindowId: normalizeStringRecord(
       value.pendingOutsideJobCheckByWindowId
     ),
+    initialDepotCheckedWindowIds: uniqueStrings(
+      Array.isArray(value.initialDepotCheckedWindowIds)
+        ? value.initialDepotCheckedWindowIds
+        : []
+    ),
     permissionDeniedSentAt:
       typeof value.permissionDeniedSentAt === 'string' ? value.permissionDeniedSentAt : undefined,
     locationUpdatesStartedAt:
@@ -250,6 +260,9 @@ function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
     exitedWindowIds: state.exitedWindowIds.filter((id) => windowIds.has(id)),
     activeLocationWindowIds: state.activeLocationWindowIds.filter((id) => windowIds.has(id)),
     arrivalHeartbeatWindowIds: state.arrivalHeartbeatWindowIds.filter((id) => windowIds.has(id)),
+    initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter((id) =>
+      windowIds.has(id)
+    ),
     geofenceTransitions: state.geofenceTransitions.filter((t) => windowIds.has(t.trackingWindowId)),
     lastLocationPingAtByWindowId: filterRecord(state.lastLocationPingAtByWindowId),
     lastArrivalHeartbeatAtByWindowId: filterRecord(state.lastArrivalHeartbeatAtByWindowId),
@@ -300,6 +313,9 @@ export function toPersistedWindows(windows: ParsedTrackingWindow[]): PersistedTr
     endsAtUtc: window.endsAtUtc,
     pingIntervalSeconds: window.pingIntervalSeconds,
     distanceIntervalMeters: window.distanceIntervalMeters,
+    depotLat: window.depotTarget.lat,
+    depotLng: window.depotTarget.lng,
+    depotRadiusMeters: window.depotTarget.radiusMeters,
     jobSiteLat: window.jobSiteTarget.lat,
     jobSiteLng: window.jobSiteTarget.lng,
     jobSiteRadiusMeters: window.jobSiteTarget.radiusMeters
