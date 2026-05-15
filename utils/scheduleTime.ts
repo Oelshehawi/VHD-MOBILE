@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { formatInTimeZone } from 'date-fns-tz';
+import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
 export const DEFAULT_SCHEDULE_TIME_ZONE = 'America/Vancouver';
 const SERVICE_DAY_START_HOUR = 3;
 
@@ -51,6 +51,24 @@ function getServiceDayMinutes(parts: Pick<ScheduleClockParts, 'hour' | 'minute'>
   return hour * 60 + parts.minute;
 }
 
+function parseDateKey(dateKey: string): { year: number; month: number; day: number } | null {
+  const match = dateKey.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  return [year, month, day].every(Number.isFinite) ? { year, month, day } : null;
+}
+
+function addDaysToDateKey(dateKey: string, days: number): string {
+  const parts = parseDateKey(dateKey);
+  if (!parts) return '';
+
+  const date = new Date(Date.UTC(parts.year, parts.month - 1, parts.day + days));
+  return formatInTimeZone(date, 'UTC', 'yyyy-MM-dd');
+}
+
 function getScheduleClockParts(schedule: ScheduleTimeSource): ScheduleClockParts | null {
   const startAtUtc = getScheduleStartAtUtc(schedule);
   if (!startAtUtc) return null;
@@ -67,6 +85,34 @@ export function getScheduleStartDate(schedule: ScheduleTimeSource): Date | null 
 
   const date = new Date(startAtUtc);
   return Number.isFinite(date.getTime()) ? date : null;
+}
+
+export function getOperationalScheduleStartDate(schedule: ScheduleTimeSource): Date | null {
+  const startDate = getScheduleStartDate(schedule);
+  if (!startDate) return null;
+
+  const timeZone = getScheduleTimeZone(schedule);
+  const parts = parseZonedClockParts(startDate, timeZone);
+  if (!parts || parts.hour >= SERVICE_DAY_START_HOUR) return startDate;
+
+  const effectiveDateKey = addDaysToDateKey(parts.dateKey, 1);
+  if (!effectiveDateKey) return startDate;
+
+  return fromZonedTime(
+    `${effectiveDateKey}T${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}:00`,
+    timeZone
+  );
+}
+
+export function calculateActualServiceDurationMinutes(
+  schedule: ScheduleTimeSource,
+  completedAt: Date
+): number | null {
+  const startDate = getOperationalScheduleStartDate(schedule);
+  if (!startDate || !Number.isFinite(completedAt.getTime())) return null;
+
+  const elapsedMinutes = Math.round((completedAt.getTime() - startDate.getTime()) / (1000 * 60));
+  return Math.max(0, elapsedMinutes);
 }
 
 export function getScheduleSortTime(schedule: ScheduleTimeSource): number {

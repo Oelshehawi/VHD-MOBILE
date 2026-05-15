@@ -1,8 +1,10 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
+  calculateActualServiceDurationMinutes,
   formatScheduleDateReadable,
   formatScheduleTime,
+  getOperationalScheduleStartDate,
   getScheduleDateKey,
   getScheduleHour,
   getScheduleSortTime,
@@ -38,6 +40,24 @@ describe('schedule service-day time helpers', () => {
     expect(getScheduleSortTime(midnight)).toBeGreaterThan(getScheduleSortTime(lateEvening));
   });
 
+  it('uses the next local date as the operational start for midnight service-date visits', () => {
+    const midnight = {
+      scheduledStartAtUtc: '2026-05-14T07:00:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+
+    expect(getScheduleDateKey(midnight)).toBe('2026-05-14');
+    expect(getOperationalScheduleStartDate(midnight)?.toISOString()).toBe(
+      '2026-05-15T07:00:00.000Z'
+    );
+    expect(
+      calculateActualServiceDurationMinutes(
+        midnight,
+        new Date('2026-05-15T08:31:00.000Z')
+      )
+    ).toBe(91);
+  });
+
   it('sorts all jobs before 3 AM after the previous evening route order', () => {
     const twoFiftyNine = {
       scheduledStartAtUtc: '2026-05-12T09:59:00.000Z',
@@ -51,6 +71,9 @@ describe('schedule service-day time helpers', () => {
     expect(getScheduleDateKey(twoFiftyNine)).toBe('2026-05-12');
     expect(formatScheduleTime(twoFiftyNine)).toBe('2:59 AM');
     expect(getScheduleSortTime(twoFiftyNine)).toBeGreaterThan(getScheduleSortTime(lateEvening));
+    expect(getOperationalScheduleStartDate(twoFiftyNine)?.toISOString()).toBe(
+      '2026-05-13T09:59:00.000Z'
+    );
   });
 
   it('starts ordinary route ordering again at 3 AM', () => {
@@ -66,6 +89,9 @@ describe('schedule service-day time helpers', () => {
     expect(getScheduleDateKey(threeAm)).toBe('2026-05-12');
     expect(formatScheduleTime(threeAm)).toBe('3:00 AM');
     expect(getScheduleSortTime(threeAm)).toBeLessThan(getScheduleSortTime(lateEvening));
+    expect(getOperationalScheduleStartDate(threeAm)?.toISOString()).toBe(
+      '2026-05-12T10:00:00.000Z'
+    );
   });
 
   it('still formats ordinary schedule times in the schedule timezone', () => {
@@ -77,5 +103,6 @@ describe('schedule service-day time helpers', () => {
     expect(getScheduleDateKey(schedule)).toBe('2026-05-12');
     expect(formatScheduleTime(schedule)).toBe('9:30 AM');
     expect(getScheduleHour(schedule)).toBe(9);
+    expect(calculateActualServiceDurationMinutes(schedule, new Date('2026-05-12T18:30:00.000Z'))).toBe(120);
   });
 });

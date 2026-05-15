@@ -26,7 +26,7 @@ import type {
   TriState
 } from '@/types/report';
 import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
-import { getScheduleStartAtUtc } from '@/utils/scheduleTime';
+import { calculateActualServiceDurationMinutes } from '@/utils/scheduleTime';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
 import { formatVancouverDateAsUtcDateOnly } from '@/utils/date';
 
@@ -95,20 +95,6 @@ function normalizeInspectionItems(items: Partial<Record<InspectionItemKey, TriSt
     normalized[option.key] = items[option.key] ?? 'N/A';
   }
   return normalized;
-}
-
-function calculateActualServiceDurationMinutes(startAtUtc: string | undefined, completedAt: Date): number | null {
-  if (!startAtUtc) return null;
-
-  const parsedStart = new Date(startAtUtc);
-  if (!Number.isFinite(parsedStart.getTime())) return null;
-
-  const startMs = parsedStart.getTime();
-  if (!Number.isFinite(startMs)) return null;
-
-  const elapsedMs = completedAt.getTime() - startMs;
-  const elapsedMinutes = Math.round(elapsedMs / (1000 * 60));
-  return Math.max(0, elapsedMinutes);
 }
 
 function parseJsonObject<T>(value: string | null, fallback: T): T {
@@ -352,7 +338,10 @@ export function ReportCloseoutContent({
       const completedAt = new Date();
       const payload = buildPayload(status, formatVancouverDateAsUtcDateOnly(completedAt));
       const actualServiceDurationMinutes = calculateActualServiceDurationMinutes(
-        schedule ? getScheduleStartAtUtc(schedule) : fallbackScheduledStartAtUtc,
+        schedule || {
+          scheduledStartAtUtc: fallbackScheduledStartAtUtc,
+          timeZone: typeof params.timeZone === 'string' ? params.timeZone : undefined
+        },
         completedAt
       );
 
