@@ -59,8 +59,8 @@ export const getRemainingTodaySchedules = (schedules: Schedule[], now: Date = ne
     .sort((a, b) => getScheduleSortTime(a) - getScheduleSortTime(b));
 };
 
-export const openMaps = (title: string, location: string) => {
-  const query = encodeURIComponent(`${title} ${location}`);
-  const url = `https://www.google.com/maps/search/?api=1&query=${query}`;
+export const openMaps = (_title: string, location: string) => {
+  const destination = encodeURIComponent(location.trim());
+  const url = `https://www.google.com/maps/dir/?api=1&destination=${destination}`;
   Linking.openURL(url);
 };
