@@ -60,22 +60,52 @@ export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhoto
   const { width } = useWindowDimensions();
   const { powersync } = useSystem();
 
+  // `useQuery.isLoading` only reflects the local SQLite query's first run, not
+  // whether the data has downloaded. On a cold open the local query returns 0
+  // rows instantly, so we track the stream's first-sync state separately to
+  // gate the loading indicator on the real network latency.
+  const [isHistorySyncing, setIsHistorySyncing] = useState<boolean>(!!serviceJobId);
+
   // The always-on `schedule_data` stream only carries schedules/photos within a
   // rolling ~3-month window, so older visits aren't local. Subscribe to the
   // on-demand `job_history` stream for this serviceJobId to sync its full
   // history; the useQuery joins below light up reactively once it lands.
   useEffect(() => {
-    if (!serviceJobId) return; // jobTitle-only fallback can't key the stream
-    let sub: { unsubscribe: () => void } | undefined;
+    if (!serviceJobId) {
+      setIsHistorySyncing(false);
+      return; // jobTitle-only fallback can't key the stream
+    }
+    let sub:
+      | { unsubscribe: () => void; waitForFirstSync: (s?: AbortSignal) => Promise<void> }
+      | undefined;
+    const abort = new AbortController();
     let cancelled = false;
+    setIsHistorySyncing(true);
     (async () => {
-      sub = await powersync
-        .syncStream('job_history', { serviceJobId })
-        .subscribe({ ttl: 86400 }); // warm cache 24h after unsubscribe
-      if (cancelled) sub.unsubscribe();
+      try {
+        sub = await powersync
+          .syncStream('job_history', { serviceJobId })
+          .subscribe({ ttl: 86400 }); // warm cache 24h after unsubscribe
+        if (cancelled) {
+          sub.unsubscribe();
+          return;
+        }
+        // Resolves once the stream's data has synced and applied; near-instant
+        // when the warm cache already has it.
+        await sub.waitForFirstSync(abort.signal);
+      } catch (err) {
+        // A stream/rules/auth failure must log, not surface as an unhandled
+        // promise rejection. The useQuery joins simply stay empty.
+        if (!abort.signal.aborted) {
+          console.warn('job_history stream subscribe failed', err);
+        }
+      } finally {
+        if (!cancelled) setIsHistorySyncing(false);
+      }
     })();
     return () => {
       cancelled = true;
+      abort.abort();
       sub?.unsubscribe();
     };
   }, [serviceJobId, powersync]);
@@ -392,7 +422,7 @@ export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhoto
     [renderPhotoSection]
   );
 
-  if (isHistoryLoading || isEstimateLoading) {
+  if (isHistoryLoading || isEstimateLoading || (isHistorySyncing && jobSections.length === 0)) {
     return (
       <View className='flex-1 justify-center items-center'>
         <ActivityIndicator size='large' color='#0891b2' />

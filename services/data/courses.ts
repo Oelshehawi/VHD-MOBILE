@@ -1,6 +1,6 @@
 import { useCallback, useMemo } from 'react';
 import { useQuery, usePowerSync } from '@powersync/react-native';
-import { generateObjectId } from '@/utils/objectId';
+import { objectIdFromKey } from '@/utils/objectId';
 import {
   COURSE_CATALOG,
   getCourse,
@@ -108,7 +108,14 @@ export function useAssignedCourses(userId: string | null | undefined) {
         if (!course) return null;
         const progress = toParsedProgress(progressBySlug.get(course.slug));
         const totalSections = course.sections.length;
-        const completedCount = progress.completedSectionIds.length;
+        // Count only catalog-valid section ids (deduped). Guards a stale/legacy
+        // row with duplicate or unknown ids from displaying > total / > 100%.
+        const catalogSectionIds = new Set(
+          course.sections.map((s) => s.sectionId)
+        );
+        const completedCount = new Set(
+          progress.completedSectionIds.filter((id) => catalogSectionIds.has(id))
+        ).size;
         return {
           course,
           status: assignment.status,
@@ -118,7 +125,7 @@ export function useAssignedCourses(userId: string | null | undefined) {
           totalSections,
           completionPercent:
             totalSections > 0
-              ? Math.round((completedCount / totalSections) * 100)
+              ? Math.min(100, Math.round((completedCount / totalSections) * 100))
               : 0
         } satisfies AssignedCourse;
       })
@@ -209,7 +216,12 @@ export function useCourseProgressMutations(
           `INSERT INTO courseprogress (id, courseSlug, clerkUserId, completedSectionIds, lastSectionId, lastVisitedAt, completedAt)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
-            generateObjectId(),
+            // Deterministic id per (user, course): the singleton progress row
+            // always maps to the same `_id`, so a missing-local-row INSERT (cache
+            // cleared, second device, not-yet-synced) reuses the id the server
+            // already has → the backend upsert-by-_id becomes an update, never an
+            // E11000 against the unique {clerkUserId, courseSlug} index.
+            objectIdFromKey(`${userId}:${courseSlug}`),
             courseSlug,
             userId,
             sectionsJson,

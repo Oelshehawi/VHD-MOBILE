@@ -18,6 +18,12 @@ import {
 } from '../../../services/data/courses';
 import type { LessonBlock } from '../../../services/courses/catalog';
 
+// Sentinel embed used in the catalog until a real video url is swapped in.
+// Render it as "coming soon" instead of loading a broken WebView.
+function isPlaceholderVideo(url: string): boolean {
+  return url.endsWith('/embed/0');
+}
+
 function VideoBlock({ block }: { block: Extract<LessonBlock, { type: 'video' }> }) {
   const [isOffline, setIsOffline] = useState(false);
 
@@ -27,6 +33,20 @@ function VideoBlock({ block }: { block: Extract<LessonBlock, { type: 'video' }> 
     });
     return () => unsubscribe();
   }, []);
+
+  if (isPlaceholderVideo(block.url)) {
+    return (
+      <View className='my-4 aspect-video items-center justify-center rounded-xl border border-black/10 bg-black/5 dark:border-white/10 dark:bg-white/5'>
+        <Ionicons name='videocam-outline' size={32} color='#8A857D' />
+        <Text variant='muted' className='mt-2 text-center'>
+          Video coming soon
+        </Text>
+        <Text variant='muted' className='text-center text-xs'>
+          {block.title ?? 'This video'} will be added shortly.
+        </Text>
+      </View>
+    );
+  }
 
   if (isOffline) {
     return (
