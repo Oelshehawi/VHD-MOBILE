@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useUser } from '@clerk/clerk-expo';
 import { usePowerSync } from '@powersync/react-native';
+import { usePowerSyncStatus } from '@/providers/PowerSyncProvider';
 import { pushNotificationService } from '@/services/notifications/PushNotificationService';
 import { debugLogger } from '@/utils/DebugLogger';
 
@@ -13,9 +14,10 @@ import { debugLogger } from '@/utils/DebugLogger';
 export function PushNotificationInitializer() {
   const { user } = useUser();
   const powerSync = usePowerSync();
+  const { isInitialized } = usePowerSyncStatus();
 
   useEffect(() => {
-    if (user?.id && powerSync) {
+    if (user?.id && powerSync && isInitialized) {
       debugLogger.info('PUSH', 'Initializing push notifications for user', { userId: user.id });
       pushNotificationService.initialize(user.id, powerSync).catch((err) => {
         debugLogger.error('PUSH', 'Failed to initialize push notifications', { error: err });
@@ -30,7 +32,7 @@ export function PushNotificationInitializer() {
         });
       }
     };
-  }, [user?.id, powerSync]);
+  }, [isInitialized, user?.id, powerSync]);
 
   // This component doesn't render anything
   return null;

@@ -9,6 +9,7 @@ import { preloadImages } from '@/utils/imageCache';
 import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
 import { AppConfig } from '@/services/database/AppConfig';
 import { formatScheduleDateShort } from '@/utils/scheduleTime';
+import { useSystem } from '@/services/database/System';
 
 const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
 const THUMBNAIL_WIDTH = 240;
@@ -57,6 +58,27 @@ interface HistoryRow {
 
 export function JobPhotoHistory({ scheduleId, serviceJobId, jobTitle }: JobPhotoHistoryProps) {
   const { width } = useWindowDimensions();
+  const { powersync } = useSystem();
+
+  // The always-on `schedule_data` stream only carries schedules/photos within a
+  // rolling ~3-month window, so older visits aren't local. Subscribe to the
+  // on-demand `job_history` stream for this serviceJobId to sync its full
+  // history; the useQuery joins below light up reactively once it lands.
+  useEffect(() => {
+    if (!serviceJobId) return; // jobTitle-only fallback can't key the stream
+    let sub: { unsubscribe: () => void } | undefined;
+    let cancelled = false;
+    (async () => {
+      sub = await powersync
+        .syncStream('job_history', { serviceJobId })
+        .subscribe({ ttl: 86400 }); // warm cache 24h after unsubscribe
+      if (cancelled) sub.unsubscribe();
+    })();
+    return () => {
+      cancelled = true;
+      sub?.unsubscribe();
+    };
+  }, [serviceJobId, powersync]);
 
   const [galleryVisible, setGalleryVisible] = useState(false);
   const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);

@@ -385,6 +385,14 @@ export default function RootLayout() {
                     <Stack screenOptions={{ headerShown: false }}>
                       <Stack.Screen name='(tabs)' options={{ headerShown: false }} />
                       <Stack.Screen
+                        name='course/[slug]'
+                        options={{ headerShown: true, presentation: 'card' }}
+                      />
+                      <Stack.Screen
+                        name='course/[slug]/[sectionId]'
+                        options={{ headerShown: true, presentation: 'card' }}
+                      />
+                      <Stack.Screen
                         name='report'
                         options={{
                           headerShown: true,

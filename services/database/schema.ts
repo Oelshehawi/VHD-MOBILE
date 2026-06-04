@@ -230,6 +230,35 @@ const techniciantrackingwindows = new Table(
   }
 );
 
+// Training: per-user assignment + progress. Course STRUCTURE and lesson body
+// live in bundled code (services/courses/catalog.ts), not in the DB — only
+// these per-user rows sync. Assignments are read-only on device (manager-written
+// on web); progress is writable (the worker self-reports section completion).
+const courseassignments = new Table(
+  {
+    // id column (text) is automatically included
+    courseSlug: column.text,
+    clerkUserId: column.text, // Clerk user ID (owner)
+    assignedByUserId: column.text,
+    assignedAt: column.text, // ISO datetime
+    status: column.text // 'assigned' | 'completed'
+  },
+  { indexes: { users: ['clerkUserId'], courses: ['courseSlug'] } }
+);
+
+const courseprogress = new Table(
+  {
+    // id column (text) is automatically included
+    courseSlug: column.text,
+    clerkUserId: column.text, // Clerk user ID (owner)
+    completedSectionIds: column.text, // JSON string array of section ids
+    lastSectionId: column.text,
+    lastVisitedAt: column.text, // ISO datetime
+    completedAt: column.text // ISO datetime (nullable)
+  },
+  { indexes: { users: ['clerkUserId'], courses: ['courseSlug'] } }
+);
+
 // Add the attachments table from PowerSync
 export const AppSchema = new Schema({
   invoices,
@@ -242,6 +271,8 @@ export const AppSchema = new Schema({
   techniciantrackingwindows,
   photos,
   reports,
+  courseassignments,
+  courseprogress,
   attachments: new AttachmentTable({
     name: 'attachments',
     additionalColumns: [
@@ -301,3 +332,5 @@ export type TimeOffRequest = Database['timeoffrequests'];
 export type Report = Database['reports'];
 export type ExpoPushToken = Database['expopushtokens'];
 export type TechnicianTrackingWindow = Database['techniciantrackingwindows'];
+export type CourseAssignmentRow = Database['courseassignments'];
+export type CourseProgressRow = Database['courseprogress'];

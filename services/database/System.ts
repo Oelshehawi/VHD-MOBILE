@@ -19,6 +19,25 @@ Logger.setLevel(Logger.DEBUG);
 
 const CONNECTION_TIMEOUT_MS = 30000;
 
+// Rolling window: previous month through +2 months, as 'YYYY-MM' buckets.
+// substring(scheduledStartAtUtc,1,7) IN this array (range ops can't compare a
+// column to a parameter, so we bucket by month and use IN). No server-side
+// now(), so the client computes the months. Advances on each launch.
+function getScheduleMonthBuckets(): string[] {
+  const start = new Date();
+  start.setDate(start.getDate() - 30);
+  const end = new Date();
+  end.setMonth(end.getMonth() + 2);
+  const months: string[] = [];
+  const cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+  while (cursor <= end) {
+    const ym = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}`;
+    months.push(ym);
+    cursor.setMonth(cursor.getMonth() + 1);
+  }
+  return months;
+}
+
 const opSqlite = new OPSqliteOpenFactory({
   dbFilename: 'powersync.db'
 });
@@ -70,7 +89,9 @@ export class System {
 
     // Connect with timeout to prevent hanging
     debugLogger.debug('SYNC', 'Connecting to PowerSync...');
-    const connectPromise = this.powersync.connect(this.backendConnector);
+    const connectPromise = this.powersync.connect(this.backendConnector, {
+      params: { schedule_months: getScheduleMonthBuckets() }
+    });
     const timeoutPromise = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('PowerSync connection timeout')), CONNECTION_TIMEOUT_MS)
     );
