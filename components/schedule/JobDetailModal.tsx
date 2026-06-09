@@ -4,7 +4,6 @@ import {
   Alert,
   Linking,
   Modal,
-  Platform,
   Pressable,
   ScrollView,
   useColorScheme,
@@ -29,6 +28,7 @@ import { canMarkChequeReceived } from '@/utils/invoicePayment';
 import { formatStoredDateReadable, formatVancouverDateAsUtcDateOnly } from '@/utils/date';
 import { ApiClient } from '@/services/ApiClient';
 import { ServiceReportModal } from './ServiceReportModal';
+import { openPhone, parseOnSiteContact } from '@/utils/contact';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -72,24 +72,6 @@ function parseInvoiceItems(value: string | null | undefined): InvoiceItem[] {
   } catch {
     return [];
   }
-}
-
-function parseOnSiteContact(value: unknown): { name?: string; phone?: string; email?: string } | null {
-  if (!value) return null;
-  if (typeof value === 'object') return value as { name?: string; phone?: string; email?: string };
-
-  try {
-    const parsed = JSON.parse(String(value));
-    return typeof parsed === 'object' && parsed !== null ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function openPhone(phoneNumber: string) {
-  const cleanedNumber = phoneNumber.replace(/[^\d+]/g, '');
-  const phoneUrl = Platform.OS === 'ios' ? `telprompt:${cleanedNumber}` : `tel:${cleanedNumber}`;
-  Linking.openURL(phoneUrl).catch(() => undefined);
 }
 
 function StatusBadge({ done, warn, label }: { done: boolean; warn?: boolean; label: string }) {
@@ -500,15 +482,30 @@ export function JobDetailModal({
                     <Text className='text-xs font-semibold uppercase tracking-widest text-gray-500'>
                       Contact
                     </Text>
-                    {onSiteContact.name && (
-                      <Text className='mt-2 text-base font-semibold text-[#14110F] dark:text-white'>
-                        {onSiteContact.name}
-                      </Text>
-                    )}
-                    {onSiteContact.phone && (
-                      <Text className='mt-1 text-sm font-medium text-gray-500'>
-                        {onSiteContact.phone}
-                      </Text>
+                    {(onSiteContact.name || onSiteContact.phone) && (
+                      <View className='mt-2 flex-row items-center gap-3'>
+                        <View className='flex-1'>
+                          {onSiteContact.name && (
+                            <Text className='text-base font-semibold text-[#14110F] dark:text-white'>
+                              {onSiteContact.name}
+                            </Text>
+                          )}
+                          {onSiteContact.phone && (
+                            <Text className='mt-1 text-sm font-medium text-gray-500'>
+                              {onSiteContact.phone}
+                            </Text>
+                          )}
+                        </View>
+                        {onSiteContact.phone && (
+                          <Pressable
+                            onPress={() => openPhone(onSiteContact.phone!)}
+                            className='h-11 flex-row items-center justify-center gap-2 rounded-xl bg-amber-400 px-4'
+                          >
+                            <Ionicons name='call' size={18} color='#14110F' />
+                            <Text className='font-bold text-[#14110F]'>Call</Text>
+                          </Pressable>
+                        )}
+                      </View>
                     )}
                     {onSiteContact.email && (
                       <Text className='mt-1 text-sm font-medium text-gray-500'>

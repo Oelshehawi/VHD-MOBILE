@@ -10,6 +10,7 @@ import {
 import { formatDateShort } from '@/utils/date';
 import { roundHoursToBucket, formatHoursDisplay } from '@/utils/hoursFormatting';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
+import { openPhone, parseOnSiteContact } from '@/utils/contact';
 import { getRemainingTodaySchedules, openMaps } from '@/utils/dashboard';
 import {
   formatScheduleDateReadable,
@@ -71,6 +72,7 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
     return parseAssignedTechnicians(schedule.assignedTechnicians).includes(userId);
   });
   const nextUpSchedule = visibleTodaySchedules[0] ?? null;
+  const nextUpContact = parseOnSiteContact(nextUpSchedule?.onSiteContact);
   const totalHours = payrollSchedules.reduce(
     (acc, schedule) => acc + roundHoursToBucket(schedule.hours || 0),
     0
@@ -225,6 +227,35 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
                       {nextUpSchedule.location || 'No location specified'}
                     </Text>
                   </View>
+
+                  {(nextUpContact?.name || nextUpContact?.phone) && (
+                    <View className='mt-3 flex-row items-center gap-3 rounded-xl bg-[#F0EDE6] px-3 py-3 dark:bg-[#1F1C16]'>
+                      <View className='h-9 w-9 items-center justify-center rounded-full bg-white dark:bg-[#16140F]'>
+                        <Ionicons
+                          name='person-outline'
+                          size={17}
+                          color={colorScheme === 'dark' ? '#F2EFEA' : '#3D3833'}
+                        />
+                      </View>
+                      <View className='flex-1'>
+                        <Text className='text-xs font-semibold uppercase tracking-widest text-gray-500'>
+                          Contact
+                        </Text>
+                        <Text className='text-sm font-bold text-[#14110F] dark:text-white' numberOfLines={1}>
+                          {nextUpContact.name || 'On-site contact'}
+                        </Text>
+                      </View>
+                      {nextUpContact.phone && (
+                        <TouchableOpacity
+                          onPress={() => openPhone(nextUpContact.phone!)}
+                          className='h-10 flex-row items-center justify-center gap-2 rounded-xl bg-amber-400 px-3'
+                        >
+                          <Ionicons name='call' size={17} color='#14110F' />
+                          <Text className='font-bold text-[#14110F]'>Call</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  )}
 
                   <View className='mt-4 flex-row gap-3'>
                     <TouchableOpacity
