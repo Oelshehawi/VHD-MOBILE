@@ -42,6 +42,17 @@ function parseStringArray(value: string[] | string | null | undefined): string[]
   return value ? [value] : [];
 }
 
+export function getHoodGroupLabel(group: HoodGroup, hoods: HoodEquipment[]): string {
+  const label = typeof group.label === 'string' ? group.label.trim() : '';
+  if (label) return label;
+
+  const hoodLabels = parseStringArray(group.hoodIds)
+    .map((hoodId) => hoods.find((hood) => hood.id === hoodId)?.label || hoodId)
+    .filter(Boolean);
+
+  return hoodLabels.length > 0 ? hoodLabels.join(' + ') : 'Linked hoods';
+}
+
 function airMoverKind(type: string | null | undefined): PhotoCategoryKind {
   if (type === 'exhaustFan') return 'exhaustFan';
   if (type === 'ecologyUnit') return 'ecologyUnit';
@@ -98,7 +109,7 @@ export function buildDocumentationCategories(
 
     categories.push({
       key: `hoodGroup:${group.id || group.label || hoodIds.join('-')}`,
-      label: group.label || 'Hood group',
+      label: getHoodGroupLabel(group, hoods),
       kind: 'hoodGroup',
       source: 'profile',
       equipmentIds: hoodIds
