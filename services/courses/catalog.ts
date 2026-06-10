@@ -664,6 +664,707 @@ for (
   }
 }
 
+const HELPER_PRACTICAL_BASICS_SECTIONS: CourseSectionDefinition[] = [
+  {
+    sectionId: "1.1",
+    moduleNumber: 1,
+    order: 1,
+    title: "What We Clean and Why It Matters",
+    summary: "The system, the grease, and the fire risk in plain terms.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# What We Clean and Why It Matters
+
+We clean commercial kitchen exhaust systems: the **hood** over the cooking line,
+the **baffle filters** in it, the **plenum** behind the filters, the **duct** that
+carries greasy air up and out, and the **fan** that pulls it all.
+
+## Why anyone pays for this
+
+Every hour a kitchen cooks, grease vapour rides the airflow and sticks to every
+surface of that system. Grease is fuel. A flare-up on the line can climb into a
+greasy duct and turn into a building fire in seconds. Our job is to remove the
+fuel — that's the whole business in one sentence.
+
+(The codes, certifications, and reporting rules behind this live in the KEC
+Foundations course, which you'll take later. For now: grease = fire fuel, we
+remove it.)
+
+## Commercial only
+
+We work in restaurant and commercial kitchens — no residential jobs. Mostly
+after-hours, when the kitchen is closed and cool.
+
+## Practical check
+
+A cook asks why you're scraping inside the duct when "the hood already looks
+clean." What's your one-sentence answer?
+`),
+    ],
+  },
+  {
+    sectionId: "1.2",
+    moduleNumber: 1,
+    order: 2,
+    title: "What a Shift Looks Like",
+    summary: "Dispatch, meet-up, and the truck-to-truck rhythm.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# What a Shift Looks Like
+
+## Where you start
+
+It varies by job. Sometimes the crew meets at the shop, sometimes directly at the
+site — **dispatch tells you where and when**. Paid time starts at that meet-up
+point, so be there ready to work: boots on, phone away.
+
+## The shape of a job
+
+A typical job is a single restaurant, morning or night, about **3–4 hours**. The
+rhythm is always the same:
+
+1. **Arrive and walk in** — professional, quiet.
+2. **Protect** — poly tent up before any chemical or water moves.
+3. **Clean** — filters, hood, plenum, duct, fan.
+4. **Restore** — tear down, dry floors, everything back where it was.
+5. **Pack** — truck loaded clean and organized for the next job.
+
+## What you bring
+
+Your own boots and dark work clothes that can get greasy. The company provides
+your PPE — gloves, safety glasses, and the rest. A change of clothes in the truck
+is never a bad idea.
+
+## Practical check
+
+Dispatch says "meet at the site, 9 PM." When does your paid time start, and what
+state should you arrive in?
+`),
+    ],
+  },
+  {
+    sectionId: "1.3",
+    moduleNumber: 1,
+    order: 3,
+    title: "What Makes a Good Helper",
+    summary: "Learn the whole job; see mess before it spreads.",
+    estimatedMinutes: 2,
+    blocks: [
+      md(`
+# What Makes a Good Helper
+
+## You're learning the whole job
+
+There is no permanent "helper lane" here. You're expected to learn everything the
+lead does — spraying, filters, ducts, fans, photos, client courtesy. Early on the
+lead makes the calls and you follow; the goal is that less and less needs to be
+explained to you each shift.
+
+## The four marks of a good helper
+
+- **Fast** — moving with purpose, never standing watching.
+- **Careful** — protecting the client's kitchen like it's your own.
+- **Listens** — does it the lead's way first, asks questions after.
+- **Sees mess before it spreads** — spots the drip, the loose poly corner, the
+  slippery patch, and fixes it before it becomes a problem.
+
+## The one rule that never changes
+
+When you're not sure — about a chemical, a ladder, a hot surface, anything —
+**stop and ask**. Asking costs ten seconds. Guessing wrong can cost the whole
+night or worse.
+
+## Practical check
+
+You finish your task and the lead is mid-spray. Name two useful things you do
+instead of waiting.
+`),
+    ],
+  },
+  {
+    sectionId: "2.1",
+    moduleNumber: 2,
+    order: 4,
+    title: "PPE: What You Wear, What We Provide",
+    summary: "The non-negotiable kit and when it goes on.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# PPE: What You Wear, What We Provide
+
+## Who provides what
+
+- **You bring:** sturdy boots and dark work clothes that can get destroyed by
+  grease.
+- **We provide:** chemical-resistant gloves, safety glasses, and any other PPE
+  the job needs.
+
+## The rule that has no exceptions
+
+**Gloves and safety glasses go on any time chemical is out** — yours or anyone
+else's. Not "when spraying," not "when it seems strong" — any time degreaser is
+out of the jug. Overhead work drips back down at your face; that's exactly when
+people skip glasses and exactly when it matters most.
+
+## Condition counts
+
+A torn glove is not a glove. Fogged or scratched glasses you can't see through
+get swapped, not pushed up on your head. Tell the lead when your PPE is done —
+replacing it is normal, working without it is not.
+
+## Practical check
+
+The lead is spraying degreaser inside the hood and you're just moving filters,
+not spraying anything. What PPE are you wearing, and why?
+`),
+    ],
+  },
+  {
+    sectionId: "2.2",
+    moduleNumber: 2,
+    order: 5,
+    title: "Degreaser: Handle It Like It Bites",
+    summary: "Who mixes, how you spray, and splash first aid.",
+    estimatedMinutes: 4,
+    blocks: [
+      md(`
+# Degreaser: Handle It Like It Bites
+
+The degreaser that strips baked-on grease off steel will do the same to skin,
+eyes, and the wrong surfaces. Respect it.
+
+## Who does what
+
+- **The lead mixes and dilutes.** You don't mix chemical — you apply pre-mixed
+  degreaser with the pump sprayer where the lead directs.
+- Keep the sprayer pointed at the work. Control your overspray — chemical only
+  goes where grease is.
+
+## Where it must never go
+
+Off the protected work area: not on unprotected equipment, painted walls,
+flooring, or anything outside the poly. If you see chemical land where it
+shouldn't, say so immediately and wipe it — a quiet drip becomes a permanent
+stain.
+
+## If it splashes skin or eyes
+
+1. **Flush with water for 15 minutes.** Eyes: hold them open under gentle running
+   water. Skin: remove the soaked clothing and flush.
+2. **Tell the lead immediately** — not after you finish the task, not at the end
+   of the night. Immediately.
+
+Know where the SDS (safety data sheet) binder lives — ask the lead on your first
+shift if no one has shown you.
+
+## Practical check
+
+A mist of degreaser blows back and catches the corner of your eye. Walk through
+your next two minutes, step by step.
+`),
+    ],
+  },
+  {
+    sectionId: "2.3",
+    moduleNumber: 2,
+    order: 6,
+    title: "Hot, High, and Slippery: Stop-and-Ask Rules",
+    summary: "Physical hazards and the moments you pause the job.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# Hot, High, and Slippery: Stop-and-Ask Rules
+
+Chemicals aren't the only hazard. The three that catch new helpers: heat,
+height, and wet floors.
+
+## Hot
+
+Kitchens hold heat long after close. Treat every cooking surface as hot until
+proven cool, and watch for **pilot lights** — open flame near our spray and poly.
+If equipment is still hot or a pilot is burning where you'll be working, that's
+the lead's call, not yours: stop and ask.
+
+## High
+
+Ladders get set on their feet, on dry floor, fully opened — never leaned, never
+on poly. Three points of contact going up and down. If the reach feels wrong,
+it is wrong: come down and reposition instead of stretching.
+
+## Slippery
+
+Degreaser plus water makes kitchen tile into ice. Squeegee as you go, keep your
+walking paths dry, and warn the crew the moment a floor turns slick — don't wait
+for someone to find it the hard way.
+
+## Stop-and-ask moments
+
+Hot equipment or live pilot light. A ladder that won't sit right. Anything
+electrical near water. A smell, sound, or situation you don't recognize. The
+sentence "hey, before I touch this —" has never made a job worse.
+
+## Practical check
+
+You're about to ladder up to the hood and notice the floor under it has a film
+of rinse water. What do you do, in order?
+`),
+    ],
+  },
+  {
+    sectionId: "3.1",
+    moduleNumber: 3,
+    order: 7,
+    title: "Walking In: Stage Like a Pro",
+    summary: "Access, arrival conduct, and tool staging.",
+    estimatedMinutes: 2,
+    blocks: [
+      md(`
+# Walking In: Stage Like a Pro
+
+## Getting in
+
+Access varies by client — sometimes keys, a lockbox, and alarm codes with an
+empty kitchen; sometimes a manager or staff member lets us in and sticks around.
+**Dispatch notes say how each job works.** Either way, we are guests in someone's
+business at night. Act like it.
+
+## Arrival conduct
+
+Walk in calm and professional. If staff are present: polite, brief, and refer
+any real questions to the lead. No wandering into office areas, no touching
+anything that isn't ours to touch, nothing off shelves.
+
+## Staging
+
+Bring gear in along one clean path and stage it tight — one home base, not a
+trail of equipment through the kitchen. Nothing blocking exits or walk paths,
+nothing leaned against painted walls or glass, hoses run flat where feet won't
+find them.
+
+## Practical check
+
+You arrive and the closing manager is still doing paperwork. She asks how much
+a fan repair would cost. What do you say?
+`),
+    ],
+  },
+  {
+    sectionId: "3.2",
+    moduleNumber: 3,
+    order: 8,
+    title: "The Poly Tent",
+    summary: "The flagship skill: funnel every drop to the catch point.",
+    estimatedMinutes: 5,
+    blocks: [
+      md(`
+# The Poly Tent
+
+This is the single most important skill in this course. Sloppy protection is the
+number-one way helpers cost the company money and trust.
+
+## The idea
+
+Before any chemical or water flies, we build a **poly tent** — a funnel of
+plastic sheeting that runs from the hood edges down and inward, so every drop of
+greasy wash water is steered into a **catch container or drain**. The kitchen
+under and around the hood should be able to stay bone dry through the whole
+clean.
+
+## Building it
+
+1. **Tape poly to the hood edges** all the way around — full seals, not spot
+   tacks. Gaps at the seams are where water escapes.
+2. **Slope everything inward and down** toward one low point. Water follows
+   gravity; give it exactly one place to go.
+3. **Set the catch point** — container or floor drain — at that low point, and
+   confirm the path to it before the first spray.
+4. **Cover what the tent doesn't** — the cooking line under the hood, nearby prep
+   surfaces, anything overspray could reach.
+5. **Test it dry:** look up and walk the seams. If you can see a gap, water will
+   find it.
+
+## Protect the protection
+
+Don't drag hoses or ladder feet across laid poly, and don't puncture the funnel
+with a scraper handle. A tent with one hole in the wrong place is a failed tent.
+
+## Practical check
+
+Your tent is up and you spot daylight through a seam where two sheets overlap
+above the fryer. The lead is ready to spray. What do you do?
+`),
+    ],
+  },
+  {
+    sectionId: "3.3",
+    moduleNumber: 3,
+    order: 9,
+    title: "Good Tent, Failed Tent",
+    summary: "Real failure cases and the pre-spray inspection.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# Good Tent, Failed Tent
+
+Both of these failures have actually happened on our jobs. The course exists
+partly so they never happen again.
+
+## Failure one: the water got out
+
+A gap in a seam, an unsealed corner, a sag that pooled and overflowed — and
+grease-laden wash water ran onto equipment, across the floor, toward prep areas.
+The cleaning took an hour; the cleanup of the escape took longer, and the client
+saw it.
+
+## Failure two: the chemical landed wrong
+
+Degreaser overspray and drips reached a surface it should never touch and
+damaged the finish. Wash water rinses away; etched and stained surfaces don't.
+That's a permanent mark on someone else's kitchen with our name on it.
+
+## What "passed" looks like before the first drop
+
+- Every seam sealed, every corner taped, slope runs to one catch point.
+- Everything chemical could reach is covered.
+- Catch container or drain confirmed and in place.
+- Floors on the walking paths still dry and staying that way.
+
+If you wouldn't bet your own kitchen on the tent, it's not done.
+
+## Practical check
+
+Name the two real-world protection failures, and for each one, the single check
+that would have caught it before spraying started.
+`),
+    ],
+  },
+  {
+    sectionId: "4.1",
+    moduleNumber: 4,
+    order: 10,
+    title: "Filters and the Dish Pit",
+    summary: "Scrape, wash, rinse, dry, reinstall — sink left spotless.",
+    estimatedMinutes: 4,
+    blocks: [
+      md(`
+# Filters and the Dish Pit
+
+Filters are usually the helper's first solo-owned task. We wash them onsite in
+the client's **dish pit** — there's no soak tank. That means we're borrowing the
+most-used sink in their kitchen, and how we leave it is part of the job.
+
+## The routine
+
+1. **Pull the filters** from the hood — gloves on, they're greasy and the edges
+   are sharp.
+2. **Scrape first.** Heavy grease gets scraped into the garbage *before* the
+   sink. Grease chunks down a client's drain is how we lose a client.
+3. **Wash** with degreaser in the dish pit, working the baffles.
+4. **Rinse** thoroughly — no chemical residue on something that hangs over food
+   equipment.
+5. **Dry and reinstall** — baffles oriented so grease drains correctly, every
+   filter seated snug. A loose filter over a cooking line is a falling hazard.
+
+## Sink etiquette
+
+When you're done, the dish pit is **spotless** — no grease ring, no scraps in
+the strainer, no degreaser smell, fixtures wiped. The morning dish crew should
+never know we were in their sink.
+
+## Practical check
+
+You're three filters in and the dish pit is developing a thick grease ring.
+What do you do now, and what must be true when you leave?
+`),
+    ],
+  },
+  {
+    sectionId: "4.2",
+    moduleNumber: 4,
+    order: 11,
+    title: "Hood and Plenum: To Bare Metal",
+    summary: "Spray, dwell, scrape, rinse — and what finished really means.",
+    estimatedMinutes: 4,
+    blocks: [
+      md(`
+# Hood and Plenum: To Bare Metal
+
+With filters out, the hood interior and the plenum (the chamber behind where the
+filters sit) are open. This is core cleaning work you'll do more of every shift.
+
+## The cycle
+
+1. **Spray** degreaser onto the greasy surface.
+2. **Dwell** — give the chemical time to work. Spraying and instantly scraping
+   wastes chemical and your arms.
+3. **Scrape and agitate** the softened build-up.
+4. **Rinse** down into the tent's funnel.
+
+Repeat where it needs it. Heavy build-up takes rounds, not force.
+
+## Bare metal vs. "still greasy"
+
+Clean stainless reflects light evenly and a wipe with a clean cloth comes back
+clean. A surface that looks okay from the floor but feels tacky or wipes brown
+is **still greasy**. The standard is bare metal, not "better than it was."
+
+## The classic missed spots
+
+- The **plenum**, especially its top and corners — out of sightline, first place
+  an inspector looks.
+- The **grease trough and cup** at the filter rail.
+- Hood **corners and seams** where the scraper doesn't naturally travel.
+
+"Shiny from the floor" is not finished. Climb, look, wipe-test.
+
+## Practical check
+
+The hood gleams from below. Before you call it done, name two checks you do and
+two spots you look at up close.
+`),
+    ],
+  },
+  {
+    sectionId: "4.3",
+    moduleNumber: 4,
+    order: 12,
+    title: "Pressure Washer and Wastewater",
+    summary: "Running the wand, hose discipline, and the filter sock.",
+    estimatedMinutes: 4,
+    blocks: [
+      md(`
+# Pressure Washer and Wastewater
+
+The pressure washer does the heavy rinsing. **You'll be trained on it and run
+the wand yourself** — this isn't a lead-only tool. Until you're signed off,
+you're on hoses and support; watch how the lead works the spray.
+
+## Wand basics
+
+- Steady, overlapping passes — chase the grease toward the tent's funnel, don't
+  blast it sideways past the poly.
+- Mind your backsplash: high pressure into a corner comes straight back at you.
+- Never point it at a person, and keep both hands on it.
+
+## Hose discipline
+
+Hoses are the helper's responsibility. Run them flat along walls, out of walk
+paths, never through a doorway where a door can pinch them, and keep slack
+managed so nobody — including you on a ladder — finds one with their feet.
+
+## Where the water goes
+
+All that greasy wash water funnels to the **kitchen floor drain** — with a
+**strainer or filter sock on the drain catching solids**. Grease chunks and
+scrapings clogging a client's drain turns a clean job into a plumbing bill.
+Check the sock during the rinse and swap it before it overflows.
+
+## Practical check
+
+Mid-rinse, you notice the filter sock on the drain is bulging full. What do you
+do, and why does it matter to the client relationship?
+`),
+    ],
+  },
+  {
+    sectionId: "4.4",
+    moduleNumber: 4,
+    order: 13,
+    title: "Staying Ahead of the Lead",
+    summary: "Next task prepped before you're asked; the three time-wasters.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# Staying Ahead of the Lead
+
+Speed on this crew isn't rushing — it's **never being the reason the job waits**.
+The whole skill: have the next task prepped before you're asked.
+
+## What it looks like
+
+While the lead sprays the hood, you're not watching — you're pulling and washing
+filters, staging poly for the next section, or cleaning up behind the work that's
+done. When the lead turns around to say "next we need—", the answer is already
+in your hands. Two work streams running at once is how a 5-hour job becomes a
+3.5-hour job.
+
+## The three time-wasters
+
+These are the named ones — the things that actually slow our crews down:
+
+1. **Phone out.** It stays in your pocket on the clock. Every glance is a stall
+   the lead can see.
+2. **Waiting to be told.** Finished a task? There is always a next one: filters,
+   poly, hoses, wipe-down, staging. Pick one up.
+3. **Walking empty-handed.** Going to the truck? Carry something out. Coming
+   back? Bring what's needed next. Every trip carries.
+
+## Hustle without cutting corners
+
+Staying ahead never means skipping dwell time, half-taping a seam, or calling a
+tacky surface clean. The order is fixed: safe, then right, then fast.
+
+## Practical check
+
+The lead is mid-spray on the hood, filters are washed, and you've got nothing
+in your hands. List the next three things you'd do without being asked.
+`),
+    ],
+  },
+  {
+    sectionId: "5.1",
+    moduleNumber: 5,
+    order: 14,
+    title: "Cleanup and Restore",
+    summary: "The teardown checklist and the two classic failures.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# Cleanup and Restore
+
+The client never sees the cleaning — they see the kitchen we left behind. Weak
+cleanup is one of the four problems this course exists to fix, and it's the
+last impression every job makes.
+
+## The teardown checklist
+
+1. **Tear down the poly** carefully — fold the mess inward — straight into
+   garbage bags. Greasy poly dragged across a clean floor undoes the night.
+2. **Wipe everything the water touched** — equipment, walls, stainless,
+   anything inside the splash zone.
+3. **Squeegee and dry the floors.** Completely.
+4. **Reinstall filters** — seated, oriented to drain.
+5. **Equipment back exactly where it was** — the line cook's setup is muscle
+   memory; put their kitchen back the way they left it.
+6. **The lead does a final lap.** Walk it with them and learn what their eyes
+   catch that yours don't yet.
+
+## The two classic failures
+
+Both have happened; both are yours to prevent:
+
+- **Wet, slippery floors** — the opening staff's first step at 6 AM. This is a
+  safety failure, not a cosmetic one.
+- **Grease left on equipment** — handprints and drips on the line that tell the
+  client we were careless.
+
+## Practical check
+
+It's 2 AM, you're exhausted, and the floor "looks mostly dry." Why is that not
+good enough, and who finds out if you're wrong?
+`),
+    ],
+  },
+  {
+    sectionId: "5.2",
+    moduleNumber: 5,
+    order: 15,
+    title: "Conduct, Photos, and What Not to Promise",
+    summary: "Client boundaries and learning the shot list early.",
+    estimatedMinutes: 2,
+    blocks: [
+      md(`
+# Conduct, Photos, and What Not to Promise
+
+## The three nevers with clients and staff
+
+Whether it's the owner, a manager, or a line cook:
+
+1. **Never quote prices.** "The office handles pricing — I'll have them follow
+   up."
+2. **Never promise extra work.** Even "sure, we can probably hit that vent too"
+   is a commitment someone else has to keep.
+3. **Never discuss findings or problems.** What we found in the duct goes in the
+   lead's report, not into a 1 AM chat that becomes a rumor about their kitchen.
+
+Friendly, brief, and "the lead can answer that" covers every situation.
+
+## Photos: learn the shot list early
+
+Before/after photos are part of every job — they prove the work and back the
+report. The lead owns them at first, but **you're expected to learn the shot
+list early**: what gets photographed, from where, before the poly goes up and
+after the restore. Watch what the lead shoots and ask why. Soon enough you'll
+be taking them yourself in the app.
+
+## What goes up the chain immediately
+
+Anything broken (by us or found broken), anything we couldn't access or finish,
+any spill or damage, anything unsafe. Bad news ages terribly — the lead hears
+it from you first, on the spot.
+
+## Practical check
+
+While washing filters you notice one has a cracked baffle that was cracked when
+you pulled it. What do you do, and what do you say if the manager asks about it?
+`),
+    ],
+  },
+  {
+    sectionId: "5.3",
+    moduleNumber: 5,
+    order: 16,
+    title: "First-Shift Readiness Check",
+    summary: "Scenario-based final check before your first job.",
+    estimatedMinutes: 3,
+    blocks: [
+      md(`
+# First-Shift Readiness Check
+
+Run yourself through these scenarios. If any answer is fuzzy, revisit that
+section — your first shift is the wrong place to find the gap.
+
+## Safety and chemicals
+
+- Degreaser is coming out and you're "only moving filters." What's on your hands
+  and face? *(Gloves and glasses — any time chemical is out, no exceptions.)*
+- Chemical splashes your eye. First two moves? *(Flush with water 15 minutes,
+  tell the lead immediately.)*
+- Pilot light burning where you're about to work? *(Stop and ask the lead.)*
+
+## Protection
+
+- What must be true about the poly tent before the first spray? *(Sealed seams,
+  slope to one catch point, catch container or drain set, everything reachable
+  by chemical covered, tested dry.)*
+- The two real failures to never repeat? *(Wash water escaping the tent;
+  chemical damaging an unprotected surface.)*
+
+## The work
+
+- Filters: what happens before the sink, and how does the sink get left?
+  *(Scrape grease into garbage first; dish pit spotless.)*
+- Hood looks shiny from the floor. Done? *(No — climb, check plenum and corners,
+  wipe-test to bare metal.)*
+- The drain during pressure washing needs what on it? *(Strainer/filter sock —
+  checked and swapped before it overflows.)*
+
+## Pace and finish
+
+- The three time-wasters? *(Phone out, waiting to be told, walking
+  empty-handed.)*
+- The two classic cleanup failures? *(Wet floors, grease left on equipment.)*
+- A manager asks what a duct repair would cost? *(Office handles pricing — never
+  quote, never promise, never discuss findings.)*
+
+If you can answer all of these without looking, you're ready to be useful on
+night one. See you on the truck.
+`),
+    ],
+  },
+];
+
+// Wire prerequisites sequentially (each section requires the previous one).
+for (let index = 1; index < HELPER_PRACTICAL_BASICS_SECTIONS.length; index += 1) {
+  const current = HELPER_PRACTICAL_BASICS_SECTIONS[index];
+  const previous = HELPER_PRACTICAL_BASICS_SECTIONS[index - 1];
+  if (current && previous) {
+    current.prerequisiteSectionId = previous.sectionId;
+  }
+}
+
 export const COURSE_CATALOG: CourseDefinition[] = [
   {
     slug: "commercial-kitchen-exhaust-cleaning",
@@ -677,6 +1378,19 @@ export const COURSE_CATALOG: CourseDefinition[] = [
       0,
     ),
     sections: COMMERCIAL_KITCHEN_EXHAUST_CLEANING_SECTIONS,
+  },
+  {
+    slug: "helper-practical-basics",
+    title: "Helper Practical Basics",
+    shortTitle: "Helper Basics",
+    description:
+      "First-week field training for vent and hood cleaning helpers: safety, chemicals, site protection, the cleaning work, pace, and cleanup.",
+    category: "VHD Curriculum",
+    estimatedMinutes: HELPER_PRACTICAL_BASICS_SECTIONS.reduce(
+      (total, section) => total + section.estimatedMinutes,
+      0,
+    ),
+    sections: HELPER_PRACTICAL_BASICS_SECTIONS,
   },
 ];
 
