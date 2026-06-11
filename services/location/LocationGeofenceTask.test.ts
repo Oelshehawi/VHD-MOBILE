@@ -4,9 +4,18 @@ import '@/services/location/__testSupport__/mockNativeModules';
 import * as Location from 'expo-location';
 import {
   buildGeofenceRegions,
-  processGeofenceEvent
+  processGeofenceEvent,
+  STANDING_DEPOT_REGION_IDENTIFIER
 } from '@/services/location/LocationGeofenceTask';
-import { postOrQueueLocationEvent } from '@/services/location/LocationEventQueue';
+import {
+  flushLocationEventQueue,
+  postOrQueueLocationEvent
+} from '@/services/location/LocationEventQueue';
+import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
+
+jest.mock('@/services/location/LocationTrackingRefreshRunner', () => ({
+  refreshLocationTracking: jest.fn(async () => undefined)
+}));
 import {
   readLocationTrackingState,
   writeLocationTrackingState
@@ -81,6 +90,52 @@ describe('buildGeofenceRegions', () => {
       ])
     );
     expect(metadata.some((region) => region.trackingWindowId === 'w9')).toBe(false);
+  });
+
+  it('appends standing depot and upcoming job-site wake regions after tracking regions', () => {
+    const windows = [parsedWindow('w1')];
+    // w1 is already tracked, so only u1 gets an upcoming wake region.
+    const upcomingWindows = [parsedWindow('u1'), parsedWindow('w1')];
+
+    const { regions, metadata } = buildGeofenceRegions(windows, new Set(['w1']), {
+      upcomingWindows,
+      standingDepotTarget: { lat: 49.1, lng: -123.1, radiusMeters: 150 }
+    });
+
+    expect(regions.map((region) => region.identifier)).toEqual([
+      'vhd:w1:depot',
+      'vhd:w1:job',
+      STANDING_DEPOT_REGION_IDENTIFIER,
+      'vhd:u1:job'
+    ]);
+    const wakeRegions = metadata.filter((region) => region.purpose === 'wake');
+    expect(wakeRegions).toEqual([
+      expect.objectContaining({
+        identifier: STANDING_DEPOT_REGION_IDENTIFIER,
+        regionType: 'depot',
+        trackingWindowId: ''
+      }),
+      expect.objectContaining({
+        identifier: 'vhd:u1:job',
+        regionType: 'job',
+        trackingWindowId: 'u1'
+      })
+    ]);
+  });
+
+  it('caps the combined tracking and wake regions under the iOS budget', () => {
+    const windows = Array.from({ length: 10 }, (_, index) => parsedWindow(`w${index + 1}`));
+    const upcomingWindows = Array.from({ length: 10 }, (_, index) => parsedWindow(`u${index + 1}`));
+
+    const { regions } = buildGeofenceRegions(windows, new Set(['w1']), {
+      upcomingWindows,
+      standingDepotTarget: { lat: 49.1, lng: -123.1, radiusMeters: 150 }
+    });
+
+    expect(regions.length).toBeLessThanOrEqual(18);
+    expect(regions.some((region) => region.identifier === STANDING_DEPOT_REGION_IDENTIFIER)).toBe(
+      true
+    );
   });
 });
 
@@ -221,5 +276,46 @@ describe('processGeofenceEvent', () => {
     await processGeofenceEvent(jobRegionEvent(1));
 
     expect(Location.startLocationUpdatesAsync).toHaveBeenCalled();
+  });
+
+  it('a wake region refreshes tracking without emitting a presence event', async () => {
+    await writeLocationTrackingState({
+      windows: [],
+      geofenceRegions: [
+        {
+          identifier: STANDING_DEPOT_REGION_IDENTIFIER,
+          trackingWindowId: '',
+          scheduleId: '',
+          regionType: 'depot',
+          lat: 49.1,
+          lng: -123.1,
+          radiusMeters: 150,
+          purpose: 'wake'
+        }
+      ],
+      geofenceTransitions: [],
+      arrivedWindowIds: [],
+      exitedWindowIds: [],
+      activeLocationWindowIds: [],
+      lastLocationPingAtByWindowId: {},
+      initialDepotCheckedWindowIds: []
+    });
+
+    await processGeofenceEvent({
+      eventType: 1 as Location.GeofencingEventType,
+      region: {
+        identifier: STANDING_DEPOT_REGION_IDENTIFIER,
+        latitude: 49.1,
+        longitude: -123.1,
+        radius: 150
+      }
+    });
+
+    expect(postOrQueueLocationEvent).not.toHaveBeenCalled();
+    expect(flushLocationEventQueue).toHaveBeenCalled();
+    expect(refreshLocationTracking).toHaveBeenCalledWith('geofence-wake');
+
+    const state = await readLocationTrackingState();
+    expect(state.geofenceTransitions).toEqual([]);
   });
 });

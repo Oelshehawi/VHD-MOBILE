@@ -1,7 +1,11 @@
 import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
-import type { MobileLocationEvent, ParsedTrackingWindow } from '@/types/locationTracking';
+import type {
+  GeofenceTarget,
+  MobileLocationEvent,
+  ParsedTrackingWindow
+} from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
 import { flushLocationEventQueue, postOrQueueLocationEvent } from './LocationEventQueue';
 import {
@@ -29,6 +33,21 @@ type GeofenceTaskData = {
 // sixteen regions (selected depot+job, plus job regions) with room for system
 // overhead and future app-owned geofences.
 const MAX_GEOFENCE_WINDOWS = 8;
+// Hard ceiling across tracking + wake regions, leaving headroom under the
+// ~20-region iOS budget.
+const MAX_TOTAL_GEOFENCE_REGIONS = 18;
+
+// Standing depot wake region: stays registered after a shift winds down so
+// iOS region monitoring can relaunch a force-quit app the next time the
+// technician passes the depot. Belongs to no tracking window.
+export const STANDING_DEPOT_REGION_IDENTIFIER = 'vhd:standing:depot';
+
+export interface WakeGeofenceOptions {
+  // Upcoming (next business day) windows whose job sites should wake the app
+  // before any tracking window is live — covers techs who never pass depot.
+  upcomingWindows?: ParsedTrackingWindow[];
+  standingDepotTarget?: GeofenceTarget | null;
+}
 
 export function buildLocationRegionIdentifier(
   windowId: string,
@@ -48,7 +67,8 @@ function selectGeofenceWindows(
 
 export function buildGeofenceRegions(
   windows: ParsedTrackingWindow[],
-  activeDepotWindowIds: ReadonlySet<string>
+  activeDepotWindowIds: ReadonlySet<string>,
+  wakeOptions?: WakeGeofenceOptions
 ): {
   regions: Location.LocationRegion[];
   metadata: PersistedGeofenceRegion[];
@@ -81,9 +101,63 @@ export function buildGeofenceRegions(
         scheduleId: window.scheduleId,
         regionType,
         lat: target.lat,
-        lng: target.lng
+        lng: target.lng,
+        radiusMeters: target.radiusMeters
       });
     }
+  }
+
+  const standingDepotTarget = wakeOptions?.standingDepotTarget;
+  if (standingDepotTarget && regions.length < MAX_TOTAL_GEOFENCE_REGIONS) {
+    regions.push({
+      identifier: STANDING_DEPOT_REGION_IDENTIFIER,
+      latitude: standingDepotTarget.lat,
+      longitude: standingDepotTarget.lng,
+      radius: standingDepotTarget.radiusMeters,
+      notifyOnEnter: true,
+      notifyOnExit: true
+    });
+    metadata.push({
+      identifier: STANDING_DEPOT_REGION_IDENTIFIER,
+      trackingWindowId: '',
+      scheduleId: '',
+      regionType: 'depot',
+      lat: standingDepotTarget.lat,
+      lng: standingDepotTarget.lng,
+      radiusMeters: standingDepotTarget.radiusMeters,
+      purpose: 'wake'
+    });
+  }
+
+  const coveredWindowIds = new Set(selectedWindows.map((window) => window.id));
+  for (const window of wakeOptions?.upcomingWindows ?? []) {
+    if (regions.length >= MAX_TOTAL_GEOFENCE_REGIONS) {
+      break;
+    }
+    if (coveredWindowIds.has(window.id)) {
+      continue;
+    }
+    coveredWindowIds.add(window.id);
+
+    const identifier = buildLocationRegionIdentifier(window.id, 'job');
+    regions.push({
+      identifier,
+      latitude: window.jobSiteTarget.lat,
+      longitude: window.jobSiteTarget.lng,
+      radius: window.jobSiteTarget.radiusMeters,
+      notifyOnEnter: true,
+      notifyOnExit: true
+    });
+    metadata.push({
+      identifier,
+      trackingWindowId: window.id,
+      scheduleId: window.scheduleId,
+      regionType: 'job',
+      lat: window.jobSiteTarget.lat,
+      lng: window.jobSiteTarget.lng,
+      radiusMeters: window.jobSiteTarget.radiusMeters,
+      purpose: 'wake'
+    });
   }
 
   return { regions, metadata };
@@ -251,6 +325,30 @@ if (!region?.identifier || taskData?.eventType === undefined) {
     taskData.eventType === Location.GeofencingEventType.Enter
       ? 'geofence_enter'
       : 'geofence_exit';
+
+  if (metadata.purpose === 'wake') {
+    // Wake regions never report presence (privacy outside work hours); they
+    // exist so a force-quit app gets relaunched by OS region monitoring.
+    // Flush anything queued, then run the refresh path: PowerSync windows
+    // sync and real tracking (re)starts if a window is live or near, and its
+    // region set replaces this one. Lazy require breaks the static cycle
+    // geofence task -> refresh runner -> coordinator -> geofence task.
+    debugLogger.info('LOCATION', 'Wake geofence region fired; refreshing tracking', {
+      identifier: region.identifier,
+      eventType
+    });
+    await flushLocationEventQueue();
+    try {
+      const { refreshLocationTracking } =
+        require('./LocationTrackingRefreshRunner') as typeof import('./LocationTrackingRefreshRunner');
+      await refreshLocationTracking('geofence-wake');
+    } catch (error) {
+      debugLogger.warn('LOCATION', 'Failed to refresh tracking from wake geofence', {
+        error: error instanceof Error ? error.message : String(error)
+      });
+    }
+    return;
+  }
 
   const platform = getEventPlatform();
   if (!platform) {

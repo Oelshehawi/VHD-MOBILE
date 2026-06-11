@@ -58,11 +58,16 @@ export interface PersistedTrackingWindow {
 
 export interface PersistedGeofenceRegion {
   identifier: string;
+  // Empty for the standing depot wake region, which belongs to no window.
   trackingWindowId: string;
   scheduleId: string;
   regionType: LocationRegionType;
   lat: number;
   lng: number;
+  radiusMeters?: number;
+  // 'wake' regions exist only to relaunch a force-quit app via OS region
+  // monitoring; they never emit presence events. Absent means 'tracking'.
+  purpose?: 'tracking' | 'wake';
 }
 
 export interface PersistedGeofenceTransition {

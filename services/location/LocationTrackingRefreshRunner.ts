@@ -9,7 +9,8 @@ export type LocationRefreshTrigger =
   | 'foreground'
   | 'background-task'
   | 'app-resume'
-  | 'mount';
+  | 'mount'
+  | 'geofence-wake';
 
 export const ACTIVE_TRACKING_WINDOWS_SQL = `SELECT * FROM techniciantrackingwindows
          WHERE technicianId = ?
