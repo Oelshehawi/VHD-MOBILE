@@ -46,6 +46,7 @@ export interface PersistedTrackingWindow {
   scheduledStartAtUtc: string;
   endsAtUtc: string;
   pingIntervalSeconds: number;
+  onSitePingIntervalSeconds?: number | null;
   distanceIntervalMeters: number;
   depotLat?: number;
   depotLng?: number;
@@ -81,9 +82,6 @@ export interface LocationTrackingState {
   exitedWindowIds: string[];
   activeLocationWindowIds: string[];
   lastLocationPingAtByWindowId: Record<string, string>;
-  arrivalHeartbeatWindowIds: string[];
-  lastArrivalHeartbeatAtByWindowId: Record<string, string>;
-  pendingOutsideJobCheckByWindowId: Record<string, string>;
   initialDepotCheckedWindowIds: string[];
   permissionDeniedSentAt?: string;
   locationUpdatesStartedAt?: string;
@@ -123,9 +121,6 @@ const EMPTY_STATE: LocationTrackingState = {
   exitedWindowIds: [],
   activeLocationWindowIds: [],
   lastLocationPingAtByWindowId: {},
-  arrivalHeartbeatWindowIds: [],
-  lastArrivalHeartbeatAtByWindowId: {},
-  pendingOutsideJobCheckByWindowId: {},
   initialDepotCheckedWindowIds: []
 };
 
@@ -167,19 +162,6 @@ function normalizeLastLocationPingAt(value: unknown): Record<string, string> {
   }, {});
 }
 
-function normalizeStringRecord(value: unknown): Record<string, string> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
-  }
-
-  return Object.entries(value).reduce<Record<string, string>>((acc, [key, item]) => {
-    if (key && typeof item === 'string') {
-      acc[key] = item;
-    }
-    return acc;
-  }, {});
-}
-
 function normalizeState(value: Partial<LocationTrackingState> | null): LocationTrackingState {
   if (!value) {
     return { ...EMPTY_STATE };
@@ -197,15 +179,6 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
       Array.isArray(value.activeLocationWindowIds) ? value.activeLocationWindowIds : []
     ),
     lastLocationPingAtByWindowId: normalizeLastLocationPingAt(value.lastLocationPingAtByWindowId),
-    arrivalHeartbeatWindowIds: uniqueStrings(
-      Array.isArray(value.arrivalHeartbeatWindowIds) ? value.arrivalHeartbeatWindowIds : []
-    ),
-    lastArrivalHeartbeatAtByWindowId: normalizeStringRecord(
-      value.lastArrivalHeartbeatAtByWindowId
-    ),
-    pendingOutsideJobCheckByWindowId: normalizeStringRecord(
-      value.pendingOutsideJobCheckByWindowId
-    ),
     initialDepotCheckedWindowIds: uniqueStrings(
       Array.isArray(value.initialDepotCheckedWindowIds)
         ? value.initialDepotCheckedWindowIds
@@ -259,14 +232,11 @@ function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
     arrivedWindowIds: state.arrivedWindowIds.filter((id) => windowIds.has(id)),
     exitedWindowIds: state.exitedWindowIds.filter((id) => windowIds.has(id)),
     activeLocationWindowIds: state.activeLocationWindowIds.filter((id) => windowIds.has(id)),
-    arrivalHeartbeatWindowIds: state.arrivalHeartbeatWindowIds.filter((id) => windowIds.has(id)),
     initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter((id) =>
       windowIds.has(id)
     ),
     geofenceTransitions: state.geofenceTransitions.filter((t) => windowIds.has(t.trackingWindowId)),
-    lastLocationPingAtByWindowId: filterRecord(state.lastLocationPingAtByWindowId),
-    lastArrivalHeartbeatAtByWindowId: filterRecord(state.lastArrivalHeartbeatAtByWindowId),
-    pendingOutsideJobCheckByWindowId: filterRecord(state.pendingOutsideJobCheckByWindowId)
+    lastLocationPingAtByWindowId: filterRecord(state.lastLocationPingAtByWindowId)
   };
 }
 
@@ -312,6 +282,7 @@ export function toPersistedWindows(windows: ParsedTrackingWindow[]): PersistedTr
     scheduledStartAtUtc: window.scheduledStartAtUtc,
     endsAtUtc: window.endsAtUtc,
     pingIntervalSeconds: window.pingIntervalSeconds,
+    onSitePingIntervalSeconds: window.onSitePingIntervalSeconds ?? null,
     distanceIntervalMeters: window.distanceIntervalMeters,
     depotLat: window.depotTarget.lat,
     depotLng: window.depotTarget.lng,
@@ -322,35 +293,23 @@ export function toPersistedWindows(windows: ParsedTrackingWindow[]): PersistedTr
   }));
 }
 
+// Re-entry fully re-arms: an earlier (possibly spurious) exit must not lock a
+// window out of on-site cadence for the rest of the day.
 export async function markWindowArrived(windowId: string): Promise<LocationTrackingState> {
   return updateLocationTrackingState((state) => ({
     ...state,
     arrivedWindowIds: uniqueStrings([...state.arrivedWindowIds, windowId]),
-    arrivalHeartbeatWindowIds: state.exitedWindowIds.includes(windowId)
-      ? state.arrivalHeartbeatWindowIds
-      : uniqueStrings([...state.arrivalHeartbeatWindowIds, windowId])
+    exitedWindowIds: state.exitedWindowIds.filter((id) => id !== windowId)
   }));
 }
 
+// An exit only switches cadence back to travel (the server decides real
+// departures from the ping stream); pinging continues for the whole window.
 export async function markWindowExited(windowId: string): Promise<LocationTrackingState> {
-  return updateLocationTrackingState((state) => {
-    const {
-      [windowId]: _lastHeartbeat,
-      ...lastArrivalHeartbeatAtByWindowId
-    } = state.lastArrivalHeartbeatAtByWindowId;
-    const {
-      [windowId]: _pendingOutside,
-      ...pendingOutsideJobCheckByWindowId
-    } = state.pendingOutsideJobCheckByWindowId;
-
-    return {
-      ...state,
-      exitedWindowIds: uniqueStrings([...state.exitedWindowIds, windowId]),
-      arrivalHeartbeatWindowIds: state.arrivalHeartbeatWindowIds.filter((id) => id !== windowId),
-      lastArrivalHeartbeatAtByWindowId,
-      pendingOutsideJobCheckByWindowId
-    };
-  });
+  return updateLocationTrackingState((state) => ({
+    ...state,
+    exitedWindowIds: uniqueStrings([...state.exitedWindowIds, windowId])
+  }));
 }
 
 export async function recordGeofenceTransition(

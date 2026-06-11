@@ -35,6 +35,7 @@ export interface TechnicianTrackingWindow {
   jobSite: string;
   locationUpdateMode: LocationUpdateMode;
   pingIntervalSeconds: number;
+  onSitePingIntervalSeconds?: number | null;
   distanceIntervalMeters: number;
   updatedAt: string;
 }
@@ -52,6 +53,11 @@ export interface MobileLocationEvent {
   lat?: number;
   lng?: number;
   accuracyMeters?: number;
+  // Actual device GPS fix attached to geofence events (lat/lng stay the
+  // region center for backward compatibility with the server contract).
+  deviceLat?: number;
+  deviceLng?: number;
+  deviceAccuracyMeters?: number;
   speedMetersPerSecond?: number;
   headingDegrees?: number;
   recordedAt: string;

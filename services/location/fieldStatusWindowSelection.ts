@@ -102,26 +102,25 @@ export function selectSelectedTravelWindow<T extends SelectableTravelWindow>(
 }
 
 /**
- * Select the live travel window after local arrival/exited state is applied.
- * Once a later job has been arrived locally, older still-open estimates must
- * not reclaim GPS travel pings while completion sync catches up.
+ * Select the single window that owns GPS pings right now. A window is
+ * ping-active purely by time range (`startsAtUtc <= now <= endsAtUtc`) —
+ * arrived/exited state no longer stops pinging (the server derives enter/exit
+ * from the ping stream); it only selects the cadence. Local arrival state
+ * still matters for ranking: once a later job has been arrived locally, older
+ * still-open windows must not reclaim the pings while completion sync
+ * catches up.
  */
-export function selectActiveTravelWindow<T extends SelectableTravelWindow>(
+export function selectActivePingWindow<T extends SelectableTravelWindow>(
   windows: T[],
   arrivedWindowIds: ReadonlyArray<string>,
-  exitedWindowIds: ReadonlyArray<string>,
   now: Date = new Date()
 ): T | undefined {
   const nowMs = now.getTime();
-  const arrivedIds = new Set(arrivedWindowIds);
-  const exitedIds = new Set(exitedWindowIds);
   const latestArrivedStart = latestArrivedScheduledStart(windows, arrivedWindowIds);
 
   const candidates = windows.filter(
     (window) =>
       isTravelActive(window, nowMs) &&
-      !arrivedIds.has(window.id) &&
-      !exitedIds.has(window.id) &&
       scheduledStartValue(window) >= latestArrivedStart
   );
 

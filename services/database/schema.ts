@@ -217,6 +217,7 @@ const techniciantrackingwindows = new Table(
     jobSite: column.text,
     locationUpdateMode: column.text,
     pingIntervalSeconds: column.integer,
+    onSitePingIntervalSeconds: column.integer,
     distanceIntervalMeters: column.integer,
     updatedAt: column.text
   },

@@ -1,12 +1,23 @@
 import { jest } from '@jest/globals';
 
 jest.mock('expo-location', () => ({
-  Accuracy: { Balanced: 3 },
+  Accuracy: { Balanced: 3, High: 4 },
+  GeofencingEventType: { Enter: 1, Exit: 2 },
   getCurrentPositionAsync: jest.fn(async () => ({
     coords: {
       latitude: 49.1,
       longitude: -123.1,
       accuracy: 25,
+      speed: null,
+      heading: null
+    },
+    timestamp: Date.now()
+  })),
+  getLastKnownPositionAsync: jest.fn(async () => ({
+    coords: {
+      latitude: 49.105,
+      longitude: -123.105,
+      accuracy: 18,
       speed: null,
       heading: null
     },

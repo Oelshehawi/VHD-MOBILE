@@ -13,7 +13,8 @@ import {
 } from '@/services/location/LocationGeofenceTask';
 import {
   startLocationUpdatesForWindows,
-  stopLocationUpdates
+  stopLocationUpdates,
+  type LocationUpdatesMode
 } from '@/services/location/locationTaskShared';
 import {
   readLocationTrackingState,
@@ -25,11 +26,8 @@ import type {
   PermissionState,
   PersistedTrackingWindow
 } from '@/services/location/LocationTrackingState';
-import {
-  getRelevantTrackingWindows,
-  isTravelWindowActive
-} from '@/services/location/trackingWindowUtils';
-import { selectActiveTravelWindow } from '@/services/location/fieldStatusWindowSelection';
+import { getRelevantTrackingWindows } from '@/services/location/trackingWindowUtils';
+import { selectActivePingWindow } from '@/services/location/fieldStatusWindowSelection';
 import { isWindowInCurrentTrackingGenerationRange } from '@/services/location/businessDay';
 import { emitInitialDepotEnterEvents } from '@/services/location/InitialGeofenceState';
 
@@ -78,19 +76,6 @@ function createSystemEventFromPersistedWindow(
   return createSystemEvent(window, eventType);
 }
 
-function selectArrivalHeartbeatWindows(
-  windows: ParsedTrackingWindow[],
-  arrivedWindowIds: string[],
-  exitedWindowIds: string[]
-): ParsedTrackingWindow[] {
-  return windows.filter(
-    (window) =>
-      arrivedWindowIds.includes(window.id) &&
-      !exitedWindowIds.includes(window.id) &&
-      isTravelWindowActive(window)
-  );
-}
-
 async function readPermissionStateFromOs(): Promise<PermissionState> {
   const servicesEnabled = await Location.hasServicesEnabledAsync();
   if (!servicesEnabled) {
@@ -112,9 +97,7 @@ async function readPermissionStateFromOs(): Promise<PermissionState> {
 
 function hasPersistedLocationUpdates(state: LocationTrackingState): boolean {
   return (
-    state.activeLocationWindowIds.length > 0 ||
-    state.arrivalHeartbeatWindowIds.length > 0 ||
-    Boolean(state.locationUpdatesStartedAt)
+    state.activeLocationWindowIds.length > 0 || Boolean(state.locationUpdatesStartedAt)
   );
 }
 
@@ -167,9 +150,6 @@ export class LocationTrackingCoordinator {
       windows: [],
       exitedWindowIds: [],
       lastLocationPingAtByWindowId: {},
-      arrivalHeartbeatWindowIds: [],
-      lastArrivalHeartbeatAtByWindowId: {},
-      pendingOutsideJobCheckByWindowId: {},
       locationUpdatesSignature: undefined,
       lastCoordinatorRunAt: new Date().toISOString()
     }));
@@ -209,20 +189,27 @@ export class LocationTrackingCoordinator {
     const currentDayWindows = relevantWindows.filter((window) =>
       isWindowInCurrentTrackingGenerationRange(window, now)
     );
-    // One shared selection rule with the backend: the single selected travel
-    // window owns depot events and GPS pings.
-    const selectedTravelWindow = selectActiveTravelWindow(
+    // One shared selection rule with the background task: the single selected
+    // ping window owns GPS pings for its whole time range; local arrived state
+    // only chooses the cadence (travel vs on-site).
+    const selectedPingWindow = selectActivePingWindow(
       currentDayWindows,
       existingState.arrivedWindowIds,
-      existingState.exitedWindowIds,
       now
     );
-    const activeWindows = selectedTravelWindow ? [selectedTravelWindow] : [];
-    const arrivalHeartbeatWindows = selectArrivalHeartbeatWindows(
-      currentDayWindows,
-      existingState.arrivedWindowIds,
-      existingState.exitedWindowIds
+    const activeWindows = selectedPingWindow ? [selectedPingWindow] : [];
+    const selectedIsOnSite = Boolean(
+      selectedPingWindow &&
+        existingState.arrivedWindowIds.includes(selectedPingWindow.id) &&
+        !existingState.exitedWindowIds.includes(selectedPingWindow.id)
     );
+    const locationUpdatesMode: LocationUpdatesMode = selectedIsOnSite ? 'on-site' : 'travel';
+    // Depot events (geofence region + synthetic initial enter) only make
+    // sense while the selected window is still in its travel phase.
+    const travelPhaseWindows =
+      selectedPingWindow && !existingState.arrivedWindowIds.includes(selectedPingWindow.id)
+        ? [selectedPingWindow]
+        : [];
 
     if (currentDayWindows.length === 0) {
       await this.stopExpiredTracking(
@@ -242,9 +229,6 @@ export class LocationTrackingCoordinator {
         exitedWindowIds: [],
         activeLocationWindowIds: [],
         lastLocationPingAtByWindowId: {},
-        arrivalHeartbeatWindowIds: [],
-        lastArrivalHeartbeatAtByWindowId: {},
-        pendingOutsideJobCheckByWindowId: {},
         locationUpdatesSignature: undefined
       }));
       debugLogger.info('LOCATION', 'No current business-day tracking windows; location tasks stopped');
@@ -274,9 +258,6 @@ export class LocationTrackingCoordinator {
         geofenceSignature: undefined,
         geofenceTransitions: [],
         lastLocationPingAtByWindowId: {},
-        arrivalHeartbeatWindowIds: [],
-        lastArrivalHeartbeatAtByWindowId: {},
-        pendingOutsideJobCheckByWindowId: {},
         locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));
@@ -287,9 +268,10 @@ export class LocationTrackingCoordinator {
       return;
     }
 
-    // Depot geofence only for the selected travel window; job geofence for
-    // every current-day window so a direct-to-next-job arrival is recorded.
-    const selectedDepotWindowIds = new Set(activeWindows.map((w) => w.id));
+    // Depot geofence only for the selected window's travel phase; job
+    // geofence for every current-day window so a direct-to-next-job arrival
+    // is recorded (and so iOS can relaunch a force-quit app on enter/exit).
+    const selectedDepotWindowIds = new Set(travelPhaseWindows.map((w) => w.id));
     const { regions, metadata } = buildGeofenceRegions(currentDayWindows, selectedDepotWindowIds);
     await syncGeofences(regions);
     await updateLocationTrackingState((state) => ({
@@ -300,22 +282,22 @@ export class LocationTrackingCoordinator {
     const platform = locationTrackingPlatform();
     if (platform) {
       await emitInitialDepotEnterEvents({
-        activeWindows,
+        activeWindows: travelPhaseWindows,
         platform
       });
     }
 
     await this.syncLocationUpdates(
       activeWindows,
-      arrivalHeartbeatWindows,
+      locationUpdatesMode,
       existingState.activeLocationWindowIds,
       existingState.windows
     );
 
     debugLogger.info('LOCATION', 'Location tracking coordinator synced', {
       currentDayWindowCount: currentDayWindows.length,
-      activeTravelWindowCount: activeWindows.length,
-      arrivalHeartbeatWindowCount: arrivalHeartbeatWindows.length,
+      activePingWindowCount: activeWindows.length,
+      locationUpdatesMode,
       geofenceRegionCount: regions.length
     });
   }
@@ -363,32 +345,24 @@ export class LocationTrackingCoordinator {
 
   private async syncLocationUpdates(
     activeWindows: ParsedTrackingWindow[],
-    arrivalHeartbeatWindows: ParsedTrackingWindow[],
+    mode: LocationUpdatesMode,
     previousActiveWindowIds: string[],
     previousWindows: PersistedTrackingWindow[]
   ): Promise<void> {
     const activeWindowIds = activeWindows.map((window) => window.id);
-    const arrivalHeartbeatWindowIds = arrivalHeartbeatWindows.map((window) => window.id);
     const newlyActiveWindows = activeWindows.filter(
       (window) => !previousActiveWindowIds.includes(window.id)
     );
     const stoppedWindowIds = previousActiveWindowIds.filter((id) => !activeWindowIds.includes(id));
-    const locationUpdateWindows = [...activeWindows, ...arrivalHeartbeatWindows];
     const persistedState = await readLocationTrackingState();
     const hadLocationUpdates =
-      previousActiveWindowIds.length > 0 ||
-      persistedState.arrivalHeartbeatWindowIds.length > 0 ||
-      Boolean(persistedState.locationUpdatesStartedAt);
+      previousActiveWindowIds.length > 0 || Boolean(persistedState.locationUpdatesStartedAt);
 
-    if (locationUpdateWindows.length > 0) {
-      await startLocationUpdatesForWindows(
-        locationUpdateWindows,
-        activeWindows.length > 0 ? 'travel' : 'arrival-heartbeat'
-      );
+    if (activeWindows.length > 0) {
+      await startLocationUpdatesForWindows(activeWindows, mode);
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: activeWindowIds,
-        arrivalHeartbeatWindowIds,
         locationUpdatesStartedAt: state.locationUpdatesStartedAt ?? new Date().toISOString()
       }));
     } else {
@@ -398,10 +372,7 @@ export class LocationTrackingCoordinator {
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: [],
-        arrivalHeartbeatWindowIds: [],
         lastLocationPingAtByWindowId: {},
-        lastArrivalHeartbeatAtByWindowId: {},
-        pendingOutsideJobCheckByWindowId: {},
         locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));

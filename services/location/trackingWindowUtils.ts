@@ -122,11 +122,21 @@ export function isTravelWindowActive(
   return Date.parse(window.startsAtUtc) <= nowMs && nowMs <= Date.parse(window.endsAtUtc);
 }
 
+// NULL columns from PowerSync must use the fallback, not coerce to 0
+// (finiteNumber(null) would return 0 and clamp to the minimum).
+function finiteCadenceValue(value: unknown): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  return finiteNumber(value);
+}
+
 export function getPingIntervalSeconds(
   window: Pick<TechnicianTrackingWindow, 'pingIntervalSeconds'>
 ): number {
-  const fallbackSeconds = 5 * 60;
-  const value = finiteNumber(window.pingIntervalSeconds);
+  const fallbackSeconds = 120;
+  const value = finiteCadenceValue(window.pingIntervalSeconds);
   if (value === null) {
     return fallbackSeconds;
   }
@@ -134,14 +144,26 @@ export function getPingIntervalSeconds(
   return Math.min(600, Math.max(60, Math.round(value)));
 }
 
+export function getOnSitePingIntervalSeconds(
+  window: Pick<TechnicianTrackingWindow, 'onSitePingIntervalSeconds'>
+): number {
+  const fallbackSeconds = 180;
+  const value = finiteCadenceValue(window.onSitePingIntervalSeconds);
+  if (value === null) {
+    return fallbackSeconds;
+  }
+
+  return Math.min(600, Math.max(120, Math.round(value)));
+}
+
 export function getDistanceIntervalMeters(
   window: Pick<TechnicianTrackingWindow, 'distanceIntervalMeters'>
 ): number {
-  const fallbackMeters = 250;
-  const value = finiteNumber(window.distanceIntervalMeters);
+  const fallbackMeters = 0;
+  const value = finiteCadenceValue(window.distanceIntervalMeters);
   if (value === null) {
     return fallbackMeters;
   }
 
-  return Math.min(500, Math.max(100, Math.round(value)));
+  return Math.min(500, Math.max(0, Math.round(value)));
 }

@@ -9,14 +9,13 @@ import {
 } from './LocationTrackingState';
 import {
   LOCATION_UPDATES_TASK_NAME,
-  getActiveArrivalHeartbeatWindows,
-  getActivePersistedTravelWindows,
+  getActivePersistedPingWindows,
   getEventPlatform,
+  getPingIntervalSecondsForState,
+  isWindowOnSite,
   shouldEmitLocationPing,
-  shouldRunArrivalHeartbeat,
   stopLocationUpdatesIfNoActivePersistedWindow
 } from './locationTaskShared';
-import { evaluateArrivalHeartbeatExit } from './arrivalHeartbeat';
 
 type LocationUpdatesTaskData = {
   locations: Location.LocationObject[];
@@ -44,77 +43,59 @@ if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {
     }
 
     const state = await readLocationTrackingState();
-    const activeWindows = getActivePersistedTravelWindows(
-      state.windows,
-      state.arrivedWindowIds,
-      state.exitedWindowIds
-    );
-    const heartbeatWindows = getActiveArrivalHeartbeatWindows(
-      state.windows,
-      state.arrivedWindowIds,
-      state.exitedWindowIds
-    );
+    const pingWindows = getActivePersistedPingWindows(state.windows, state.arrivedWindowIds);
 
-    if (activeWindows.length === 0 && heartbeatWindows.length === 0) {
-      await stopLocationUpdatesIfNoActivePersistedWindow('no-active-travel-window');
+    if (pingWindows.length === 0) {
+      await stopLocationUpdatesIfNoActivePersistedWindow('no-active-ping-window');
+      return;
+    }
+
+    // Throttle check first: iOS ignores timeInterval and can invoke this task
+    // far more often than the configured cadence, so the cheap early exit
+    // keeps those invocations from doing any further work.
+    const window = pingWindows[0];
+    const onSite = isWindowOnSite(window.id, state.arrivedWindowIds, state.exitedWindowIds);
+    const intervalSeconds = getPingIntervalSecondsForState(window, onSite);
+    if (
+      !shouldEmitLocationPing(
+        window,
+        state.lastLocationPingAtByWindowId,
+        latestLocation.timestamp,
+        intervalSeconds
+      )
+    ) {
+      debugLogger.debug('LOCATION', 'Skipped throttled location ping', {
+        trackingWindowId: window.id,
+        scheduleId: window.scheduleId,
+        onSite
+      });
       return;
     }
 
     await flushLocationEventQueue();
 
-    for (const window of activeWindows) {
-      const recordedAt = new Date(latestLocation.timestamp).toISOString();
-      if (
-        !shouldEmitLocationPing(
-          window,
-          state.lastLocationPingAtByWindowId,
-          latestLocation.timestamp
-        )
-      ) {
-        debugLogger.debug('LOCATION', 'Skipped throttled location ping', {
-          trackingWindowId: window.id,
-          scheduleId: window.scheduleId
-        });
-        continue;
+    const recordedAt = new Date(latestLocation.timestamp).toISOString();
+    const event: MobileLocationEvent = {
+      trackingWindowId: window.id,
+      scheduleId: window.scheduleId,
+      eventType: 'location_ping',
+      lat: latestLocation.coords.latitude,
+      lng: latestLocation.coords.longitude,
+      accuracyMeters: latestLocation.coords.accuracy ?? undefined,
+      speedMetersPerSecond: latestLocation.coords.speed ?? undefined,
+      headingDegrees: latestLocation.coords.heading ?? undefined,
+      recordedAt,
+      source: 'background_location',
+      platform
+    };
+
+    await postOrQueueLocationEvent(event);
+    await updateLocationTrackingState((current) => ({
+      ...current,
+      lastLocationPingAtByWindowId: {
+        ...current.lastLocationPingAtByWindowId,
+        [window.id]: recordedAt
       }
-
-      const event: MobileLocationEvent = {
-        trackingWindowId: window.id,
-        scheduleId: window.scheduleId,
-        eventType: 'location_ping',
-        lat: latestLocation.coords.latitude,
-        lng: latestLocation.coords.longitude,
-        accuracyMeters: latestLocation.coords.accuracy ?? undefined,
-        speedMetersPerSecond: latestLocation.coords.speed ?? undefined,
-        headingDegrees: latestLocation.coords.heading ?? undefined,
-        recordedAt,
-        source: 'background_location',
-        platform
-      };
-
-      await postOrQueueLocationEvent(event);
-      await updateLocationTrackingState((current) => ({
-        ...current,
-        lastLocationPingAtByWindowId: {
-          ...current.lastLocationPingAtByWindowId,
-          [window.id]: recordedAt
-        }
-      }));
-    }
-
-    for (const window of heartbeatWindows) {
-      const recordedAt = new Date(latestLocation.timestamp).toISOString();
-      if (
-        !shouldRunArrivalHeartbeat(
-          window,
-          state.lastArrivalHeartbeatAtByWindowId,
-          latestLocation.timestamp
-        )
-      ) {
-        continue;
-      }
-
-      await evaluateArrivalHeartbeatExit(window, latestLocation, recordedAt, platform);
-    }
+    }));
   });
 }

@@ -2,8 +2,7 @@ import { Platform } from 'react-native';
 import * as Location from 'expo-location';
 import type {
   LocationEventPlatform,
-  MobileLocationEvent,
-  ParsedTrackingWindow
+  MobileLocationEvent
 } from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
 import { postOrQueueLocationEvent } from './LocationEventQueue';
@@ -12,17 +11,23 @@ import {
   updateLocationTrackingState
 } from './LocationTrackingState';
 import type { PersistedTrackingWindow } from './LocationTrackingState';
-import { getDistanceIntervalMeters, getPingIntervalSeconds } from './trackingWindowUtils';
-import { selectActiveTravelWindow } from './fieldStatusWindowSelection';
+import {
+  getOnSitePingIntervalSeconds,
+  getPingIntervalSeconds
+} from './trackingWindowUtils';
+import { selectActivePingWindow } from './fieldStatusWindowSelection';
 
 export const LOCATION_GEOFENCE_TASK_NAME = 'com.braille71.vhdapp.location-geofence';
 export const LOCATION_UPDATES_TASK_NAME = 'com.braille71.vhdapp.location-updates';
 
-export const ARRIVAL_HEARTBEAT_INTERVAL_MS = 10 * 60 * 1000;
-export const ARRIVAL_HEARTBEAT_CONFIRM_MS = 90 * 1000;
-export const ARRIVAL_HEARTBEAT_ACCURACY_BUFFER_CAP_METERS = 100;
-export const ARRIVAL_HEARTBEAT_INTERVAL_SECONDS = ARRIVAL_HEARTBEAT_INTERVAL_MS / 1000;
-export const ARRIVAL_HEARTBEAT_DISTANCE_METERS = 750;
+export const ACCURACY_BUFFER_CAP_METERS = 100;
+
+export type LocationUpdatesMode = 'travel' | 'on-site';
+
+// Travel pings stay tight enough for the server presence engine to confirm
+// transitions quickly; on-site pings relax slightly to save battery.
+const TRAVEL_INTERVAL_MIN_SECONDS = 60;
+const TRAVEL_INTERVAL_MAX_SECONDS = 300;
 
 export function getEventPlatform(): LocationEventPlatform | null {
   if (Platform.OS === 'ios' || Platform.OS === 'android') {
@@ -52,61 +57,51 @@ export function buildBaseEvent(
   };
 }
 
-export function isPersistedTravelWindowActive(
+// Ping-active is purely a time-range property: arrived/exited state only
+// selects cadence (the server presence engine owns enter/exit decisions).
+export function isPersistedWindowPingActive(
   window: PersistedTrackingWindow,
-  arrivedWindowIds: string[],
-  exitedWindowIds: string[] = [],
   now: Date = new Date()
 ): boolean {
   const nowMs = now.getTime();
-  return (
-    !arrivedWindowIds.includes(window.id) &&
-    !exitedWindowIds.includes(window.id) &&
-    Date.parse(window.startsAtUtc) <= nowMs &&
-    nowMs <= Date.parse(window.endsAtUtc)
-  );
+  return Date.parse(window.startsAtUtc) <= nowMs && nowMs <= Date.parse(window.endsAtUtc);
 }
 
-// Mirrors LocationTrackingCoordinator's selected-travel-window rule so the
+// Mirrors LocationTrackingCoordinator's selected-ping-window rule so the
 // background task and the coordinator agree on the single active window.
-export function getActivePersistedTravelWindows(
+export function getActivePersistedPingWindows(
   windows: PersistedTrackingWindow[],
   arrivedWindowIds: string[],
-  exitedWindowIds: string[]
+  now: Date = new Date()
 ): PersistedTrackingWindow[] {
-  const selected = selectActiveTravelWindow(windows, arrivedWindowIds, exitedWindowIds);
+  const selected = selectActivePingWindow(windows, arrivedWindowIds, now);
   return selected ? [selected] : [];
 }
 
-export function isPersistedArrivalHeartbeatWindowActive(
-  window: PersistedTrackingWindow,
-  arrivedWindowIds: string[],
-  exitedWindowIds: string[],
-  now: Date = new Date()
-): boolean {
-  const nowMs = now.getTime();
-  return (
-    arrivedWindowIds.includes(window.id) &&
-    !exitedWindowIds.includes(window.id) &&
-    Date.parse(window.startsAtUtc) <= nowMs &&
-    nowMs <= Date.parse(window.endsAtUtc)
-  );
-}
-
-export function getActiveArrivalHeartbeatWindows(
-  windows: PersistedTrackingWindow[],
+export function isWindowOnSite(
+  windowId: string,
   arrivedWindowIds: string[],
   exitedWindowIds: string[]
-): PersistedTrackingWindow[] {
-  return windows.filter((window) =>
-    isPersistedArrivalHeartbeatWindowActive(window, arrivedWindowIds, exitedWindowIds)
-  );
+): boolean {
+  return arrivedWindowIds.includes(windowId) && !exitedWindowIds.includes(windowId);
+}
+
+export function getPingIntervalSecondsForState(
+  window: Pick<PersistedTrackingWindow, 'pingIntervalSeconds' | 'onSitePingIntervalSeconds'>,
+  onSite: boolean
+): number {
+  if (onSite) {
+    return getOnSitePingIntervalSeconds(window);
+  }
+
+  return Math.min(TRAVEL_INTERVAL_MAX_SECONDS, getPingIntervalSeconds(window));
 }
 
 export function shouldEmitLocationPing(
   window: PersistedTrackingWindow,
   lastLocationPingAtByWindowId: Record<string, string>,
-  recordedAtMs: number
+  recordedAtMs: number,
+  intervalSeconds: number = getPingIntervalSeconds(window)
 ): boolean {
   const lastPingAt = lastLocationPingAtByWindowId[window.id];
   if (!lastPingAt) {
@@ -118,25 +113,7 @@ export function shouldEmitLocationPing(
     return true;
   }
 
-  return recordedAtMs - lastPingAtMs >= getPingIntervalSeconds(window) * 1000;
-}
-
-export function shouldRunArrivalHeartbeat(
-  window: PersistedTrackingWindow,
-  lastArrivalHeartbeatAtByWindowId: Record<string, string>,
-  recordedAtMs: number
-): boolean {
-  const lastHeartbeatAt = lastArrivalHeartbeatAtByWindowId[window.id];
-  if (!lastHeartbeatAt) {
-    return true;
-  }
-
-  const lastHeartbeatAtMs = Date.parse(lastHeartbeatAt);
-  if (Number.isNaN(lastHeartbeatAtMs)) {
-    return true;
-  }
-
-  return recordedAtMs - lastHeartbeatAtMs >= ARRIVAL_HEARTBEAT_INTERVAL_MS;
+  return recordedAtMs - lastPingAtMs >= intervalSeconds * 1000;
 }
 
 export function distanceMeters(
@@ -211,7 +188,7 @@ export function isLocationInsideRadius(
 ): boolean {
   const accuracyBuffer =
     typeof accuracyMeters === 'number' && accuracyMeters > 0
-      ? Math.min(accuracyMeters, ARRIVAL_HEARTBEAT_ACCURACY_BUFFER_CAP_METERS)
+      ? Math.min(accuracyMeters, ACCURACY_BUFFER_CAP_METERS)
       : 0;
 
   return distanceMetersValue <= radiusMeters + accuracyBuffer;
@@ -219,18 +196,11 @@ export function isLocationInsideRadius(
 
 export async function stopLocationUpdatesIfNoActivePersistedWindow(reason: string): Promise<void> {
   const state = await readLocationTrackingState();
-  const activeWindows = getActivePersistedTravelWindows(
-    state.windows,
-    state.arrivedWindowIds,
-    state.exitedWindowIds
-  );
-  const heartbeatWindows = getActiveArrivalHeartbeatWindows(
-    state.windows,
-    state.arrivedWindowIds,
-    state.exitedWindowIds
+  const hasTimeActiveWindow = state.windows.some((window) =>
+    isPersistedWindowPingActive(window)
   );
 
-  if (activeWindows.length > 0 || heartbeatWindows.length > 0) {
+  if (hasTimeActiveWindow) {
     return;
   }
 
@@ -250,9 +220,6 @@ export async function stopLocationUpdatesIfNoActivePersistedWindow(reason: strin
   await updateLocationTrackingState((current) => ({
     ...current,
     activeLocationWindowIds: [],
-    arrivalHeartbeatWindowIds: [],
-    lastArrivalHeartbeatAtByWindowId: {},
-    pendingOutsideJobCheckByWindowId: {},
     locationUpdatesSignature: undefined
   }));
 
@@ -275,22 +242,27 @@ export async function stopLocationUpdatesIfNoActivePersistedWindow(reason: strin
 }
 
 export async function startLocationUpdatesForWindows(
-  windows: ParsedTrackingWindow[],
-  mode: 'travel' | 'arrival-heartbeat' = 'travel'
+  windows: Array<
+    Pick<PersistedTrackingWindow, 'id' | 'pingIntervalSeconds' | 'onSitePingIntervalSeconds'>
+  >,
+  mode: LocationUpdatesMode = 'travel'
 ): Promise<void> {
   if (Platform.OS !== 'ios' && Platform.OS !== 'android' || windows.length === 0) {
     return;
   }
 
+  // Time-driven streaming: distanceInterval 0 and no automatic pausing so a
+  // stationary on-site technician keeps pinging (the server presence engine
+  // needs the stream to confirm exits). Note `timeInterval` is Android-only —
+  // on iOS the JS throttle in LocationUpdatesTask enforces the cadence.
   const intervalSeconds =
-    mode === 'arrival-heartbeat'
-      ? ARRIVAL_HEARTBEAT_INTERVAL_SECONDS
-      : Math.min(...windows.map(getPingIntervalSeconds));
-  const distanceMetersValue =
-    mode === 'arrival-heartbeat'
-      ? ARRIVAL_HEARTBEAT_DISTANCE_METERS
-      : Math.min(...windows.map(getDistanceIntervalMeters));
-  const locationUpdatesSignature = `${mode}:${intervalSeconds}:${distanceMetersValue}`;
+    mode === 'on-site'
+      ? Math.min(...windows.map(getOnSitePingIntervalSeconds))
+      : Math.max(
+          TRAVEL_INTERVAL_MIN_SECONDS,
+          Math.min(TRAVEL_INTERVAL_MAX_SECONDS, Math.min(...windows.map(getPingIntervalSeconds)))
+        );
+  const locationUpdatesSignature = `${mode}:${intervalSeconds}:0`;
   const state = await readLocationTrackingState();
   const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
 
@@ -303,12 +275,12 @@ export async function startLocationUpdatesForWindows(
   }
 
   await Location.startLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME, {
-    accuracy: Location.Accuracy.Balanced,
+    accuracy: mode === 'on-site' ? Location.Accuracy.Balanced : Location.Accuracy.High,
     timeInterval: intervalSeconds * 1000,
-    distanceInterval: distanceMetersValue,
+    distanceInterval: 0,
     deferredUpdatesInterval: intervalSeconds * 1000,
-    deferredUpdatesDistance: distanceMetersValue,
-    pausesUpdatesAutomatically: true,
+    deferredUpdatesDistance: 0,
+    pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
     foregroundService: {
       notificationTitle: 'VHD job travel tracking',
@@ -324,8 +296,8 @@ export async function startLocationUpdatesForWindows(
 
   debugLogger.info('LOCATION', 'Started background location updates', {
     windowIds: windows.map((window) => window.id),
-    intervalSeconds,
-    distanceMeters: distanceMetersValue
+    mode,
+    intervalSeconds
   });
 }
 
