@@ -3,11 +3,11 @@ import { useUser } from '@clerk/clerk-expo';
 import { Stack } from 'expo-router';
 import { ScheduleView } from '../../components/schedule/ScheduleView';
 import { startOfDay } from 'date-fns';
+import { isManagerMetadata } from '@/utils/userRoles';
 
 export default function Page() {
   const { user } = useUser();
-  // Use Clerk's has() method to determine if user has management permissions
-  const isManager = !!user?.publicMetadata.isManager;
+  const isManager = isManagerMetadata(user?.publicMetadata);
 
   const [currentDate, setCurrentDate] = useState(() => {
     // Use date-fns to get start of today in local time

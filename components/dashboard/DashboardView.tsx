@@ -27,9 +27,10 @@ import type { Schedule } from '@/types';
 interface DashboardViewProps {
   userId: string;
   isManager: boolean;
+  canViewHours: boolean;
 }
 
-export function DashboardView({ userId, isManager }: DashboardViewProps) {
+export function DashboardView({ userId, isManager, canViewHours }: DashboardViewProps) {
   const [showSchedules, setShowSchedules] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -43,7 +44,8 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
   const { data: payrollSchedules = [] } = usePayrollSchedules(
     currentPayroll[0]?.id,
     isManager,
-    userId
+    userId,
+    canViewHours
   );
   const sortedPayrollSchedules = useMemo(
     () => [...payrollSchedules].sort((a, b) => getScheduleSortTime(a) - getScheduleSortTime(b)),
@@ -319,70 +321,73 @@ export function DashboardView({ userId, isManager }: DashboardViewProps) {
             )}
           </View>
 
-          {/* Hours Summary */}
-          <View className='bg-white dark:bg-[#16140F] rounded-2xl p-5 shadow-sm border border-black/10 dark:border-white/10'>
-            <View className='flex-row justify-between items-center mb-4'>
-              <View className='flex-row items-center'>
-                <Ionicons name='time' size={20} color='#059669' />
-                <Text className='text-lg font-bold text-gray-900 dark:text-gray-100 ml-2'>
-                  Hours Summary
-                </Text>
-              </View>
-            </View>
-
-            {currentPayroll[0] ? (
-              <View className='bg-[#F0EDE6] dark:bg-[#1F1C16] rounded-xl p-4'>
-                <View className='flex-row justify-between mb-3'>
-                  <View>
-                    <Text className='text-gray-500 dark:text-gray-400 text-sm'>Period</Text>
-                    <Text className='text-gray-900 dark:text-gray-200 font-medium'>
-                      {formatDateShort(currentPayroll[0].startDate)} -{' '}
-                      {formatDateShort(currentPayroll[0].endDate)}
-                    </Text>
-                  </View>
-                  <View className='items-end'>
-                    {isManager ? (
-                      <>
-                        <Text className='text-gray-500 dark:text-gray-400 text-sm'>Pay Day</Text>
-                        <Text className='text-gray-900 dark:text-gray-200 font-medium'>
-                          {formatDateShort(currentPayroll[0].payDay)}
-                        </Text>
-                      </>
-                    ) : (
-                      <>
-                        <Text className='text-gray-500 dark:text-gray-400 text-sm'>
-                          Total Hours
-                        </Text>
-                        <Text className='text-gray-900 dark:text-gray-200 text-xl font-bold'>
-                          {totalHours}h
-                        </Text>
-                      </>
-                    )}
-                  </View>
-                </View>
-
-                <TouchableOpacity
-                  onPress={() => setShowSchedules(!showSchedules)}
-                  className='flex-row justify-between items-center bg-white dark:bg-[#2A261D] p-3 rounded-xl mt-2 border border-black/10 dark:border-white/10'
-                >
-                  <Text className='text-gray-800 dark:text-gray-200 font-medium'>
-                    View {isManager ? 'All' : 'My'} Schedules ({sortedPayrollSchedules.length})
+          {canViewHours && (
+            <View className='bg-white dark:bg-[#16140F] rounded-2xl p-5 shadow-sm border border-black/10 dark:border-white/10'>
+              <View className='flex-row justify-between items-center mb-4'>
+                <View className='flex-row items-center'>
+                  <Ionicons name='time' size={20} color='#059669' />
+                  <Text className='text-lg font-bold text-gray-900 dark:text-gray-100 ml-2'>
+                    Hours Summary
                   </Text>
-                </TouchableOpacity>
+                </View>
+              </View>
 
-                {showSchedules && (
-                  <View className='mt-3'>{sortedPayrollSchedules.map(renderPayrollSchedule)}</View>
-                )}
-              </View>
-            ) : (
-              <View className='items-center py-6'>
-                <Ionicons name='calendar-outline' size={48} color='#D1D5DB' />
-                <Text className='text-gray-500 dark:text-gray-400 mt-2'>
-                  No active payroll period found
-                </Text>
-              </View>
-            )}
-          </View>
+              {currentPayroll[0] ? (
+                <View className='bg-[#F0EDE6] dark:bg-[#1F1C16] rounded-xl p-4'>
+                  <View className='flex-row justify-between mb-3'>
+                    <View>
+                      <Text className='text-gray-500 dark:text-gray-400 text-sm'>Period</Text>
+                      <Text className='text-gray-900 dark:text-gray-200 font-medium'>
+                        {formatDateShort(currentPayroll[0].startDate)} -{' '}
+                        {formatDateShort(currentPayroll[0].endDate)}
+                      </Text>
+                    </View>
+                    <View className='items-end'>
+                      {isManager ? (
+                        <>
+                          <Text className='text-gray-500 dark:text-gray-400 text-sm'>Pay Day</Text>
+                          <Text className='text-gray-900 dark:text-gray-200 font-medium'>
+                            {formatDateShort(currentPayroll[0].payDay)}
+                          </Text>
+                        </>
+                      ) : (
+                        <>
+                          <Text className='text-gray-500 dark:text-gray-400 text-sm'>
+                            Total Hours
+                          </Text>
+                          <Text className='text-gray-900 dark:text-gray-200 text-xl font-bold'>
+                            {totalHours}h
+                          </Text>
+                        </>
+                      )}
+                    </View>
+                  </View>
+
+                  <TouchableOpacity
+                    onPress={() => setShowSchedules(!showSchedules)}
+                    className='flex-row justify-between items-center bg-white dark:bg-[#2A261D] p-3 rounded-xl mt-2 border border-black/10 dark:border-white/10'
+                  >
+                    <Text className='text-gray-800 dark:text-gray-200 font-medium'>
+                      View {isManager ? 'All' : 'My'} Schedules ({sortedPayrollSchedules.length})
+                    </Text>
+                  </TouchableOpacity>
+
+                  {showSchedules && (
+                    <View className='mt-3'>
+                      {sortedPayrollSchedules.map(renderPayrollSchedule)}
+                    </View>
+                  )}
+                </View>
+              ) : (
+                <View className='items-center py-6'>
+                  <Ionicons name='calendar-outline' size={48} color='#D1D5DB' />
+                  <Text className='text-gray-500 dark:text-gray-400 mt-2'>
+                    No active payroll period found
+                  </Text>
+                </View>
+              )}
+            </View>
+          )}
         </View>
       </ScrollView>
 

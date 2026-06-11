@@ -51,7 +51,8 @@ export function useCurrentPayrollPeriod() {
 export function usePayrollSchedules(
   payrollId: string | undefined,
   isManager: boolean,
-  userId: string | null | undefined
+  userId: string | null | undefined,
+  canViewHours: boolean = true
 ) {
   const query = useQuery<PayrollSchedule>(
     `SELECT 
@@ -63,10 +64,11 @@ export function usePayrollSchedules(
       s.hours,
       s.location
      FROM schedules s
-     WHERE (? IS NULL OR s.payrollPeriod = ?)
+     WHERE ? = true
+     AND (? IS NULL OR s.payrollPeriod = ?)
      AND (? = true OR (${ASSIGNED_TO_USER_CLAUSE}))
      ORDER BY s.scheduledStartAtUtc ASC`,
-    [payrollId, payrollId, isManager, userId ?? '']
+    [canViewHours, payrollId, payrollId, isManager, userId ?? '']
   );
 
   return query;

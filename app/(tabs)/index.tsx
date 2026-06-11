@@ -1,11 +1,12 @@
 import { useUser } from '@clerk/clerk-expo';
 import { DashboardView } from '@/components/dashboard/DashboardView';
 import { Stack } from 'expo-router';
+import { canViewHoursMetadata, isManagerMetadata } from '@/utils/userRoles';
 
 export default function Page() {
   const { user } = useUser();
-  // Use Clerk's has() method to determine if user has management permissions
-  const isManager = !!user?.publicMetadata.isManager;
+  const isManager = isManagerMetadata(user?.publicMetadata);
+  const canViewHours = canViewHoursMetadata(user?.publicMetadata);
 
   if (!user?.id) return null;
 
@@ -16,7 +17,7 @@ export default function Page() {
           headerShown: false
         }}
       />
-      <DashboardView userId={user?.id} isManager={isManager} />
+      <DashboardView userId={user?.id} isManager={isManager} canViewHours={canViewHours} />
     </>
   );
 }
