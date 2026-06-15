@@ -8,6 +8,16 @@ export type LessonBlock =
       url: string;
       provider: "youtube" | "vimeo" | "cloudinary";
       title?: string;
+    }
+  | {
+      type: "quiz";
+      question: string;
+      options: {
+        id: string;
+        label: string;
+      }[];
+      correctOptionId: string;
+      explanation: string;
     };
 
 export interface CourseSectionDefinition {
@@ -51,6 +61,19 @@ export interface CourseDefinition {
 const md = (body: string): LessonBlock => ({
   type: "markdown",
   body: body.trim(),
+});
+
+const quiz = (
+  question: string,
+  options: { id: string; label: string }[],
+  correctOptionId: string,
+  explanation: string,
+): LessonBlock => ({
+  type: "quiz",
+  question,
+  options,
+  correctOptionId,
+  explanation,
 });
 
 const COMMERCIAL_KITCHEN_EXHAUST_CLEANING_SECTIONS: CourseSectionDefinition[] = [
@@ -676,16 +699,17 @@ const HELPER_PRACTICAL_BASICS_SECTIONS: CourseSectionDefinition[] = [
       md(`
 # What We Clean and Why It Matters
 
-We clean commercial kitchen exhaust systems: the **hood** over the cooking line,
-the **baffle filters** in it, the **plenum** behind the filters, the **duct** that
-carries greasy air up and out, and the **fan** that pulls it all.
+We clean the full commercial kitchen exhaust system:
 
-## Why anyone pays for this
+- **Hood** — the canopy over the cooking line.
+- **Baffle filters** — the removable metal filters inside the hood.
+- **Plenum** — the chamber behind the filters where grease collects.
+- **Duct** — the path that carries greasy air up and out of the building.
+- **Fan** — the rooftop or wall unit that pulls air through the system.
 
-Every hour a kitchen cooks, grease vapour rides the airflow and sticks to every
-surface of that system. Grease is fuel. A flare-up on the line can climb into a
-greasy duct and turn into a building fire in seconds. Our job is to remove the
-fuel — that's the whole business in one sentence.
+Every hour a kitchen cooks, grease vapour rides the airflow and sticks to those
+surfaces. Grease is fire fuel. Our job is to remove that fuel from the whole
+system, not just make the hood look clean from the floor.
 
 (The codes, certifications, and reporting rules behind this live in the KEC
 Foundations course, which you'll take later. For now: grease = fire fuel, we
@@ -693,14 +717,30 @@ remove it.)
 
 ## Commercial only
 
-We work in restaurant and commercial kitchens — no residential jobs. Mostly
-after-hours, when the kitchen is closed and cool.
-
-## Practical check
-
-A cook asks why you're scraping inside the duct when "the hood already looks
-clean." What's your one-sentence answer?
+We work in restaurant and commercial kitchens — no residential jobs. Many jobs
+happen **before opening** or **after closing**, when the kitchen is shut down and
+cool enough to work safely.
 `),
+      quiz(
+        'A cook asks why you are scraping inside the duct when "the hood already looks clean." What is the best answer?',
+        [
+          {
+            id: "a",
+            label:
+              "The duct is part of the exhaust system, and grease inside it is fire fuel."
+          },
+          {
+            id: "b",
+            label: "The duct only matters when an inspector is coming."
+          },
+          {
+            id: "c",
+            label: "We scrape it because it makes the outside of the hood shinier."
+          }
+        ],
+        "a",
+        "Correct. Helpers need to understand that the whole exhaust path matters because grease anywhere in the system can feed a fire."
+      ),
     ],
   },
   {
@@ -717,15 +757,17 @@ clean." What's your one-sentence answer?
 ## Where you start
 
 It varies by job. Sometimes the crew meets at the shop, sometimes directly at the
-site — **dispatch tells you where and when**. Paid time starts at that meet-up
-point, so be there ready to work: boots on, phone away.
+site. **Check the app for dispatch notes, access instructions, and the meet-up
+time before you leave.** Paid time starts at that meet-up point, so be there
+ready to work: boots on, phone away.
 
 ## The shape of a job
 
-A typical job is a single restaurant, morning or night, about **3–4 hours**. The
-rhythm is always the same:
+A typical job is a single restaurant, before open or after close, about **2–3
+hours**. The rhythm is usually:
 
-1. **Arrive and walk in** — professional, quiet.
+1. **Arrive and get access** — follow the app notes for keys, lockboxes, alarms,
+   or who is letting the crew in.
 2. **Protect** — poly tent up before any chemical or water moves.
 3. **Clean** — filters, hood, plenum, duct, fan.
 4. **Restore** — tear down, dry floors, everything back where it was.
@@ -736,12 +778,29 @@ rhythm is always the same:
 Your own boots and dark work clothes that can get greasy. The company provides
 your PPE — gloves, safety glasses, and the rest. A change of clothes in the truck
 is never a bad idea.
-
-## Practical check
-
-Dispatch says "meet at the site, 9 PM." When does your paid time start, and what
-state should you arrive in?
 `),
+      quiz(
+        'Dispatch says "meet at the site, 9 PM." What should you do?',
+        [
+          {
+            id: "a",
+            label:
+              "Check the app for access instructions, arrive ready to work at 9 PM, and start paid time at the meet-up point."
+          },
+          {
+            id: "b",
+            label:
+              "Arrive sometime after 9 PM because the kitchen is closed anyway."
+          },
+          {
+            id: "c",
+            label:
+              "Wait until you get there to ask how to access the site."
+          }
+        ],
+        "a",
+        "Correct. Helpers should check the app before leaving and arrive at the meet-up point ready to work."
+      ),
     ],
   },
   {
@@ -775,12 +834,27 @@ explained to you each shift.
 When you're not sure — about a chemical, a ladder, a hot surface, anything —
 **stop and ask**. Asking costs ten seconds. Guessing wrong can cost the whole
 night or worse.
-
-## Practical check
-
-You finish your task and the lead is mid-spray. Name two useful things you do
-instead of waiting.
 `),
+      quiz(
+        "You finish your task and the lead is mid-spray. What is the best next move?",
+        [
+          {
+            id: "a",
+            label:
+              "Look for useful support work: filters, poly, hoses, wiping, staging, or cleanup."
+          },
+          {
+            id: "b",
+            label: "Stand nearby until the lead gives your next instruction."
+          },
+          {
+            id: "c",
+            label: "Start changing the plan without telling the lead."
+          }
+        ],
+        "a",
+        "Correct. A good helper keeps the job moving, but still follows the lead's direction."
+      ),
     ],
   },
   {
@@ -813,12 +887,27 @@ people skip glasses and exactly when it matters most.
 A torn glove is not a glove. Fogged or scratched glasses you can't see through
 get swapped, not pushed up on your head. Tell the lead when your PPE is done —
 replacing it is normal, working without it is not.
-
-## Practical check
-
-The lead is spraying degreaser inside the hood and you're just moving filters,
-not spraying anything. What PPE are you wearing, and why?
 `),
+      quiz(
+        "The lead is spraying degreaser and you are only moving filters. What PPE do you need?",
+        [
+          {
+            id: "a",
+            label:
+              "Chemical-resistant gloves and safety glasses because chemical is out."
+          },
+          {
+            id: "b",
+            label: "Only gloves because you are not the person spraying."
+          },
+          {
+            id: "c",
+            label: "No PPE until you personally handle the sprayer."
+          }
+        ],
+        "a",
+        "Correct. Gloves and safety glasses are required any time chemical is out, even if someone else is spraying."
+      ),
     ],
   },
   {
@@ -855,15 +944,29 @@ stain.
    water. Skin: remove the soaked clothing and flush.
 2. **Tell the lead immediately** — not after you finish the task, not at the end
    of the night. Immediately.
-
-Know where the SDS (safety data sheet) binder lives — ask the lead on your first
-shift if no one has shown you.
-
-## Practical check
-
-A mist of degreaser blows back and catches the corner of your eye. Walk through
-your next two minutes, step by step.
 `),
+      quiz(
+        "Degreaser mist catches the corner of your eye. What do you do first?",
+        [
+          {
+            id: "a",
+            label:
+              "Flush the eye with water for 15 minutes and tell the lead immediately."
+          },
+          {
+            id: "b",
+            label:
+              "Finish the filter you are holding, then mention it at the end of the job."
+          },
+          {
+            id: "c",
+            label:
+              "Wipe it with your glove and keep working if it stops stinging."
+          }
+        ],
+        "a",
+        "Correct. Eye exposure is immediate-water-and-lead-now territory, even if it feels minor at first."
+      ),
     ],
   },
   {
@@ -904,12 +1007,29 @@ for someone to find it the hard way.
 Hot equipment or live pilot light. A ladder that won't sit right. Anything
 electrical near water. A smell, sound, or situation you don't recognize. The
 sentence "hey, before I touch this —" has never made a job worse.
-
-## Practical check
-
-You're about to ladder up to the hood and notice the floor under it has a film
-of rinse water. What do you do, in order?
 `),
+      quiz(
+        "You are about to climb a ladder and the floor underneath has a film of rinse water. What do you do?",
+        [
+          {
+            id: "a",
+            label:
+              "Stop, dry or squeegee the area, tell the crew if it is slick, then set the ladder on dry floor."
+          },
+          {
+            id: "b",
+            label:
+              "Climb carefully because the ladder feet will hold it in place."
+          },
+          {
+            id: "c",
+            label:
+              "Put the ladder on top of poly so it does not touch the wet tile."
+          }
+        ],
+        "a",
+        "Correct. Wet floors and ladders do not mix. Stop, make the floor safe, then climb."
+      ),
     ],
   },
   {
@@ -942,12 +1062,29 @@ Bring gear in along one clean path and stage it tight — one home base, not a
 trail of equipment through the kitchen. Nothing blocking exits or walk paths,
 nothing leaned against painted walls or glass, hoses run flat where feet won't
 find them.
-
-## Practical check
-
-You arrive and the closing manager is still doing paperwork. She asks how much
-a fan repair would cost. What do you say?
 `),
+      quiz(
+        "A closing manager asks you how much a fan repair would cost. What should you say?",
+        [
+          {
+            id: "a",
+            label:
+              '"The office handles pricing. I will let the lead know so they can follow up."'
+          },
+          {
+            id: "b",
+            label:
+              '"It should be cheap. We can probably do it while we are here."'
+          },
+          {
+            id: "c",
+            label:
+              '"I am not sure, but I think repairs usually cost a few hundred dollars."'
+          }
+        ],
+        "a",
+        "Correct. Helpers should stay polite and brief, avoid prices or promises, and route questions through the lead or office."
+      ),
     ],
   },
   {
@@ -989,12 +1126,29 @@ clean.
 
 Don't drag hoses or ladder feet across laid poly, and don't puncture the funnel
 with a scraper handle. A tent with one hole in the wrong place is a failed tent.
-
-## Practical check
-
-Your tent is up and you spot daylight through a seam where two sheets overlap
-above the fryer. The lead is ready to spray. What do you do?
 `),
+      quiz(
+        "The tent is up, but you can see daylight through a seam above the fryer. The lead is ready to spray. What do you do?",
+        [
+          {
+            id: "a",
+            label:
+              "Stop the spray, point out the gap, and seal it before chemical or water moves."
+          },
+          {
+            id: "b",
+            label:
+              "Let the lead spray lightly and watch whether water actually leaks."
+          },
+          {
+            id: "c",
+            label:
+              "Put a towel on the fryer and fix the seam during teardown."
+          }
+        ],
+        "a",
+        "Correct. Any visible gap is a leak waiting to happen. Fix the protection before the first spray."
+      ),
     ],
   },
   {
@@ -1032,12 +1186,29 @@ That's a permanent mark on someone else's kitchen with our name on it.
 - Floors on the walking paths still dry and staying that way.
 
 If you wouldn't bet your own kitchen on the tent, it's not done.
-
-## Practical check
-
-Name the two real-world protection failures, and for each one, the single check
-that would have caught it before spraying started.
 `),
+      quiz(
+        "Which answer names the two protection failures this section warns about?",
+        [
+          {
+            id: "a",
+            label:
+              "Wash water escaping the tent, and chemical landing on an unprotected surface."
+          },
+          {
+            id: "b",
+            label:
+              "Filters taking too long to dry, and the truck being packed loosely."
+          },
+          {
+            id: "c",
+            label:
+              "A fan belt squealing, and a missing invoice signature."
+          }
+        ],
+        "a",
+        "Correct. The pre-spray inspection is meant to catch escaping wash water and chemical damage risks before they become client problems."
+      ),
     ],
   },
   {
@@ -1072,12 +1243,29 @@ most-used sink in their kitchen, and how we leave it is part of the job.
 When you're done, the dish pit is **spotless** — no grease ring, no scraps in
 the strainer, no degreaser smell, fixtures wiped. The morning dish crew should
 never know we were in their sink.
-
-## Practical check
-
-You're three filters in and the dish pit is developing a thick grease ring.
-What do you do now, and what must be true when you leave?
 `),
+      quiz(
+        "You are three filters in and the dish pit is developing a thick grease ring. What should you do?",
+        [
+          {
+            id: "a",
+            label:
+              "Pause to clean the ring as you go, keep grease chunks out of the drain, and leave the sink spotless."
+          },
+          {
+            id: "b",
+            label:
+              "Leave the grease ring until morning because the dish crew has stronger soap."
+          },
+          {
+            id: "c",
+            label:
+              "Rinse the chunks down the drain so the sink looks cleaner faster."
+          }
+        ],
+        "a",
+        "Correct. Helpers own the dish pit while using it. Clean as you go and leave no grease, scraps, or chemical residue behind."
+      ),
     ],
   },
   {
@@ -1118,12 +1306,29 @@ is **still greasy**. The standard is bare metal, not "better than it was."
 - Hood **corners and seams** where the scraper doesn't naturally travel.
 
 "Shiny from the floor" is not finished. Climb, look, wipe-test.
-
-## Practical check
-
-The hood gleams from below. Before you call it done, name two checks you do and
-two spots you look at up close.
 `),
+      quiz(
+        "The hood gleams from below. Before calling it done, what should you do?",
+        [
+          {
+            id: "a",
+            label:
+              "Climb, inspect the plenum/corners/grease trough, and wipe-test for bare metal."
+          },
+          {
+            id: "b",
+            label:
+              "Call it done because shiny from the floor means the inspector will be satisfied."
+          },
+          {
+            id: "c",
+            label:
+              "Only reinstall the filters; the plenum is hidden so it does not matter."
+          }
+        ],
+        "a",
+        "Correct. The standard is bare metal, including the missed spots that are hard to see from the floor."
+      ),
     ],
   },
   {
@@ -1131,7 +1336,7 @@ two spots you look at up close.
     moduleNumber: 4,
     order: 12,
     title: "Pressure Washer and Wastewater",
-    summary: "Running the wand, hose discipline, and the filter sock.",
+    summary: "Running the wand, hose discipline, and controlling greasy water.",
     estimatedMinutes: 4,
     blocks: [
       md(`
@@ -1156,16 +1361,34 @@ managed so nobody — including you on a ladder — finds one with their feet.
 
 ## Where the water goes
 
-All that greasy wash water funnels to the **kitchen floor drain** — with a
-**strainer or filter sock on the drain catching solids**. Grease chunks and
-scrapings clogging a client's drain turns a clean job into a plumbing bill.
-Check the sock during the rinse and swap it before it overflows.
-
-## Practical check
-
-Mid-rinse, you notice the filter sock on the drain is bulging full. What do you
-do, and why does it matter to the client relationship?
+All that greasy wash water must stay controlled and move only where the lead has
+planned it to go. Keep heavy grease and scrapings out of the water path before
+rinsing. If water starts pooling, backing up, escaping the poly, or carrying
+chunks toward a drain, stop and tell the lead right away. A clean job can turn
+into a plumbing bill or client complaint if wastewater is ignored.
 `),
+      quiz(
+        "During rinsing, you see greasy water pooling and carrying chunks toward the drain. What do you do?",
+        [
+          {
+            id: "a",
+            label:
+              "Stop and tell the lead right away so the water path and solids can be controlled."
+          },
+          {
+            id: "b",
+            label:
+              "Keep spraying because the drain will probably take it."
+          },
+          {
+            id: "c",
+            label:
+              "Push the chunks down with the wand so they disappear faster."
+          }
+        ],
+        "a",
+        "Correct. Helpers should not let grease chunks, pooling water, or escaping wastewater continue unnoticed."
+      ),
     ],
   },
   {
@@ -1205,12 +1428,29 @@ These are the named ones — the things that actually slow our crews down:
 
 Staying ahead never means skipping dwell time, half-taping a seam, or calling a
 tacky surface clean. The order is fixed: safe, then right, then fast.
-
-## Practical check
-
-The lead is mid-spray on the hood, filters are washed, and you've got nothing
-in your hands. List the next three things you'd do without being asked.
 `),
+      quiz(
+        "The lead is mid-spray, filters are washed, and your hands are empty. What should you do?",
+        [
+          {
+            id: "a",
+            label:
+              "Find the next useful task: stage gear, manage hoses, wipe finished areas, or prep teardown."
+          },
+          {
+            id: "b",
+            label:
+              "Check your phone until the lead notices you are free."
+          },
+          {
+            id: "c",
+            label:
+              "Start spraying a new area without confirming the lead's plan."
+          }
+        ],
+        "a",
+        "Correct. Staying ahead means removing friction from the job while still working inside the lead's plan."
+      ),
     ],
   },
   {
@@ -1249,12 +1489,29 @@ Both have happened; both are yours to prevent:
   safety failure, not a cosmetic one.
 - **Grease left on equipment** — handprints and drips on the line that tell the
   client we were careless.
-
-## Practical check
-
-It's 2 AM, you're exhausted, and the floor "looks mostly dry." Why is that not
-good enough, and who finds out if you're wrong?
 `),
+      quiz(
+        'It is 2 AM and the floor "looks mostly dry." What is the right standard?',
+        [
+          {
+            id: "a",
+            label:
+              "Dry it completely because opening staff are the ones who find slippery floors."
+          },
+          {
+            id: "b",
+            label:
+              "Leave it if it looks acceptable from the doorway."
+          },
+          {
+            id: "c",
+            label:
+              "Only dry the area directly under the hood."
+          }
+        ],
+        "a",
+        "Correct. Cleanup is a safety issue and the client's first impression in the morning."
+      ),
     ],
   },
   {
@@ -1294,12 +1551,29 @@ be taking them yourself in the app.
 Anything broken (by us or found broken), anything we couldn't access or finish,
 any spill or damage, anything unsafe. Bad news ages terribly — the lead hears
 it from you first, on the spot.
-
-## Practical check
-
-While washing filters you notice one has a cracked baffle that was cracked when
-you pulled it. What do you do, and what do you say if the manager asks about it?
 `),
+      quiz(
+        "You notice a filter baffle was already cracked when you pulled it. What do you do?",
+        [
+          {
+            id: "a",
+            label:
+              "Tell the lead immediately, document it if directed, and avoid debating it with the manager."
+          },
+          {
+            id: "b",
+            label:
+              "Say nothing unless the manager asks, because it was already cracked."
+          },
+          {
+            id: "c",
+            label:
+              "Promise the manager the company will replace it."
+          }
+        ],
+        "a",
+        "Correct. Existing damage still goes up the chain immediately, and client conversations stay with the lead or office."
+      ),
     ],
   },
   {
@@ -1338,8 +1612,8 @@ section — your first shift is the wrong place to find the gap.
   *(Scrape grease into garbage first; dish pit spotless.)*
 - Hood looks shiny from the floor. Done? *(No — climb, check plenum and corners,
   wipe-test to bare metal.)*
-- The drain during pressure washing needs what on it? *(Strainer/filter sock —
-  checked and swapped before it overflows.)*
+- During pressure washing, what wastewater problems do you call out? *(Pooling,
+  backing up, escaping the poly, or carrying grease chunks toward a drain.)*
 
 ## Pace and finish
 
@@ -1352,6 +1626,28 @@ section — your first shift is the wrong place to find the gap.
 If you can answer all of these without looking, you're ready to be useful on
 night one. See you on the truck.
 `),
+      quiz(
+        "What is the best first-shift mindset for a new helper?",
+        [
+          {
+            id: "a",
+            label:
+              "Work safely, protect the client's kitchen, keep moving, and stop to ask when unsure."
+          },
+          {
+            id: "b",
+            label:
+              "Move as fast as possible, even if the lead has not checked the setup yet."
+          },
+          {
+            id: "c",
+            label:
+              "Stay quiet about small problems so the lead can focus."
+          }
+        ],
+        "a",
+        "Correct. The course is preparing helpers to be safe, useful, observant, and easy to train on the truck."
+      ),
     ],
   },
 ];

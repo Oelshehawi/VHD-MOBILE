@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ScrollView, View, ActivityIndicator } from 'react-native';
+import { ScrollView, View, ActivityIndicator, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Stack, router, useLocalSearchParams } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
@@ -75,6 +75,111 @@ function VideoBlock({ block }: { block: Extract<LessonBlock, { type: 'video' }> 
   );
 }
 
+function QuizBlock({
+  block,
+  selectedOptionId,
+  isChecked,
+  onSelect,
+  onCheck
+}: {
+  block: Extract<LessonBlock, { type: 'quiz' }>;
+  selectedOptionId?: string;
+  isChecked: boolean;
+  onSelect: (optionId: string) => void;
+  onCheck: () => void;
+}) {
+  const isCorrect = isChecked && selectedOptionId === block.correctOptionId;
+
+  return (
+    <View className='my-5 rounded-lg border border-amber-200 bg-amber-50 p-4 dark:border-amber-900/60 dark:bg-amber-950/30'>
+      <Text className='text-xs font-bold uppercase text-amber-700 dark:text-amber-300'>
+        Practical check
+      </Text>
+      <Text className='mt-2 text-base font-semibold text-[#14110F] dark:text-white'>
+        {block.question}
+      </Text>
+
+      <View className='mt-3 gap-2'>
+        {block.options.map((option) => {
+          const selected = option.id === selectedOptionId;
+          const correct = option.id === block.correctOptionId;
+          const showCorrect = isChecked && correct;
+          const showWrong = isChecked && selected && !correct;
+
+          return (
+            <Pressable
+              key={option.id}
+              role='radio'
+              accessibilityState={{ checked: selected }}
+              onPress={() => onSelect(option.id)}
+              className={`rounded-lg border p-3 ${
+                showCorrect
+                  ? 'border-green-500 bg-green-50 dark:border-green-600 dark:bg-green-950/40'
+                  : showWrong
+                    ? 'border-red-500 bg-red-50 dark:border-red-600 dark:bg-red-950/40'
+                    : selected
+                      ? 'border-amber-500 bg-white dark:border-amber-400 dark:bg-[#241F18]'
+                      : 'border-black/10 bg-white dark:border-white/10 dark:bg-[#1F1C16]'
+              }`}
+            >
+              <View className='flex-row items-start gap-2'>
+                <Ionicons
+                  name={
+                    showCorrect
+                      ? 'checkmark-circle'
+                      : showWrong
+                        ? 'close-circle'
+                        : selected
+                          ? 'radio-button-on'
+                          : 'radio-button-off'
+                  }
+                  size={18}
+                  color={
+                    showCorrect
+                      ? '#16A34A'
+                      : showWrong
+                        ? '#DC2626'
+                        : selected
+                          ? '#D97706'
+                          : '#8A857D'
+                  }
+                />
+                <Text className='flex-1 text-sm text-[#14110F] dark:text-white'>
+                  {option.label}
+                </Text>
+              </View>
+            </Pressable>
+          );
+        })}
+      </View>
+
+      <Button
+        variant={isCorrect ? 'secondary' : 'default'}
+        disabled={!selectedOptionId || isCorrect}
+        onPress={onCheck}
+        className='mt-3 rounded-lg'
+      >
+        <Text className='text-center font-semibold'>
+          {isCorrect ? 'Correct' : 'Check answer'}
+        </Text>
+      </Button>
+
+      {isChecked && (
+        <View className='mt-3 flex-row items-start gap-2'>
+          <Ionicons
+            name={isCorrect ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+            size={18}
+            color={isCorrect ? '#16A34A' : '#D97706'}
+          />
+          <Text className='flex-1 text-sm text-[#3B332B] dark:text-amber-100'>
+            {block.explanation}
+          </Text>
+        </View>
+      )}
+    </View>
+  );
+}
+
 export default function LessonScreen() {
   const { slug, sectionId } = useLocalSearchParams<{
     slug: string;
@@ -96,6 +201,8 @@ export default function LessonScreen() {
 
   const completedSectionIds = assigned?.progress.completedSectionIds ?? [];
   const isDone = sectionId ? completedSectionIds.includes(sectionId) : false;
+  const [quizAnswers, setQuizAnswers] = useState<Record<number, string>>({});
+  const [checkedQuizAnswers, setCheckedQuizAnswers] = useState<Record<number, boolean>>({});
   // Not-assigned is not-accessible: an unassigned deep-link must never record
   // progress. Accessibility requires an assignment AND prerequisite completion.
   const accessible =
@@ -109,6 +216,33 @@ export default function LessonScreen() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, sectionId, section, accessible]);
+
+  useEffect(() => {
+    setQuizAnswers({});
+    setCheckedQuizAnswers({});
+  }, [slug, sectionId]);
+
+  const quizBlockIndexes = useMemo(
+    () =>
+      section?.blocks.reduce<number[]>((indexes, block, index) => {
+        if (block.type === 'quiz') indexes.push(index);
+        return indexes;
+      }, []) ?? [],
+    [section]
+  );
+
+  const allPracticalChecksPassed = useMemo(
+    () =>
+      quizBlockIndexes.every((index) => {
+        const block = section?.blocks[index];
+        return (
+          block?.type === 'quiz' &&
+          checkedQuizAnswers[index] === true &&
+          quizAnswers[index] === block.correctOptionId
+        );
+      }),
+    [checkedQuizAnswers, quizAnswers, quizBlockIndexes, section]
+  );
 
   const markdownStyles = useMemo(
     () => ({
@@ -169,15 +303,33 @@ export default function LessonScreen() {
             className='flex-1'
             contentContainerStyle={{ padding: 16, paddingBottom: 24 }}
           >
-            {section.blocks.map((block, index) =>
-              block.type === 'video' ? (
-                <VideoBlock key={index} block={block} />
-              ) : (
+            {section.blocks.map((block, index) => {
+              if (block.type === 'video') {
+                return <VideoBlock key={index} block={block} />;
+              }
+              if (block.type === 'quiz') {
+                return (
+                  <QuizBlock
+                    key={index}
+                    block={block}
+                    selectedOptionId={quizAnswers[index]}
+                    isChecked={checkedQuizAnswers[index] === true}
+                    onSelect={(optionId) => {
+                      setQuizAnswers((current) => ({ ...current, [index]: optionId }));
+                      setCheckedQuizAnswers((current) => ({ ...current, [index]: false }));
+                    }}
+                    onCheck={() =>
+                      setCheckedQuizAnswers((current) => ({ ...current, [index]: true }))
+                    }
+                  />
+                );
+              }
+              return (
                 <Markdown key={index} style={markdownStyles}>
                   {block.body}
                 </Markdown>
-              )
-            )}
+              );
+            })}
           </ScrollView>
 
           <View className='border-t border-black/10 bg-white p-4 dark:border-white/10 dark:bg-[#16140F]'>
@@ -190,6 +342,7 @@ export default function LessonScreen() {
               </View>
             ) : (
               <Button
+                disabled={!allPracticalChecksPassed}
                 onPress={async () => {
                   if (slug && sectionId) {
                     await markSectionComplete(slug, sectionId);
@@ -199,7 +352,9 @@ export default function LessonScreen() {
                 className='rounded-xl bg-[#14110F] dark:bg-amber-400'
               >
                 <Text className='text-center font-semibold text-white dark:text-[#14110F]'>
-                  Mark section complete
+                  {allPracticalChecksPassed
+                    ? 'Mark section complete'
+                    : 'Answer practical check to complete'}
                 </Text>
               </Button>
             )}
