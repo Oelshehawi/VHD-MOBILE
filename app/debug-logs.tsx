@@ -10,6 +10,8 @@ import { AttachmentState } from '@powersync/attachments';
 import { LogCategoryFilter } from '../components/debug/LogCategoryFilter';
 import { UploadDiagnosticsPanel } from '../components/debug/UploadDiagnosticsPanel';
 import { runBoundedBackgroundSync } from '@/services/background/BackgroundSyncRunner';
+import { useUser } from '@clerk/clerk-expo';
+import { isManagerMetadata } from '../utils/userRoles';
 
 interface LogEntry {
   timestamp: string;
@@ -59,6 +61,16 @@ const levelColors: Record<string, { bg: string; text: string }> = {
 };
 
 export default function DebugLogsScreen() {
+  const { user } = useUser();
+  const isManager = isManagerMetadata(user?.publicMetadata);
+
+  // Manager-only guard: block deep links and any non-manager entry point
+  useEffect(() => {
+    if (!isManager) {
+      router.replace('/(tabs)');
+    }
+  }, [isManager]);
+
   const colorScheme = useColorScheme();
   const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
   const powerSync = usePowerSync();
@@ -299,6 +311,10 @@ export default function DebugLogsScreen() {
     },
     [expandedLogs]
   );
+
+  if (!isManager) {
+    return null;
+  }
 
   return (
     <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950' edges={['bottom', 'left', 'right']}>

@@ -12,7 +12,9 @@ import {
   getActivePersistedPingWindows,
   getEventPlatform,
   getPingIntervalSecondsForState,
+  hasFiniteFixCoords,
   isWindowOnSite,
+  normalizeRecordedAt,
   shouldEmitLocationPing,
   stopLocationUpdatesIfNoActivePersistedWindow
 } from './locationTaskShared';
@@ -72,9 +74,29 @@ if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {
       return;
     }
 
+    // Guard the two backend 400 conditions before posting a doomed ping. On
+    // skip we deliberately do NOT advance lastLocationPingAtByWindowId so the
+    // next usable fix is not throttled away.
+    if (!hasFiniteFixCoords(latestLocation)) {
+      debugLogger.warn('LOCATION', 'Skipped location ping with non-finite coords', {
+        trackingWindowId: window.id,
+        scheduleId: window.scheduleId
+      });
+      return;
+    }
+
+    const recordedAt = normalizeRecordedAt(latestLocation.timestamp);
+    if (!recordedAt) {
+      debugLogger.warn('LOCATION', 'Skipped location ping with stale fix timestamp', {
+        trackingWindowId: window.id,
+        scheduleId: window.scheduleId,
+        fixTimestamp: latestLocation.timestamp
+      });
+      return;
+    }
+
     await flushLocationEventQueue();
 
-    const recordedAt = new Date(latestLocation.timestamp).toISOString();
     const event: MobileLocationEvent = {
       trackingWindowId: window.id,
       scheduleId: window.scheduleId,

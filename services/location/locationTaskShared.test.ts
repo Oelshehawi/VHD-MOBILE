@@ -2,13 +2,18 @@ import { describe, expect, it } from '@jest/globals';
 import '@/services/location/__testSupport__/mockNativeModules';
 
 import {
+  MAX_FUTURE_RECORDED_AT_SKEW_MS,
+  MAX_RECORDED_AT_STALENESS_MS,
   getActivePersistedPingWindows,
   getPingIntervalSecondsForState,
+  hasFiniteFixCoords,
   isPersistedWindowPingActive,
   isWindowOnSite,
+  normalizeRecordedAt,
   shouldEmitLocationPing
 } from '@/services/location/locationTaskShared';
 import type { PersistedTrackingWindow } from '@/services/location/LocationTrackingState';
+import type * as Location from 'expo-location';
 
 const minutesFromNow = (minutes: number): string =>
   new Date(Date.now() + minutes * 60_000).toISOString();
@@ -143,5 +148,53 @@ describe('shouldEmitLocationPing', () => {
     expect(shouldEmitLocationPing(window, lastPingAt, nowMs, 120)).toBe(true);
     expect(shouldEmitLocationPing(window, lastPingAt, nowMs, 180)).toBe(false);
     expect(shouldEmitLocationPing(window, {}, nowMs, 180)).toBe(true);
+  });
+});
+
+describe('normalizeRecordedAt', () => {
+  const now = Date.parse('2026-06-15T12:00:00.000Z');
+
+  it('passes through a recent fix timestamp unchanged', () => {
+    const fixMs = now - 5_000;
+    expect(normalizeRecordedAt(fixMs, now)).toBe(new Date(fixMs).toISOString());
+  });
+
+  it('accepts ISO string candidates', () => {
+    const iso = new Date(now - 5_000).toISOString();
+    expect(normalizeRecordedAt(iso, now)).toBe(iso);
+  });
+
+  it('clamps a future fix (forward clock skew) to now', () => {
+    const fixMs = now + MAX_FUTURE_RECORDED_AT_SKEW_MS + 60_000;
+    expect(normalizeRecordedAt(fixMs, now)).toBe(new Date(now).toISOString());
+  });
+
+  it('keeps a future fix within the small skew threshold', () => {
+    const fixMs = now + 30_000;
+    expect(normalizeRecordedAt(fixMs, now)).toBe(new Date(fixMs).toISOString());
+  });
+
+  it('drops an unusably stale cached fix', () => {
+    const fixMs = now - MAX_RECORDED_AT_STALENESS_MS - 60_000;
+    expect(normalizeRecordedAt(fixMs, now)).toBeNull();
+  });
+
+  it('falls back to now for an unparseable timestamp', () => {
+    expect(normalizeRecordedAt(Number.NaN, now)).toBe(new Date(now).toISOString());
+    expect(normalizeRecordedAt('not-a-date', now)).toBe(new Date(now).toISOString());
+  });
+});
+
+describe('hasFiniteFixCoords', () => {
+  const fix = (latitude: number, longitude: number): Location.LocationObject =>
+    ({ coords: { latitude, longitude } } as Location.LocationObject);
+
+  it('is true for finite coordinates', () => {
+    expect(hasFiniteFixCoords(fix(49.28, -123.12))).toBe(true);
+  });
+
+  it('is false when a coordinate is NaN', () => {
+    expect(hasFiniteFixCoords(fix(Number.NaN, -123.12))).toBe(false);
+    expect(hasFiniteFixCoords(fix(49.28, Number.NaN))).toBe(false);
   });
 });

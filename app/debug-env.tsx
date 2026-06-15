@@ -1,13 +1,25 @@
 import { View, ScrollView, TouchableOpacity, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Text } from '../components/ui/text';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { usePowerSync } from '@powersync/react-native';
+import { useEffect } from 'react';
+import { useUser } from '@clerk/clerk-expo';
+import { isManagerMetadata } from '../utils/userRoles';
 
 export default function DebugEnvScreen() {
   const powerSync = usePowerSync();
+  const { user } = useUser();
+  const isManager = isManagerMetadata(user?.publicMetadata);
+
+  // Manager-only guard: this screen exposes env vars + a destructive DB wipe
+  useEffect(() => {
+    if (!isManager) {
+      router.replace('/(tabs)');
+    }
+  }, [isManager]);
 
   const envVars = [
     {
@@ -54,6 +66,10 @@ export default function DebugEnvScreen() {
       ]
     );
   };
+
+  if (!isManager) {
+    return null;
+  }
 
   return (
     <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950' edges={['bottom']}>

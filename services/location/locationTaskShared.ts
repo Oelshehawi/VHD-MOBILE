@@ -37,6 +37,55 @@ export function getEventPlatform(): LocationEventPlatform | null {
   return null;
 }
 
+// The backend rejects (400) any recordedAt more than 10 minutes in the future
+// or 14 days in the past — intentional anti-stale guards in
+// locationTracking.data.ts. A device fix timestamp can fall outside that when
+// the device clock is skewed forward or the OS hands back a stale cached fix,
+// so normalize the fix timestamp before it reaches the wire. We clamp well
+// inside the server bounds: future skew is collapsed to "now" (a GPS fix can't
+// be from the future), and a fix older than the staleness window is dropped
+// rather than mislabelled with a fresh timestamp.
+export const MAX_FUTURE_RECORDED_AT_SKEW_MS = 2 * 60 * 1000; // 2 minutes
+export const MAX_RECORDED_AT_STALENESS_MS = 60 * 60 * 1000; // 1 hour
+
+// Returns an ISO recordedAt guaranteed inside the backend bounds, or null when
+// the fix is too stale to attribute to the current moment (caller should skip
+// emitting rather than post a doomed/misleading event).
+export function normalizeRecordedAt(
+  candidate: number | string,
+  now: number = Date.now()
+): string | null {
+  const candidateMs =
+    typeof candidate === 'number' ? candidate : Date.parse(candidate);
+
+  // Unparseable / non-finite timestamp: record at the moment of emission.
+  if (!Number.isFinite(candidateMs)) {
+    return new Date(now).toISOString();
+  }
+
+  // Future fix (forward clock skew): a fix can't be from the future, re-stamp.
+  if (candidateMs > now + MAX_FUTURE_RECORDED_AT_SKEW_MS) {
+    return new Date(now).toISOString();
+  }
+
+  // Unusably stale cached fix: drop it instead of reporting an old position as
+  // if it were current.
+  if (candidateMs < now - MAX_RECORDED_AT_STALENESS_MS) {
+    return null;
+  }
+
+  return new Date(candidateMs).toISOString();
+}
+
+// True only when the fix carries usable finite coordinates. A ping with
+// missing/NaN coords is rejected (400) by the backend, so guard before emit.
+export function hasFiniteFixCoords(location: Location.LocationObject): boolean {
+  return (
+    Number.isFinite(location.coords.latitude) &&
+    Number.isFinite(location.coords.longitude)
+  );
+}
+
 export function buildBaseEvent(
   window: Pick<PersistedTrackingWindow, 'id' | 'scheduleId'>,
   eventType: MobileLocationEvent['eventType'],

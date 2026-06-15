@@ -8,7 +8,10 @@ import {
   toPersistedWindows,
   updateLocationTrackingState
 } from '@/services/location/LocationTrackingState';
-import { getDepotDistanceMeters } from '@/services/location/locationTaskShared';
+import {
+  getDepotDistanceMeters,
+  normalizeRecordedAt
+} from '@/services/location/locationTaskShared';
 import { shouldEmitInitialDepotEnter } from '@/services/location/InitialGeofenceStateRules';
 
 export async function emitInitialDepotEnterEvents(args: {
@@ -52,7 +55,13 @@ export async function emitInitialDepotEnterEvents(args: {
   }
 
   const persistedWindows = toPersistedWindows(windowsNeedingCheck);
-  const recordedAt = new Date(latestLocation.timestamp || Date.now()).toISOString();
+  const recordedAt = normalizeRecordedAt(latestLocation.timestamp || Date.now());
+  if (!recordedAt) {
+    debugLogger.warn('LOCATION', 'Skipped initial depot enter with stale fix timestamp', {
+      fixTimestamp: latestLocation.timestamp
+    });
+    return;
+  }
 
   for (const window of persistedWindows) {
     const distanceFromDepotMeters = getDepotDistanceMeters(window, latestLocation);

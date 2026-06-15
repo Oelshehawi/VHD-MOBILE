@@ -20,6 +20,7 @@ import * as Updates from 'expo-updates';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { AvailabilityManager } from '../../components/schedule/AvailabilityManager';
 import { TimeOffManager } from '../../components/schedule/TimeOffManager';
+import { isManagerMetadata } from '../../utils/userRoles';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -37,8 +38,16 @@ export default function ProfileScreen() {
   const SECRET_TAP_COUNT = 7;
   const TAP_TIMEOUT = 2000; // Reset after 2 seconds of no taps
 
+  // Debug screens are manager-only
+  const isManager = isManagerMetadata(user?.publicMetadata);
+
   // Handle secret tap gesture on Version
   const handleVersionTap = useCallback(() => {
+    // No-op for non-managers — debug tools are gated to managers only
+    if (!isManager) {
+      return;
+    }
+
     const now = Date.now();
 
     // Reset counter if too much time passed
@@ -53,7 +62,7 @@ export default function ProfileScreen() {
       tapCountRef.current = 0;
       router.push('/debug-logs');
     }
-  }, []);
+  }, [isManager]);
 
   // Check network status and load cached user data
   useEffect(() => {
