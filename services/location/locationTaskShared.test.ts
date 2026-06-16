@@ -9,6 +9,7 @@ import {
   hasFiniteFixCoords,
   isPersistedWindowPingActive,
   isWindowOnSite,
+  normalizeLocationHeading,
   normalizeRecordedAt,
   shouldEmitLocationPing
 } from '@/services/location/locationTaskShared';
@@ -196,5 +197,20 @@ describe('hasFiniteFixCoords', () => {
   it('is false when a coordinate is NaN', () => {
     expect(hasFiniteFixCoords(fix(Number.NaN, -123.12))).toBe(false);
     expect(hasFiniteFixCoords(fix(49.28, Number.NaN))).toBe(false);
+  });
+});
+
+describe('normalizeLocationHeading', () => {
+  it('keeps valid headings including range edges', () => {
+    expect(normalizeLocationHeading(0)).toBe(0);
+    expect(normalizeLocationHeading(90)).toBe(90);
+    expect(normalizeLocationHeading(360)).toBe(360);
+  });
+
+  it('drops unavailable iOS sentinel and invalid headings', () => {
+    expect(normalizeLocationHeading(-1)).toBeUndefined();
+    expect(normalizeLocationHeading(361)).toBeUndefined();
+    expect(normalizeLocationHeading(null)).toBeUndefined();
+    expect(normalizeLocationHeading(Number.NaN)).toBeUndefined();
   });
 });

@@ -86,6 +86,16 @@ export function hasFiniteFixCoords(location: Location.LocationObject): boolean {
   );
 }
 
+export function normalizeLocationHeading(
+  heading: number | null | undefined
+): number | undefined {
+  if (typeof heading !== 'number' || !Number.isFinite(heading)) {
+    return undefined;
+  }
+
+  return heading >= 0 && heading <= 360 ? heading : undefined;
+}
+
 export function buildBaseEvent(
   window: Pick<PersistedTrackingWindow, 'id' | 'scheduleId'>,
   eventType: MobileLocationEvent['eventType'],

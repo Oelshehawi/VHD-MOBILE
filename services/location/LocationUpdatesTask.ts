@@ -14,6 +14,7 @@ import {
   getPingIntervalSecondsForState,
   hasFiniteFixCoords,
   isWindowOnSite,
+  normalizeLocationHeading,
   normalizeRecordedAt,
   shouldEmitLocationPing,
   stopLocationUpdatesIfNoActivePersistedWindow
@@ -105,7 +106,7 @@ if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {
       lng: latestLocation.coords.longitude,
       accuracyMeters: latestLocation.coords.accuracy ?? undefined,
       speedMetersPerSecond: latestLocation.coords.speed ?? undefined,
-      headingDegrees: latestLocation.coords.heading ?? undefined,
+      headingDegrees: normalizeLocationHeading(latestLocation.coords.heading),
       recordedAt,
       source: 'background_location',
       platform
