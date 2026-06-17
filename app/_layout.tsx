@@ -24,6 +24,7 @@ import { requestAppPermissions } from '@/utils/permissions';
 import { PushNotificationInitializer } from '@/components/notifications/PushNotificationInitializer';
 import { LocationTrackingInitializer } from '@/components/location/LocationTrackingInitializer';
 import { LocationPermissionGate } from '@/components/location/LocationPermissionGate';
+import { BatteryOptimizationGate } from '@/components/location/BatteryOptimizationGate';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { SyncToastListener } from '@/components/sync/SyncToastListener';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
@@ -418,6 +419,7 @@ export default function RootLayout() {
                       />
                     </Stack>
                     <LocationPermissionGate />
+                    <BatteryOptimizationGate />
                     <PortalHost />
                   </BottomSheetModalProvider>
                 </PowerSyncProvider>

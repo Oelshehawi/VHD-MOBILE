@@ -1,26 +1,19 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Linking, Platform, Pressable, useColorScheme, View } from 'react-native';
 import * as Location from 'expo-location';
 import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
 import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
-import { DEFAULT_ROW_COMPARATOR, useQuery } from '@powersync/react-native';
-import { useAuth, useUser } from '@clerk/clerk-expo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Text } from '@/components/ui/text';
-import { usePowerSyncStatus } from '@/providers/PowerSyncProvider';
 import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
 import { getLocationPermissionCopy } from '@/components/location/locationPermissionCopy';
-import { hasRelevantLocationPermissionWindow } from '@/components/location/locationPermissionEligibility';
-import type { TechnicianTrackingWindow } from '@/types';
+import { useUpcomingTrackingWindow } from '@/components/location/useUpcomingTrackingWindow';
 import { debugLogger } from '@/utils/DebugLogger';
-import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
 
 export function LocationPermissionGate() {
-  const { isLoaded, isSignedIn, userId } = useAuth();
-  const { isLoaded: isUserLoaded, user } = useUser();
-  const { isInitialized } = usePowerSyncStatus();
+  const { isReady, hasUpcomingWindow } = useUpcomingTrackingWindow();
   const permissionState = useLocationPermissionState();
   const insets = useSafeAreaInsets();
   const sheetRef = useRef<BottomSheet>(null);
@@ -30,42 +23,6 @@ export function LocationPermissionGate() {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
   const sheetBackgroundColor = isDark ? '#16140F' : '#FFFFFF';
-
-  const isManager = isManagerMetadata(user?.publicMetadata);
-  const isFieldTracker = isFieldTrackerMetadata(user?.publicMetadata) && !isManager;
-  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isFieldTracker;
-
-  const windowsQuery = useQuery<TechnicianTrackingWindow>(
-    isReady
-      ? `SELECT * FROM techniciantrackingwindows
-         WHERE technicianId = ?
-           AND status IN ('planned', 'active')
-         ORDER BY startsAtUtc ASC`
-      : `SELECT * FROM techniciantrackingwindows WHERE 0`,
-    [userId || ''],
-    { rowComparator: DEFAULT_ROW_COMPARATOR }
-  );
-  const completedSchedulesQuery = useQuery<{ id?: string | null }>(
-    isReady
-      ? `SELECT id FROM schedules
-         WHERE actualServiceDurationMinutes IS NOT NULL`
-      : `SELECT id FROM schedules WHERE 0`,
-    [],
-    { rowComparator: DEFAULT_ROW_COMPARATOR }
-  );
-
-  const hasUpcomingWindow = useMemo(() => {
-    if (!isReady) return false;
-    const completedScheduleIds = new Set(
-      (completedSchedulesQuery.data ?? [])
-        .map((schedule) => schedule.id)
-        .filter((id): id is string => Boolean(id))
-    );
-    return hasRelevantLocationPermissionWindow({
-      windows: windowsQuery.data ?? [],
-      completedScheduleIds
-    });
-  }, [completedSchedulesQuery.data, isReady, windowsQuery.data]);
 
   const needsAttention =
     permissionState !== null &&
