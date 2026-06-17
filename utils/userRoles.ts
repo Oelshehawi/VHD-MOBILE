@@ -60,3 +60,13 @@ export function canViewHoursMetadata(metadata: RoleMetadata | null | undefined):
   const role = getStaffRole(metadata);
   return role === 'manager' || role === 'technician' || role === 'helper';
 }
+
+export function isFieldTrackerMetadata(metadata: RoleMetadata | null | undefined): boolean {
+  const role = getStaffRole(metadata);
+  return (
+    role === 'technician' ||
+    role === 'helper' ||
+    hasRole(metadata, 'technician') ||
+    hasRole(metadata, 'helper')
+  );
+}

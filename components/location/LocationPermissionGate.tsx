@@ -15,7 +15,7 @@ import { getLocationPermissionCopy } from '@/components/location/locationPermiss
 import { hasRelevantLocationPermissionWindow } from '@/components/location/locationPermissionEligibility';
 import type { TechnicianTrackingWindow } from '@/types';
 import { debugLogger } from '@/utils/DebugLogger';
-import { isManagerMetadata, isTechnicianMetadata } from '@/utils/userRoles';
+import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
 
 export function LocationPermissionGate() {
   const { isLoaded, isSignedIn, userId } = useAuth();
@@ -32,8 +32,8 @@ export function LocationPermissionGate() {
   const sheetBackgroundColor = isDark ? '#16140F' : '#FFFFFF';
 
   const isManager = isManagerMetadata(user?.publicMetadata);
-  const isTechnician = isTechnicianMetadata(user?.publicMetadata) && !isManager;
-  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isTechnician;
+  const isFieldTracker = isFieldTrackerMetadata(user?.publicMetadata) && !isManager;
+  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isFieldTracker;
 
   const windowsQuery = useQuery<TechnicianTrackingWindow>(
     isReady

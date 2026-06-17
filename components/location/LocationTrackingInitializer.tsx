@@ -5,7 +5,7 @@ import { getBackgroundToken } from '@/services/background/BackgroundAuth';
 import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { debugLogger } from '@/utils/DebugLogger';
-import { isManagerMetadata, isTechnicianMetadata } from '@/utils/userRoles';
+import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
 
 const COORDINATOR_TICK_MS = 60 * 1000;
 
@@ -16,11 +16,11 @@ export function LocationTrackingInitializer() {
   const [tick, setTick] = useState(0);
   const hasCachedTokenRef = useRef(false);
   const hasStoppedForSignedOutRef = useRef(false);
-  const hasStoppedForNonTechnicianRef = useRef(false);
+  const hasStoppedForNonFieldTrackerRef = useRef(false);
 
   const isManager = isManagerMetadata(user?.publicMetadata);
-  const isTechnician = isTechnicianMetadata(user?.publicMetadata) && !isManager;
-  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isTechnician;
+  const isFieldTracker = isFieldTrackerMetadata(user?.publicMetadata) && !isManager;
+  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isFieldTracker;
 
   useEffect(() => {
     if (!isLoaded) {
@@ -29,7 +29,7 @@ export function LocationTrackingInitializer() {
 
     if (!isSignedIn) {
       hasCachedTokenRef.current = false;
-      hasStoppedForNonTechnicianRef.current = false;
+      hasStoppedForNonFieldTrackerRef.current = false;
       if (hasStoppedForSignedOutRef.current) {
         return;
       }
@@ -44,17 +44,17 @@ export function LocationTrackingInitializer() {
       return;
     }
 
-    if (!isTechnician) {
+    if (!isFieldTracker) {
       hasCachedTokenRef.current = false;
-      if (hasStoppedForNonTechnicianRef.current) {
+      if (hasStoppedForNonFieldTrackerRef.current) {
         return;
       }
-      hasStoppedForNonTechnicianRef.current = true;
-      void locationTrackingCoordinator.stop('not-technician');
+      hasStoppedForNonFieldTrackerRef.current = true;
+      void locationTrackingCoordinator.stop('not-field-tracker');
       return;
     }
 
-    hasStoppedForNonTechnicianRef.current = false;
+    hasStoppedForNonFieldTrackerRef.current = false;
 
     if (!isInitialized) {
       return;
@@ -66,7 +66,7 @@ export function LocationTrackingInitializer() {
 
     hasCachedTokenRef.current = true;
     void getBackgroundToken();
-  }, [isInitialized, isLoaded, isSignedIn, isTechnician, isUserLoaded]);
+  }, [isInitialized, isLoaded, isSignedIn, isFieldTracker, isUserLoaded]);
 
   useEffect(() => {
     if (!isReady) {

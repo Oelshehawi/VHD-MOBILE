@@ -3,7 +3,7 @@ import { getBackgroundToken } from '@/services/background/BackgroundAuth';
 import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
 import { debugLogger } from '@/utils/DebugLogger';
 import { system as powerSyncSystem } from '@/services/database/System';
-import { isManagerMetadata, isTechnicianMetadata } from '@/utils/userRoles';
+import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
 
 export type LocationRefreshTrigger =
   | 'foreground'
@@ -30,8 +30,8 @@ async function resolveTechnicianId(): Promise<string | null> {
     });
     const userId = clerk?.user?.id ?? null;
     const isManager = isManagerMetadata(clerk?.user?.publicMetadata);
-    const isTechnician = isTechnicianMetadata(clerk?.user?.publicMetadata) && !isManager;
-    if (!userId || !isTechnician) {
+    const isFieldTracker = isFieldTrackerMetadata(clerk?.user?.publicMetadata) && !isManager;
+    if (!userId || !isFieldTracker) {
       return null;
     }
     return userId;
