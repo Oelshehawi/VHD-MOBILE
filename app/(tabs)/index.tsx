@@ -6,7 +6,8 @@ import { canViewHoursMetadata, isManagerMetadata } from '@/utils/userRoles';
 export default function Page() {
   const { user } = useUser();
   const isManager = isManagerMetadata(user?.publicMetadata);
-  const canViewHours = canViewHoursMetadata(user?.publicMetadata);
+  // Role eligibility only — the approval gate is applied in DashboardView.
+  const canViewHoursRole = canViewHoursMetadata(user?.publicMetadata);
 
   if (!user?.id) return null;
 
@@ -17,7 +18,7 @@ export default function Page() {
           headerShown: false
         }}
       />
-      <DashboardView userId={user?.id} isManager={isManager} canViewHours={canViewHours} />
+      <DashboardView userId={user?.id} isManager={isManager} canViewHoursRole={canViewHoursRole} />
     </>
   );
 }

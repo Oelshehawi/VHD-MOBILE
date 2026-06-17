@@ -48,6 +48,27 @@ export function useCurrentPayrollPeriod() {
   return query;
 }
 
+/**
+ * Latest approved payroll period whose payday hasn't passed yet — i.e. the pay
+ * you're currently awaiting or just received. A period is approved by the
+ * manager *after* it ends (by which time "today" already falls in the next
+ * period), so this is the period whose finalized hours the employee cares about.
+ */
+export function useMostRecentApprovedPayrollPeriod() {
+  const todayStart = getLocalDateTimeString('start');
+
+  const query = useQuery<PayrollPeriod>(
+    `SELECT * FROM payrollperiods
+     WHERE status = 'approved'
+     AND datetime(payDay) >= datetime(?)
+     ORDER BY datetime(endDate) DESC
+     LIMIT 1`,
+    [todayStart]
+  );
+
+  return query;
+}
+
 export function usePayrollSchedules(
   payrollId: string | undefined,
   isManager: boolean,
@@ -62,6 +83,7 @@ export function usePayrollSchedules(
       s.scheduledStartAtUtc,
       s.timeZone,
       s.hours,
+      s.shifts,
       s.location
      FROM schedules s
      WHERE ? = true

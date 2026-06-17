@@ -58,5 +58,5 @@ export function isTechnicianMetadata(metadata: RoleMetadata | null | undefined):
 
 export function canViewHoursMetadata(metadata: RoleMetadata | null | undefined): boolean {
   const role = getStaffRole(metadata);
-  return role === 'manager' || role === 'technician';
+  return role === 'manager' || role === 'technician' || role === 'helper';
 }

@@ -58,6 +58,7 @@ export interface PayrollPeriod {
   endDate: string;
   cutoffDate: string;
   payDay: string;
+  status?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -130,6 +131,8 @@ export interface PayrollSchedule {
   scheduledStartAtUtc?: string;
   timeZone?: string;
   hours: number;
+  // JSON text column from PowerSync; per-worker payroll hour overrides.
+  shifts?: string | ShiftType[];
   location: string;
 }
 
