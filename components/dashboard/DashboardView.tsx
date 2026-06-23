@@ -11,9 +11,9 @@ import {
 import { formatDateShort } from '@/utils/date';
 import { formatHoursDisplay } from '@/utils/hoursFormatting';
 import { getPayrollHoursForTechnician } from '@/utils/payrollHours';
-import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { openPhone, parseOnSiteContact } from '@/utils/contact';
 import { getRemainingTodaySchedules, openMaps } from '@/utils/dashboard';
+import { useTechnicianDirectory } from '@/services/data/technicians';
 import {
   getAssignedTechnicianDisplays,
   parseAssignedTechnicians
@@ -49,6 +49,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   const { data: todaySchedules = [] } = useTodaySchedules();
   const { data: currentPayroll = [] } = useCurrentPayrollPeriod();
   const { data: approvedPending = [] } = useMostRecentApprovedPayrollPeriod();
+  const { resolveTechnicianName } = useTechnicianDirectory();
 
   // Feature the just-approved (awaiting-payday) period when present, otherwise
   // the period containing today. Hours only reveal once the period is approved.
@@ -79,6 +80,25 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   });
   const nextUpSchedule = visibleTodaySchedules[0] ?? null;
   const nextUpContact = parseOnSiteContact(nextUpSchedule?.onSiteContact);
+  const nextUpCrew = nextUpSchedule
+    ? getAssignedTechnicianDisplays(
+        nextUpSchedule.assignedTechnicians,
+        userId,
+        resolveTechnicianName
+      )
+    : [];
+  const nextUpCrewLabel = (() => {
+    if (nextUpCrew.length === 0) return null;
+
+    if (isManager) {
+      return `Assigned: ${nextUpCrew.map((worker) => worker.name).join(', ')}`;
+    }
+
+    const coworkers = nextUpCrew.filter((worker) => !worker.isCurrentUser);
+    return coworkers.length === 0
+      ? 'With: Just you'
+      : `With: ${coworkers.map((worker) => worker.name).join(', ')}`;
+  })();
   const totalHours = payrollSchedules.reduce(
     (acc, schedule) =>
       acc + getPayrollHoursForTechnician(schedule, userId),
@@ -94,8 +114,16 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
     const technicianDisplays = getAssignedTechnicianDisplays(
       schedule.assignedTechnicians,
       userId,
-      getTechnicianName
+      resolveTechnicianName
     );
+    const crewLabel = (() => {
+      if (technicianDisplays.length === 0 || isManager) return null;
+
+      const coworkers = technicianDisplays.filter((worker) => !worker.isCurrentUser);
+      return coworkers.length === 0
+        ? 'With: Just you'
+        : `With: ${coworkers.map((worker) => worker.name).join(', ')}`;
+    })();
 
     const isAssignedToCurrentUser =
       !isManager && Array.isArray(technicians) && technicians.includes(userId);
@@ -127,7 +155,6 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
               {schedule.location || 'No location specified'}
             </Text>
 
-            {/* Only show technician list for managers */}
             {isManager && technicians?.length > 0 && (
               <View className='mt-2'>
                 <Text className='text-gray-500 dark:text-gray-400 text-sm'>Technicians:</Text>
@@ -136,6 +163,14 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
                     • {technician.name}
                   </Text>
                 ))}
+              </View>
+            )}
+            {crewLabel && (
+              <View className='mt-2 flex-row items-center gap-1.5'>
+                <Ionicons name='people-outline' size={14} color='#76706A' />
+                <Text className='flex-1 text-sm font-semibold text-gray-600 dark:text-gray-300' numberOfLines={1}>
+                  {crewLabel}
+                </Text>
               </View>
             )}
           </View>
@@ -157,7 +192,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
     const technicianDisplays = getAssignedTechnicianDisplays(
       schedule.assignedTechnicians,
       userId,
-      getTechnicianName
+      resolveTechnicianName
     );
 
     return (
@@ -243,6 +278,15 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
                       {nextUpSchedule.location || 'No location specified'}
                     </Text>
                   </View>
+
+                  {nextUpCrewLabel && (
+                    <View className='mt-2 flex-row items-center gap-2'>
+                      <Ionicons name='people-outline' size={16} color='#76706A' />
+                      <Text className='flex-1 text-sm font-semibold text-gray-600 dark:text-gray-300' numberOfLines={1}>
+                        {nextUpCrewLabel}
+                      </Text>
+                    </View>
+                  )}
 
                   {(nextUpContact?.name || nextUpContact?.phone) && (
                     <View className='mt-3 flex-row items-center gap-3 rounded-xl bg-[#F0EDE6] px-3 py-3 dark:bg-[#1F1C16]'>

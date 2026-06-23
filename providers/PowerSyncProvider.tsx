@@ -7,16 +7,6 @@ import { System, useSystem } from '../services/database/System';
 import { debugLogger } from '@/utils/DebugLogger';
 import { clearBackgroundToken } from '@/services/background/BackgroundAuth';
 
-const TECHNICIAN_MAP: Record<string, string> = {
-  user_38Ghu2yPVPlTmB3D9UxbPj0okJN: 'Mohnad Elkeliny',
-  user_38Ghu33VeKR30As0If7L483CKPC: 'Ahmed Habib',
-  user_38GhtkZa3oKjxakPlEXKJbduzeQ: 'Ziad Elshehawi'
-} as const;
-
-export const getTechnicianName = (userId: string): string => {
-  return TECHNICIAN_MAP[userId] || 'Unknown';
-};
-
 type PowerSyncStatus = {
   isLoaded: boolean;
   isSignedIn: boolean;

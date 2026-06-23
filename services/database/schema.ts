@@ -200,6 +200,17 @@ const expopushtokens = new Table(
   { indexes: { users: ['userId'] } }
 );
 
+const technicians = new Table(
+  {
+    // id column (text) is automatically included
+    clerkUserId: column.text,
+    name: column.text,
+    fieldRole: column.text,
+    isActive: column.integer
+  },
+  { indexes: { clerkUsers: ['clerkUserId'] } }
+);
+
 const techniciantrackingwindows = new Table(
   {
     // id column (text) is automatically included
@@ -269,6 +280,7 @@ export const AppSchema = new Schema({
   availabilities,
   timeoffrequests,
   expopushtokens,
+  technicians,
   techniciantrackingwindows,
   photos,
   reports,
@@ -332,6 +344,7 @@ export type Availability = Database['availabilities'];
 export type TimeOffRequest = Database['timeoffrequests'];
 export type Report = Database['reports'];
 export type ExpoPushToken = Database['expopushtokens'];
+export type Technician = Database['technicians'];
 export type TechnicianTrackingWindow = Database['techniciantrackingwindows'];
 export type CourseAssignmentRow = Database['courseassignments'];
 export type CourseProgressRow = Database['courseprogress'];

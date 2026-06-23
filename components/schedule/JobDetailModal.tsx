@@ -29,8 +29,8 @@ import { formatStoredDateReadable, formatVancouverDateAsUtcDateOnly } from '@/ut
 import { ApiClient } from '@/services/ApiClient';
 import { ServiceReportModal } from './ServiceReportModal';
 import { openPhone, parseOnSiteContact } from '@/utils/contact';
-import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { getAssignedTechnicianDisplays } from '@/utils/scheduleAssignments';
+import { useTechnicianDirectory } from '@/services/data/technicians';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -166,6 +166,7 @@ export function JobDetailModal({
   const [sendInvoiceMessage, setSendInvoiceMessage] = useState<string | null>(null);
   const [sendInvoiceError, setSendInvoiceError] = useState<string | null>(null);
   const [reportVisible, setReportVisible] = useState(false);
+  const { resolveTechnicianName } = useTechnicianDirectory();
 
   useEffect(() => {
     if (visible) {
@@ -345,7 +346,7 @@ export function JobDetailModal({
         : 'Invoice is marked paid'
       : 'Mark cheque once it is in hand';
   const assignedWorkers = schedule
-    ? getAssignedTechnicianDisplays(schedule.assignedTechnicians, technicianId, getTechnicianName)
+    ? getAssignedTechnicianDisplays(schedule.assignedTechnicians, technicianId, resolveTechnicianName)
     : [];
 
   return (

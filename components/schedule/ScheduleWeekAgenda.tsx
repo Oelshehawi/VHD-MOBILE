@@ -8,8 +8,11 @@ import { addDays, addWeeks, format, isSameDay, isToday, parseISO, startOfDay, st
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '@/components/ui/text';
 import type { Schedule } from '@/types';
-import { getTechnicianName } from '@/providers/PowerSyncProvider';
-import { getAssignedTechnicianDisplays } from '@/utils/scheduleAssignments';
+import { useTechnicianDirectory } from '@/services/data/technicians';
+import {
+  getAssignedTechnicianDisplays,
+  type ResolveTechnicianName
+} from '@/utils/scheduleAssignments';
 import {
   formatScheduleTime,
   getLocalDateKey,
@@ -122,13 +125,15 @@ function ScheduleRow({
   progress,
   onPress,
   currentUserId,
-  isManager
+  isManager,
+  resolveTechnicianName
 }: {
   schedule: Schedule;
   progress: JobProgress;
   onPress: (schedule: Schedule) => void;
   currentUserId: string;
   isManager: boolean;
+  resolveTechnicianName: ResolveTechnicianName;
 }) {
   const colorScheme = useColorScheme();
   const chevronColor = colorScheme === 'dark' ? '#C9C3BA' : '#76706A';
@@ -138,7 +143,7 @@ function ScheduleRow({
   const assignedWorkers = getAssignedTechnicianDisplays(
     schedule.assignedTechnicians,
     currentUserId,
-    getTechnicianName
+    resolveTechnicianName
   );
   const crewLabel = (() => {
     if (assignedWorkers.length === 0) {
@@ -214,6 +219,7 @@ export function ScheduleAgendaList({
 }) {
   const colorScheme = useColorScheme();
   const mutedIconColor = colorScheme === 'dark' ? '#C9C3BA' : '#76706A';
+  const { resolveTechnicianName } = useTechnicianDirectory();
   const sortedSchedules = useMemo(
     () => [...schedules].sort((a, b) => getScheduleSortTime(a) - getScheduleSortTime(b)),
     [schedules]
@@ -295,6 +301,7 @@ export function ScheduleAgendaList({
               onPress={onSchedulePress}
               currentUserId={currentUserId}
               isManager={isManager}
+              resolveTechnicianName={resolveTechnicianName}
             />
           ))}
         </View>
