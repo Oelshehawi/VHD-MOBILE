@@ -8,8 +8,9 @@ import { ScheduleAgendaList, ScheduleWeekAgenda } from './ScheduleWeekAgenda';
 import { JobDetailModal } from './JobDetailModal';
 import { format, startOfDay } from 'date-fns';
 import {
+  getServiceDayStartIsoForInstant,
   getLocalDateKey,
-  getScheduleDateKey,
+  getScheduleServiceDayKey,
   scheduleMatchesDateKey
 } from '@/utils/scheduleTime';
 import { ASSIGNED_TO_USER_CLAUSE } from '@/services/data/sqlFragments';
@@ -70,7 +71,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
     () =>
       monthSchedules.map((schedule) => ({
         id: schedule.id,
-        startTime: getScheduleDateKey(schedule),
+        startTime: getScheduleServiceDayKey(schedule),
         clientName: schedule.jobTitle,
         status: schedule.confirmed ? 'confirmed' : 'pending'
       })),
@@ -116,7 +117,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
         <View className='mb-3 flex-row items-center justify-between'>
           <Text className='text-2xl font-bold text-[#14110F] dark:text-white'>Schedule</Text>
           <TouchableOpacity
-            onPress={() => handleDateSelection(new Date().toISOString())}
+            onPress={() => handleDateSelection(getServiceDayStartIsoForInstant())}
             className='h-10 items-center justify-center rounded-xl border border-black/15 bg-white px-3 dark:border-white/20 dark:bg-[#16140F]'
           >
             <Text className='font-mono text-sm font-bold text-[#14110F] dark:text-white'>

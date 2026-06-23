@@ -4,14 +4,14 @@ import { Stack } from 'expo-router';
 import { ScheduleView } from '../../components/schedule/ScheduleView';
 import { startOfDay } from 'date-fns';
 import { isManagerMetadata } from '@/utils/userRoles';
+import { getServiceDayStartIsoForInstant } from '@/utils/scheduleTime';
 
 export default function Page() {
   const { user } = useUser();
   const isManager = isManagerMetadata(user?.publicMetadata);
 
   const [currentDate, setCurrentDate] = useState(() => {
-    // Use date-fns to get start of today in local time
-    return startOfDay(new Date()).toISOString();
+    return getServiceDayStartIsoForInstant();
   });
 
   const handleDateChange = useCallback((date: string) => {

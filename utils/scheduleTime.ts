@@ -1,5 +1,5 @@
 import { format } from 'date-fns';
-import { formatInTimeZone, fromZonedTime } from 'date-fns-tz';
+import { formatInTimeZone } from 'date-fns-tz';
 export const DEFAULT_SCHEDULE_TIME_ZONE = 'America/Vancouver';
 const SERVICE_DAY_START_HOUR = 3;
 
@@ -87,28 +87,16 @@ export function getScheduleStartDate(schedule: ScheduleTimeSource): Date | null 
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-export function getOperationalScheduleStartDate(schedule: ScheduleTimeSource): Date | null {
-  const startDate = getScheduleStartDate(schedule);
-  if (!startDate) return null;
-
-  const timeZone = getScheduleTimeZone(schedule);
-  const parts = parseZonedClockParts(startDate, timeZone);
-  if (!parts || parts.hour >= SERVICE_DAY_START_HOUR) return startDate;
-
-  const effectiveDateKey = addDaysToDateKey(parts.dateKey, 1);
-  if (!effectiveDateKey) return startDate;
-
-  return fromZonedTime(
-    `${effectiveDateKey}T${String(parts.hour).padStart(2, '0')}:${String(parts.minute).padStart(2, '0')}:00`,
-    timeZone
-  );
-}
-
+/**
+ * Actual on-site duration: true submission instant minus the true scheduled
+ * start. With true-instant storage there is no day-early compensation — a
+ * June 26 00:00 start completed at June 26 02:00 is a clean 120 minutes.
+ */
 export function calculateActualServiceDurationMinutes(
   schedule: ScheduleTimeSource,
   completedAt: Date
 ): number | null {
-  const startDate = getOperationalScheduleStartDate(schedule);
+  const startDate = getScheduleStartDate(schedule);
   if (!startDate || !Number.isFinite(completedAt.getTime())) return null;
 
   const elapsedMinutes = Math.round((completedAt.getTime() - startDate.getTime()) / (1000 * 60));
@@ -119,7 +107,11 @@ export function getScheduleSortTime(schedule: ScheduleTimeSource): number {
   const parts = getScheduleClockParts(schedule);
   if (!parts) return Number.POSITIVE_INFINITY;
 
-  const [year, month, day] = parts.dateKey.split('-').map(Number);
+  // Anchor the day component on the service-day key so a true next-day midnight
+  // job lands on the prior service day while still sorting (1440) after that
+  // day's 11:30 PM visit (1410).
+  const serviceKey = getScheduleServiceDayKey(schedule);
+  const [year, month, day] = serviceKey.split('-').map(Number);
   if (!year || !month || !day) return Number.POSITIVE_INFINITY;
 
   const dayStartMinutes = Date.UTC(year, month - 1, day) / 60000;
@@ -132,12 +124,75 @@ export function getLocalDateKey(date: string | Date): string {
   return format(typeof date === 'string' ? new Date(date) : date, 'yyyy-MM-dd');
 }
 
-export function getScheduleDateKey(schedule: ScheduleTimeSource): string {
+function dateKeyToLocalStartIso(dateKey: string): string {
+  const parts = parseDateKey(dateKey);
+  if (!parts) return new Date().toISOString();
+  return new Date(parts.year, parts.month - 1, parts.day).toISOString();
+}
+
+/**
+ * Literal local calendar date (`YYYY-MM-DD`) — no service-day cutoff applied.
+ * A true June 26 00:00 job returns `2026-06-26`. Use only when a literal-date
+ * is needed; for grouping/labeling prefer `getScheduleServiceDayKey`.
+ */
+export function getScheduleLocalDateKey(schedule: ScheduleTimeSource): string {
   return getScheduleClockParts(schedule)?.dateKey ?? '';
 }
 
+/**
+ * Service-day key (`YYYY-MM-DD`): local `00:00–02:59` maps to the *previous*
+ * calendar date; `03:00+` stays on the same date. A true June 26 00:00 job
+ * returns `2026-06-25`. Mirrors web `getScheduleServiceDayKeyForSchedule`.
+ */
+export function getScheduleServiceDayKey(schedule: ScheduleTimeSource): string {
+  const parts = getScheduleClockParts(schedule);
+  if (!parts) return '';
+  return parts.hour < SERVICE_DAY_START_HOUR
+    ? addDaysToDateKey(parts.dateKey, -1)
+    : parts.dateKey;
+}
+
+export function getServiceDayKeyForInstant(
+  instant: Date = new Date(),
+  timeZone = DEFAULT_SCHEDULE_TIME_ZONE
+): string {
+  return getScheduleServiceDayKey({
+    scheduledStartAtUtc: instant.toISOString(),
+    timeZone
+  });
+}
+
+export function getServiceDayStartIsoForInstant(
+  instant: Date = new Date(),
+  timeZone = DEFAULT_SCHEDULE_TIME_ZONE
+): string {
+  const serviceDayKey = getServiceDayKeyForInstant(instant, timeZone);
+  return serviceDayKey ? dateKeyToLocalStartIso(serviceDayKey) : instant.toISOString();
+}
+
+/**
+ * `true` when the schedule's local time is in `[00:00, 03:00)` — the overnight
+ * tail that belongs to the prior service day.
+ */
+export function isPostMidnightServiceTime(schedule: ScheduleTimeSource): boolean {
+  const parts = getScheduleClockParts(schedule);
+  if (!parts) return false;
+  return parts.hour < SERVICE_DAY_START_HOUR;
+}
+
+/**
+ * Service-day key as a UTC-midnight ISO string (or `''` when unavailable).
+ * Mirrors web `getScheduleServiceDayUtcDateForSchedule` — used by report and
+ * photo code that needs the service-day date.
+ */
+export function getScheduleServiceDayUtcIso(schedule: ScheduleTimeSource): string {
+  const serviceDayKey = getScheduleServiceDayKey(schedule);
+  if (!serviceDayKey) return '';
+  return new Date(`${serviceDayKey}T00:00:00.000Z`).toISOString();
+}
+
 export function scheduleMatchesDateKey(schedule: ScheduleTimeSource, dateKey: string): boolean {
-  return getScheduleDateKey(schedule) === dateKey;
+  return getScheduleServiceDayKey(schedule) === dateKey;
 }
 
 export function formatScheduleTime(schedule: ScheduleTimeSource): string {
@@ -149,14 +204,14 @@ export function formatScheduleTime(schedule: ScheduleTimeSource): string {
 }
 
 export function formatScheduleDateReadable(schedule: ScheduleTimeSource): string {
-  const dateKey = getScheduleDateKey(schedule);
+  const dateKey = getScheduleServiceDayKey(schedule);
   if (!dateKey) return '';
 
   return formatInTimeZone(new Date(`${dateKey}T00:00:00.000Z`), 'UTC', 'EEEE, MMM d, yyyy');
 }
 
 export function formatScheduleDateShort(schedule: ScheduleTimeSource): string {
-  const dateKey = getScheduleDateKey(schedule);
+  const dateKey = getScheduleServiceDayKey(schedule);
   if (!dateKey) return '';
 
   return formatInTimeZone(new Date(`${dateKey}T00:00:00.000Z`), 'UTC', 'MMM d, yyyy');

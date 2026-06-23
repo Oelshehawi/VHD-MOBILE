@@ -13,7 +13,7 @@ import { getAssignedTechnicianDisplays } from '@/utils/scheduleAssignments';
 import {
   formatScheduleTime,
   getLocalDateKey,
-  getScheduleDateKey,
+  getScheduleServiceDayKey,
   getScheduleSortTime,
   scheduleMatchesDateKey
 } from '@/utils/scheduleTime';
@@ -325,7 +325,7 @@ export function ScheduleWeekAgenda({
   const schedulesByDate = useMemo(() => {
     const counts = new Map<string, number>();
     schedules.forEach((schedule) => {
-      const key = getScheduleDateKey(schedule);
+      const key = getScheduleServiceDayKey(schedule);
       if (!key) return;
       counts.set(key, (counts.get(key) ?? 0) + 1);
     });

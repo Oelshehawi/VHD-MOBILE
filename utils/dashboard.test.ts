@@ -65,28 +65,44 @@ describe('dashboard schedule helpers', () => {
     ]);
   });
 
-  it('keeps midnight through 3 AM jobs at the end of the same service day', () => {
-    const now = new Date('2026-05-12T19:45:00.000Z'); // 12:45 PM Vancouver
+  it('keeps a true next-day midnight job at the end of the same service day', () => {
+    const now = new Date('2026-06-25T19:45:00.000Z'); // 12:45 PM Vancouver
     const schedules = [
       buildSchedule({
         id: 'morning-job',
-        scheduledStartAtUtc: '2026-05-12T16:00:00.000Z',
+        scheduledStartAtUtc: '2026-06-25T16:00:00.000Z', // 09:00 Vancouver
         hours: 2
       }),
       buildSchedule({
         id: 'eight-pm-job',
-        scheduledStartAtUtc: '2026-05-13T03:00:00.000Z',
+        scheduledStartAtUtc: '2026-06-26T03:00:00.000Z', // 20:00 Vancouver, June 25 service day
         hours: 2
       }),
       buildSchedule({
         id: 'midnight-job',
-        scheduledStartAtUtc: '2026-05-12T07:00:00.000Z',
+        // True instant: June 26 00:00 Vancouver, belongs to the June 25 service day.
+        scheduledStartAtUtc: '2026-06-26T07:00:00.000Z',
         hours: 2
       })
     ];
 
     expect(getRemainingTodaySchedules(schedules, now).map((schedule) => schedule.id)).toEqual([
       'eight-pm-job',
+      'midnight-job'
+    ]);
+  });
+
+  it('still surfaces the midnight job in today just after local midnight', () => {
+    const now = new Date('2026-06-26T07:30:00.000Z'); // 00:30 Vancouver, June 25 service day
+    const schedules = [
+      buildSchedule({
+        id: 'midnight-job',
+        scheduledStartAtUtc: '2026-06-26T07:00:00.000Z', // 00:00 Vancouver
+        hours: 2
+      })
+    ];
+
+    expect(getRemainingTodaySchedules(schedules, now).map((schedule) => schedule.id)).toEqual([
       'midnight-job'
     ]);
   });

@@ -4,105 +4,117 @@ import {
   calculateActualServiceDurationMinutes,
   formatScheduleDateReadable,
   formatScheduleTime,
-  getOperationalScheduleStartDate,
-  getScheduleDateKey,
   getScheduleHour,
+  getScheduleLocalDateKey,
+  getScheduleServiceDayKey,
+  getScheduleServiceDayUtcIso,
+  getServiceDayKeyForInstant,
   getScheduleSortTime,
+  isPostMidnightServiceTime,
   scheduleMatchesDateKey
 } from './scheduleTime';
 
-describe('schedule service-day time helpers', () => {
-  it('keeps local midnight on its service day', () => {
-    const schedule = {
-      scheduledStartAtUtc: '2026-05-12T07:00:00.000Z',
+describe('schedule service-day time helpers (true-instant storage)', () => {
+  it('groups a true next-day midnight job under the prior service day', () => {
+    // 2026-06-26T07:00:00Z is 2026-06-26 00:00 in America/Vancouver (PDT, -7).
+    const midnight = {
+      scheduledStartAtUtc: '2026-06-26T07:00:00.000Z',
       timeZone: 'America/Vancouver'
     };
 
-    expect(getScheduleDateKey(schedule)).toBe('2026-05-12');
-    expect(scheduleMatchesDateKey(schedule, '2026-05-12')).toBe(true);
-    expect(formatScheduleDateReadable(schedule)).toBe('Tuesday, May 12, 2026');
-    expect(formatScheduleTime(schedule)).toBe('12:00 AM');
-    expect(getScheduleHour(schedule)).toBe(0);
+    expect(getScheduleLocalDateKey(midnight)).toBe('2026-06-26');
+    expect(getScheduleServiceDayKey(midnight)).toBe('2026-06-25');
+    expect(scheduleMatchesDateKey(midnight, '2026-06-25')).toBe(true);
+    expect(formatScheduleDateReadable(midnight)).toBe('Thursday, Jun 25, 2026');
+    expect(formatScheduleTime(midnight)).toBe('12:00 AM');
+    expect(getScheduleHour(midnight)).toBe(0);
+    expect(isPostMidnightServiceTime(midnight)).toBe(true);
+    expect(getScheduleServiceDayUtcIso(midnight)).toBe('2026-06-25T00:00:00.000Z');
   });
 
-  it('sorts local midnight after later evening visits on that day', () => {
+  it('sorts a true midnight job after the same service day 11:30 PM visit', () => {
     const midnight = {
-      scheduledStartAtUtc: '2026-05-12T07:00:00.000Z',
+      scheduledStartAtUtc: '2026-06-26T07:00:00.000Z',
       timeZone: 'America/Vancouver'
     };
+    // 2026-06-26T06:30:00Z is 2026-06-25 23:30 Vancouver — same service day.
     const lateEvening = {
-      scheduledStartAtUtc: '2026-05-13T06:30:00.000Z',
+      scheduledStartAtUtc: '2026-06-26T06:30:00.000Z',
       timeZone: 'America/Vancouver'
     };
 
-    expect(getScheduleDateKey(lateEvening)).toBe('2026-05-12');
+    expect(getScheduleServiceDayKey(lateEvening)).toBe('2026-06-25');
     expect(formatScheduleTime(lateEvening)).toBe('11:30 PM');
     expect(getScheduleSortTime(midnight)).toBeGreaterThan(getScheduleSortTime(lateEvening));
   });
 
-  it('uses the next local date as the operational start for midnight service-date visits', () => {
-    const midnight = {
-      scheduledStartAtUtc: '2026-05-14T07:00:00.000Z',
-      timeZone: 'America/Vancouver'
-    };
-
-    expect(getScheduleDateKey(midnight)).toBe('2026-05-14');
-    expect(getOperationalScheduleStartDate(midnight)?.toISOString()).toBe(
-      '2026-05-15T07:00:00.000Z'
-    );
-    expect(
-      calculateActualServiceDurationMinutes(
-        midnight,
-        new Date('2026-05-15T08:31:00.000Z')
-      )
-    ).toBe(91);
-  });
-
-  it('sorts all jobs before 3 AM after the previous evening route order', () => {
+  it('keeps every minute before 3 AM on the prior service day', () => {
     const twoFiftyNine = {
-      scheduledStartAtUtc: '2026-05-12T09:59:00.000Z',
+      scheduledStartAtUtc: '2026-06-26T09:59:00.000Z', // 02:59 Vancouver
       timeZone: 'America/Vancouver'
     };
-    const lateEvening = {
-      scheduledStartAtUtc: '2026-05-13T06:30:00.000Z',
-      timeZone: 'America/Vancouver'
-    };
-
-    expect(getScheduleDateKey(twoFiftyNine)).toBe('2026-05-12');
-    expect(formatScheduleTime(twoFiftyNine)).toBe('2:59 AM');
-    expect(getScheduleSortTime(twoFiftyNine)).toBeGreaterThan(getScheduleSortTime(lateEvening));
-    expect(getOperationalScheduleStartDate(twoFiftyNine)?.toISOString()).toBe(
-      '2026-05-13T09:59:00.000Z'
-    );
-  });
-
-  it('starts ordinary route ordering again at 3 AM', () => {
     const threeAm = {
-      scheduledStartAtUtc: '2026-05-12T10:00:00.000Z',
-      timeZone: 'America/Vancouver'
-    };
-    const lateEvening = {
-      scheduledStartAtUtc: '2026-05-13T06:30:00.000Z',
+      scheduledStartAtUtc: '2026-06-26T10:00:00.000Z', // 03:00 Vancouver
       timeZone: 'America/Vancouver'
     };
 
-    expect(getScheduleDateKey(threeAm)).toBe('2026-05-12');
+    expect(formatScheduleTime(twoFiftyNine)).toBe('2:59 AM');
+    expect(getScheduleServiceDayKey(twoFiftyNine)).toBe('2026-06-25');
+    expect(isPostMidnightServiceTime(twoFiftyNine)).toBe(true);
+
     expect(formatScheduleTime(threeAm)).toBe('3:00 AM');
-    expect(getScheduleSortTime(threeAm)).toBeLessThan(getScheduleSortTime(lateEvening));
-    expect(getOperationalScheduleStartDate(threeAm)?.toISOString()).toBe(
-      '2026-05-12T10:00:00.000Z'
-    );
+    expect(getScheduleServiceDayKey(threeAm)).toBe('2026-06-26');
+    expect(isPostMidnightServiceTime(threeAm)).toBe(false);
   });
 
-  it('still formats ordinary schedule times in the schedule timezone', () => {
-    const schedule = {
-      scheduledStartAtUtc: '2026-05-12T16:30:00.000Z',
+  it('measures duration from the true start without double-shift', () => {
+    const midnight = {
+      scheduledStartAtUtc: '2026-06-26T07:00:00.000Z', // 00:00 Vancouver
       timeZone: 'America/Vancouver'
     };
 
-    expect(getScheduleDateKey(schedule)).toBe('2026-05-12');
+    // Completed at 02:00 Vancouver (2026-06-26T09:00:00Z) → 120 minutes.
+    expect(
+      calculateActualServiceDurationMinutes(midnight, new Date('2026-06-26T09:00:00.000Z'))
+    ).toBe(120);
+  });
+
+  it('clamps duration to zero (never negative) when completion precedes start', () => {
+    const midnight = {
+      scheduledStartAtUtc: '2026-06-26T07:00:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+
+    expect(
+      calculateActualServiceDurationMinutes(midnight, new Date('2026-06-26T06:30:00.000Z'))
+    ).toBe(0);
+  });
+
+  it('leaves ordinary daytime jobs unchanged', () => {
+    const schedule = {
+      scheduledStartAtUtc: '2026-06-25T16:30:00.000Z', // 09:30 Vancouver
+      timeZone: 'America/Vancouver'
+    };
+
+    expect(getScheduleLocalDateKey(schedule)).toBe('2026-06-25');
+    expect(getScheduleServiceDayKey(schedule)).toBe('2026-06-25');
     expect(formatScheduleTime(schedule)).toBe('9:30 AM');
     expect(getScheduleHour(schedule)).toBe(9);
-    expect(calculateActualServiceDurationMinutes(schedule, new Date('2026-05-12T18:30:00.000Z'))).toBe(120);
+    expect(isPostMidnightServiceTime(schedule)).toBe(false);
+    expect(
+      calculateActualServiceDurationMinutes(schedule, new Date('2026-06-25T18:30:00.000Z'))
+    ).toBe(120);
+  });
+
+  it('resolves current app today to the active service day before 3 AM', () => {
+    expect(getServiceDayKeyForInstant(new Date('2026-06-26T07:30:00.000Z'))).toBe(
+      '2026-06-25'
+    );
+    expect(getServiceDayKeyForInstant(new Date('2026-06-26T09:59:00.000Z'))).toBe(
+      '2026-06-25'
+    );
+    expect(getServiceDayKeyForInstant(new Date('2026-06-26T10:00:00.000Z'))).toBe(
+      '2026-06-26'
+    );
   });
 });

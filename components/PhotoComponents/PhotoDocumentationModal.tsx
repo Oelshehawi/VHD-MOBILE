@@ -22,6 +22,7 @@ interface PhotoDocumentationModalProps {
   serviceJobId?: string | null;
   jobTitle: string;
   scheduledStartAtUtc: string;
+  timeZone?: string | null;
   technicianId: string;
   initialMode?: DocumentationMode;
 }
@@ -56,6 +57,7 @@ export function PhotoDocumentationModal({
   serviceJobId,
   jobTitle,
   scheduledStartAtUtc,
+  timeZone,
   technicianId,
   initialMode = 'before'
 }: PhotoDocumentationModalProps) {
@@ -190,6 +192,7 @@ export function PhotoDocumentationModal({
               type={activeMode}
               jobTitle={jobTitle}
               scheduledStartAtUtc={scheduledStartAtUtc}
+              timeZone={timeZone}
               scheduleId={scheduleId}
               photoCategoryKey={selectedCategory?.key ?? null}
               photoCategoryLabel={selectedCategory?.label ?? 'Uncategorized'}

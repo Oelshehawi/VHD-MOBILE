@@ -762,6 +762,7 @@ export function JobDetailModal({
             serviceJobId={schedule.serviceJobId}
             jobTitle={schedule.jobTitle}
             scheduledStartAtUtc={startAtUtc}
+            timeZone={schedule.timeZone}
             technicianId={technicianId}
             initialMode={photoMode}
           />

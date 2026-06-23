@@ -22,6 +22,7 @@ interface PhotoCaptureProps {
   type: 'before' | 'after';
   jobTitle: string;
   scheduledStartAtUtc: string;
+  timeZone?: string | null;
   scheduleId?: string;
   photoCategoryKey?: string | null;
   photoCategoryLabel?: string | null;
@@ -46,6 +47,7 @@ export function PhotoCapture({
   scheduleId,
   jobTitle,
   scheduledStartAtUtc,
+  timeZone,
   photoCategoryKey,
   photoCategoryLabel,
   photoCategoryKind,
@@ -250,6 +252,7 @@ export function PhotoCapture({
           photoCategoryKind: photoCategoryKind ?? null,
           jobTitle: jobTitle,
           scheduledStartAtUtc,
+          timeZone: timeZone ?? undefined,
           sourceWidth: asset.width,
           sourceHeight: asset.height,
           sourceSize: asset.fileSize ?? size,

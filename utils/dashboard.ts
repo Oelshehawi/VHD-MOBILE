@@ -2,10 +2,17 @@ import { Schedule } from '@/types';
 import { Linking } from 'react-native';
 import {
   DEFAULT_SCHEDULE_TIME_ZONE,
-  getLocalDateKey,
+  getScheduleServiceDayKey,
   getScheduleSortTime,
   scheduleMatchesDateKey
 } from './scheduleTime';
+
+function getNowServiceDayKey(now: Date): string {
+  return getScheduleServiceDayKey({
+    scheduledStartAtUtc: now.toISOString(),
+    timeZone: DEFAULT_SCHEDULE_TIME_ZONE
+  });
+}
 
 const DEFAULT_ACTIVE_JOB_DURATION_MINUTES = 2 * 60;
 
@@ -44,14 +51,14 @@ function isScheduleActiveOrUpcoming(schedule: Schedule, now: Date): boolean {
 
 export const sortSchedulesByTime = (schedules: Schedule[]) => {
   return schedules
-    .filter((schedule) => scheduleMatchesDateKey(schedule, getLocalDateKey(new Date())))
+    .filter((schedule) => scheduleMatchesDateKey(schedule, getNowServiceDayKey(new Date())))
     .sort((a, b) => {
       return getScheduleSortTime(a) - getScheduleSortTime(b);
     });
 };
 
 export const getRemainingTodaySchedules = (schedules: Schedule[], now: Date = new Date()) => {
-  const todayKey = getLocalDateKey(now);
+  const todayKey = getNowServiceDayKey(now);
 
   return schedules
     .filter((schedule) => scheduleMatchesDateKey(schedule, todayKey))

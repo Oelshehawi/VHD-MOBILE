@@ -6,6 +6,10 @@ import {
   AttachmentState
 } from '@powersync/attachments';
 import { prepareImageForUpload } from '@/utils/imagePrep';
+import {
+  DEFAULT_SCHEDULE_TIME_ZONE,
+  getScheduleServiceDayUtcIso
+} from '@/utils/scheduleTime';
 import { generateObjectId } from '@/utils/objectId';
 import { debugLogger } from '@/utils/DebugLogger';
 import { getClerkInstance } from '@clerk/clerk-expo';
@@ -23,6 +27,7 @@ interface QueuePhotoInput {
   photoCategoryKind?: PhotoCategoryKind | null;
   jobTitle: string;
   scheduledStartAtUtc: string;
+  timeZone?: string;
   sourceWidth?: number;
   sourceHeight?: number;
   sourceSize?: number;
@@ -323,7 +328,13 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
             photo.scheduleId,
             photo.type,
             photo.jobTitle,
-            photo.scheduledStartAtUtc
+            // Backend folder uses the UTC date of this value. Store the
+            // service-day instant so a true 00:00–02:59 job folders under the
+            // prior service day (June 25), not its physical date (June 26).
+            getScheduleServiceDayUtcIso({
+              scheduledStartAtUtc: photo.scheduledStartAtUtc,
+              timeZone: photo.timeZone || DEFAULT_SCHEDULE_TIME_ZONE
+            }) || photo.scheduledStartAtUtc
           ]
         );
       }

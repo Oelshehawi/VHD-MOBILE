@@ -27,8 +27,8 @@ import type {
 } from '@/types/report';
 import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
 import { calculateActualServiceDurationMinutes } from '@/utils/scheduleTime';
+import { resolveReportDateCompleted } from '@/utils/reportCompletion';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
-import { formatVancouverDateAsUtcDateOnly } from '@/utils/date';
 
 type ReportFormValues = {
   inspectionItems: InspectionItems;
@@ -336,12 +336,21 @@ export function ReportCloseoutContent({
     setIsSaving(true);
     try {
       const completedAt = new Date();
-      const payload = buildPayload(status, formatVancouverDateAsUtcDateOnly(completedAt));
+      const scheduleSource = schedule || {
+        scheduledStartAtUtc: fallbackScheduledStartAtUtc,
+        timeZone: typeof params.timeZone === 'string' ? params.timeZone : undefined
+      };
+      // For true 00:00–02:59 jobs, the completion date is the prior service day,
+      // not the physical next-day calendar date. Normal jobs keep the
+      // submission-day behavior.
+      const payload = buildPayload(
+        status,
+        resolveReportDateCompleted(scheduleSource, completedAt)
+      );
+      // Duration is measured from the true scheduled start instant (no
+      // day-early compensation), so a midnight start never goes negative.
       const actualServiceDurationMinutes = calculateActualServiceDurationMinutes(
-        schedule || {
-          scheduledStartAtUtc: fallbackScheduledStartAtUtc,
-          timeZone: typeof params.timeZone === 'string' ? params.timeZone : undefined
-        },
+        scheduleSource,
         completedAt
       );
 

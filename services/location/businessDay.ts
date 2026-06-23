@@ -16,17 +16,19 @@ const LOCAL_DATE_TIME_PARTS = [
 
 /**
  * Service-day key (`YYYY-MM-DD`) for a UTC instant in the Field Status time
- * zone. Returns an empty string for an unparseable timestamp.
+ * zone. Local `00:00–02:59` maps to the *previous* calendar date; `03:00+`
+ * stays on the same date. A true June 26 00:00 instant returns `2026-06-25`.
+ * Returns an empty string for an unparseable timestamp.
  */
 export function getServiceDayKey(isoUtc: string): string {
-  const date = new Date(isoUtc);
-  if (Number.isNaN(date.getTime())) {
+  const local = getLocalDateTimeParts(isoUtc);
+  if (!local) {
     return '';
   }
 
-  return date.toLocaleDateString('en-CA', {
-    timeZone: FIELD_STATUS_TIME_ZONE
-  });
+  return local.hour < SERVICE_DAY_CUTOFF_HOUR
+    ? addDaysToDateKey(local.dateKey, -1)
+    : local.dateKey;
 }
 
 function getLocalDateTimeParts(isoUtc: string): {
@@ -94,7 +96,7 @@ function addDaysToDateKey(dateKey: string, days: number): string {
 }
 
 function getTodayKey(now: Date): string {
-  return now.toLocaleDateString('en-CA', { timeZone: FIELD_STATUS_TIME_ZONE });
+  return getServiceDayKey(now.toISOString());
 }
 
 /**

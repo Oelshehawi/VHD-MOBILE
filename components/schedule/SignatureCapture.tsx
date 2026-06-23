@@ -12,6 +12,7 @@ export interface SignatureSchedule {
   jobTitle: string;
   scheduledStartAtUtc?: string;
   startDateTime?: string;
+  timeZone?: string;
 }
 
 interface SignatureCaptureProps {
@@ -63,7 +64,8 @@ export function SignatureCapture({
           technicianId: technicianId,
           signerName: signerName.trim(),
           jobTitle: schedule.jobTitle,
-          scheduledStartAtUtc
+          scheduledStartAtUtc,
+          timeZone: schedule.timeZone
         }
       ]);
 
