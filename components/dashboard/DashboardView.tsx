@@ -15,6 +15,10 @@ import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { openPhone, parseOnSiteContact } from '@/utils/contact';
 import { getRemainingTodaySchedules, openMaps } from '@/utils/dashboard';
 import {
+  getAssignedTechnicianDisplays,
+  parseAssignedTechnicians
+} from '@/utils/scheduleAssignments';
+import {
   formatScheduleDateReadable,
   formatScheduleTime,
   getScheduleSortTime,
@@ -69,17 +73,6 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   }, []);
 
   const remainingTodaySchedules = getRemainingTodaySchedules(todaySchedules, now);
-  const parseAssignedTechnicians = (assignedTechnicians: unknown): string[] => {
-    try {
-      if (typeof assignedTechnicians === 'string') {
-        const parsed = JSON.parse(assignedTechnicians);
-        return Array.isArray(parsed) ? parsed : [];
-      }
-      return Array.isArray(assignedTechnicians) ? assignedTechnicians : [];
-    } catch {
-      return [];
-    }
-  };
   const visibleTodaySchedules = remainingTodaySchedules.filter((schedule) => {
     if (isManager) return true;
     return parseAssignedTechnicians(schedule.assignedTechnicians).includes(userId);
@@ -98,6 +91,11 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
     const technicians = (() => {
       return parseAssignedTechnicians(schedule.assignedTechnicians);
     })();
+    const technicianDisplays = getAssignedTechnicianDisplays(
+      schedule.assignedTechnicians,
+      userId,
+      getTechnicianName
+    );
 
     const isAssignedToCurrentUser =
       !isManager && Array.isArray(technicians) && technicians.includes(userId);
@@ -133,9 +131,9 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
             {isManager && technicians?.length > 0 && (
               <View className='mt-2'>
                 <Text className='text-gray-500 dark:text-gray-400 text-sm'>Technicians:</Text>
-                {technicians.map((techId: string) => (
-                  <Text key={techId} className='text-gray-700 dark:text-gray-300 text-sm ml-2'>
-                    • {getTechnicianName(techId) || 'Unknown Technician'}
+                {technicianDisplays.map((technician) => (
+                  <Text key={technician.id} className='text-gray-700 dark:text-gray-300 text-sm ml-2'>
+                    • {technician.name}
                   </Text>
                 ))}
               </View>
@@ -155,35 +153,39 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
     setJobDetailVisible(true);
   };
 
-  const renderPayrollSchedule = (schedule: any) => (
-    <View key={schedule.id} className='border-b border-gray-100 dark:border-gray-800 py-3'>
-      <Text className='text-gray-900 dark:text-gray-200 font-medium'>{schedule.jobTitle}</Text>
-      <View className='flex-row justify-between mt-1'>
-        <Text className='text-gray-600 dark:text-gray-400'>
-          {formatScheduleDateReadable(schedule)}
-        </Text>
-        <Text className='text-gray-600 dark:text-gray-400'>
-          {formatHoursDisplay(getPayrollHoursForTechnician(schedule, userId))}
-        </Text>
-      </View>
-      <Text className='text-gray-500 dark:text-gray-500 text-sm mt-1'>{schedule.location}</Text>
+  const renderPayrollSchedule = (schedule: any) => {
+    const technicianDisplays = getAssignedTechnicianDisplays(
+      schedule.assignedTechnicians,
+      userId,
+      getTechnicianName
+    );
 
-      {/* Only show technicians for managers */}
-      {isManager && schedule.assignedTechnicians && (
-        <View className='mt-1'>
-          <Text className='text-gray-500 dark:text-gray-400 text-sm'>Technicians:</Text>
-          {(typeof schedule.assignedTechnicians === 'string'
-            ? JSON.parse(schedule.assignedTechnicians)
-            : schedule.assignedTechnicians
-          ).map((techId: string) => (
-            <Text key={techId} className='text-gray-600 dark:text-gray-500 text-sm ml-2'>
-              • {getTechnicianName(techId)}
-            </Text>
-          ))}
+    return (
+      <View key={schedule.id} className='border-b border-gray-100 dark:border-gray-800 py-3'>
+        <Text className='text-gray-900 dark:text-gray-200 font-medium'>{schedule.jobTitle}</Text>
+        <View className='flex-row justify-between mt-1'>
+          <Text className='text-gray-600 dark:text-gray-400'>
+            {formatScheduleDateReadable(schedule)}
+          </Text>
+          <Text className='text-gray-600 dark:text-gray-400'>
+            {formatHoursDisplay(getPayrollHoursForTechnician(schedule, userId))}
+          </Text>
         </View>
-      )}
-    </View>
-  );
+        <Text className='text-gray-500 dark:text-gray-500 text-sm mt-1'>{schedule.location}</Text>
+
+        {isManager && technicianDisplays.length > 0 && (
+          <View className='mt-1'>
+            <Text className='text-gray-500 dark:text-gray-400 text-sm'>Technicians:</Text>
+            {technicianDisplays.map((technician) => (
+              <Text key={technician.id} className='text-gray-600 dark:text-gray-500 text-sm ml-2'>
+                • {technician.name}
+              </Text>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  };
 
   return (
     <SafeAreaView edges={['top']} className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>

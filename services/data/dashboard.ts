@@ -84,6 +84,7 @@ export function usePayrollSchedules(
       s.timeZone,
       s.hours,
       s.shifts,
+      s.assignedTechnicians,
       s.location
      FROM schedules s
      WHERE ? = true

@@ -8,6 +8,8 @@ import { addDays, addWeeks, format, isSameDay, isToday, parseISO, startOfDay, st
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '@/components/ui/text';
 import type { Schedule } from '@/types';
+import { getTechnicianName } from '@/providers/PowerSyncProvider';
+import { getAssignedTechnicianDisplays } from '@/utils/scheduleAssignments';
 import {
   formatScheduleTime,
   getLocalDateKey,
@@ -22,6 +24,8 @@ interface ScheduleWeekAgendaProps {
   schedules: ReadonlyArray<Schedule>;
   onDateChange: (date: string) => void;
   onSchedulePress: (schedule: Schedule) => void;
+  currentUserId: string;
+  isManager: boolean;
 }
 
 const SWIPE_THRESHOLD = 50;
@@ -116,17 +120,42 @@ function JobProgressDots({ hasNotes, progress }: { hasNotes: boolean; progress: 
 function ScheduleRow({
   schedule,
   progress,
-  onPress
+  onPress,
+  currentUserId,
+  isManager
 }: {
   schedule: Schedule;
   progress: JobProgress;
   onPress: (schedule: Schedule) => void;
+  currentUserId: string;
+  isManager: boolean;
 }) {
   const colorScheme = useColorScheme();
   const chevronColor = colorScheme === 'dark' ? '#C9C3BA' : '#76706A';
   const status = statusLabel(schedule);
   const hasNotes =
     typeof schedule.technicianNotes === 'string' && schedule.technicianNotes.trim().length > 0;
+  const assignedWorkers = getAssignedTechnicianDisplays(
+    schedule.assignedTechnicians,
+    currentUserId,
+    getTechnicianName
+  );
+  const crewLabel = (() => {
+    if (assignedWorkers.length === 0) {
+      return null;
+    }
+
+    if (isManager) {
+      return `Assigned: ${assignedWorkers.map((worker) => worker.name).join(', ')}`;
+    }
+
+    const coworkers = assignedWorkers.filter((worker) => !worker.isCurrentUser);
+    if (coworkers.length === 0) {
+      return 'With: Just you';
+    }
+
+    return `With: ${coworkers.map((worker) => worker.name).join(', ')}`;
+  })();
 
   return (
     <Pressable
@@ -152,6 +181,14 @@ function ScheduleRow({
           <Text className='mt-1 text-xs font-medium text-gray-500' numberOfLines={1}>
             {schedule.location}
           </Text>
+          {crewLabel && (
+            <View className='mt-2 flex-row items-center gap-1.5'>
+              <Ionicons name='people-outline' size={14} color={chevronColor} />
+              <Text className='flex-1 text-xs font-semibold text-gray-600 dark:text-gray-300' numberOfLines={1}>
+                {crewLabel}
+              </Text>
+            </View>
+          )}
           <View className='mt-3 flex-row items-center justify-between gap-3'>
             <JobProgressDots hasNotes={hasNotes} progress={progress} />
             <Ionicons name='chevron-forward' size={18} color={chevronColor} />
@@ -165,10 +202,14 @@ function ScheduleRow({
 export function ScheduleAgendaList({
   schedules,
   onSchedulePress,
+  currentUserId,
+  isManager,
   emptyMessage = 'No visits scheduled for this day'
 }: {
   schedules: ReadonlyArray<Schedule>;
   onSchedulePress: (schedule: Schedule) => void;
+  currentUserId: string;
+  isManager: boolean;
   emptyMessage?: string;
 }) {
   const colorScheme = useColorScheme();
@@ -252,6 +293,8 @@ export function ScheduleAgendaList({
               schedule={schedule}
               progress={getProgress(schedule)}
               onPress={onSchedulePress}
+              currentUserId={currentUserId}
+              isManager={isManager}
             />
           ))}
         </View>
@@ -264,7 +307,9 @@ export function ScheduleWeekAgenda({
   selectedDate,
   schedules,
   onDateChange,
-  onSchedulePress
+  onSchedulePress,
+  currentUserId,
+  isManager
 }: ScheduleWeekAgendaProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -406,7 +451,12 @@ export function ScheduleWeekAgenda({
           </View>
         </View>
 
-        <ScheduleAgendaList schedules={selectedSchedules} onSchedulePress={onSchedulePress} />
+        <ScheduleAgendaList
+          schedules={selectedSchedules}
+          onSchedulePress={onSchedulePress}
+          currentUserId={currentUserId}
+          isManager={isManager}
+        />
       </Animated.View>
     </GestureDetector>
   );

@@ -165,6 +165,8 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
           selectedDate={selectedDate}
           onDateChange={handleDateSelection}
           onSchedulePress={handleSchedulePress}
+          currentUserId={userId}
+          isManager={isManager}
         />
       )}
 
@@ -185,6 +187,8 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
             <ScheduleAgendaList
               schedules={schedulesForSelectedDate}
               onSchedulePress={handleSchedulePress}
+              currentUserId={userId}
+              isManager={isManager}
             />
           </View>
         </View>

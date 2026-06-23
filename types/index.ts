@@ -133,6 +133,7 @@ export interface PayrollSchedule {
   hours: number;
   // JSON text column from PowerSync; per-worker payroll hour overrides.
   shifts?: string | ShiftType[];
+  assignedTechnicians?: string | string[];
   location: string;
 }
 
