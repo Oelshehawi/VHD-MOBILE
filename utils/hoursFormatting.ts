@@ -1,44 +1,22 @@
 /**
- * Hours formatting utilities for schedule display
+ * Hours formatting utilities for payroll display.
  */
 
-// Valid bucket values for hours display
-const HOUR_BUCKETS = [2, 4, 6, 8, 12] as const;
-type HourBucket = (typeof HOUR_BUCKETS)[number];
+function formatHoursValue(hours: number): string {
+  if (!Number.isFinite(hours)) return '0';
 
-/**
- * Round hours up to the nearest bucket value from {2, 4, 6, 8, 12}
- * @param hours - The actual hours value
- * @returns The rounded bucket value
- *
- * @example
- * roundHoursToBucket(1) // 2
- * roundHoursToBucket(3) // 4
- * roundHoursToBucket(5) // 6
- * roundHoursToBucket(7) // 8
- * roundHoursToBucket(10) // 12
- */
-export function roundHoursToBucket(hours: number): HourBucket {
-  // Handle edge cases
-  if (hours <= 0) return 2;
-  if (hours > 12) return 12;
-
-  // Find the smallest bucket that is >= hours
-  for (const bucket of HOUR_BUCKETS) {
-    if (hours <= bucket) {
-      return bucket;
-    }
-  }
-
-  // Fallback to max bucket
-  return 12;
+  const rounded = Math.round(Math.max(0, hours) * 100) / 100;
+  return Number.isInteger(rounded)
+    ? String(rounded)
+    : rounded.toFixed(2).replace(/\.?0+$/, '');
 }
 
 /**
- * Format hours for display with "h" suffix
- * @param hours - The hours value (will be bucketed)
- * @returns Formatted string like "4h"
+ * Format the actual payroll hours value with an "h" suffix.
+ *
+ * Payroll corrections can be per-worker and fractional, so this intentionally
+ * does not round to legacy schedule buckets.
  */
 export function formatHoursDisplay(hours: number): string {
-  return `${roundHoursToBucket(hours)}h`;
+  return `${formatHoursValue(hours)}h`;
 }

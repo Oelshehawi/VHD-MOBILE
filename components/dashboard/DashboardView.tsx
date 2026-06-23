@@ -9,7 +9,7 @@ import {
   useTodaySchedules
 } from '@/services/data/dashboard';
 import { formatDateShort } from '@/utils/date';
-import { roundHoursToBucket, formatHoursDisplay } from '@/utils/hoursFormatting';
+import { formatHoursDisplay } from '@/utils/hoursFormatting';
 import { getPayrollHoursForTechnician } from '@/utils/payrollHours';
 import { getTechnicianName } from '@/providers/PowerSyncProvider';
 import { openPhone, parseOnSiteContact } from '@/utils/contact';
@@ -81,7 +81,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   const nextUpContact = parseOnSiteContact(nextUpSchedule?.onSiteContact);
   const totalHours = payrollSchedules.reduce(
     (acc, schedule) =>
-      acc + roundHoursToBucket(getPayrollHoursForTechnician(schedule, userId)),
+      acc + getPayrollHoursForTechnician(schedule, userId),
     0
   );
 
@@ -360,7 +360,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
                         Total Hours
                       </Text>
                       <Text className='text-gray-900 dark:text-gray-200 text-xl font-bold'>
-                        {totalHours}h
+                        {formatHoursDisplay(totalHours)}
                       </Text>
                     </View>
                   )}
