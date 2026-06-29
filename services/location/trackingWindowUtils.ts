@@ -147,13 +147,13 @@ export function getPingIntervalSeconds(
 export function getOnSitePingIntervalSeconds(
   window: Pick<TechnicianTrackingWindow, 'onSitePingIntervalSeconds'>
 ): number {
-  const fallbackSeconds = 180;
+  const fallbackSeconds = 90;
   const value = finiteCadenceValue(window.onSitePingIntervalSeconds);
   if (value === null) {
     return fallbackSeconds;
   }
 
-  return Math.min(600, Math.max(120, Math.round(value)));
+  return Math.min(600, Math.max(60, Math.round(value)));
 }
 
 export function getDistanceIntervalMeters(

@@ -14,10 +14,12 @@ import { useRouter } from 'expo-router';
 import { useSignIn, isClerkRuntimeError } from '@clerk/clerk-expo';
 import { useLocalCredentials } from '@clerk/clerk-expo/local-credentials';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { debugLogger } from '@/utils/DebugLogger';
 
 export default function Page() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { signIn, setActive, isLoaded } = useSignIn();
   const { hasCredentials, setCredentials, authenticate, biometricType } = useLocalCredentials();
 
@@ -116,13 +118,23 @@ export default function Page() {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       className='flex-1'
     >
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }} className='bg-white dark:bg-gray-900'>
-        <View className='flex-1 mt-36 p-8'>
+      <ScrollView
+        className='bg-white dark:bg-gray-900'
+        contentContainerStyle={{
+          flexGrow: 1,
+          paddingTop: 24,
+          paddingBottom: Math.max(insets.bottom + 48, 80)
+        }}
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        keyboardShouldPersistTaps='handled'
+      >
+        <View className='flex-1 justify-center p-8'>
           <View className='mb-8 items-center'>
             <Image
               source={require('@/assets/images/icon.png')}
-              className='h-20 w-80 mb-2'
+              className='h-20 mb-2'
               resizeMode='contain'
+              style={{ width: '100%', maxWidth: 320 }}
             />
           </View>
 

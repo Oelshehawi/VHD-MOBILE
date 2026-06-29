@@ -128,7 +128,7 @@ describe('getPingIntervalSecondsForState', () => {
     expect(getPingIntervalSecondsForState(window, true)).toBe(180);
   });
 
-  it('clamps travel cadence to 300s and falls back to 180s on-site default', () => {
+  it('clamps travel cadence to 300s and falls back to 90s on-site default', () => {
     const window = persistedWindow({
       id: 'w1',
       pingIntervalSeconds: 600,
@@ -136,7 +136,7 @@ describe('getPingIntervalSecondsForState', () => {
     });
 
     expect(getPingIntervalSecondsForState(window, false)).toBe(300);
-    expect(getPingIntervalSecondsForState(window, true)).toBe(180);
+    expect(getPingIntervalSecondsForState(window, true)).toBe(90);
   });
 });
 
