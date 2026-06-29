@@ -21,6 +21,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { AvailabilityManager } from '../../components/schedule/AvailabilityManager';
 import { TimeOffManager } from '../../components/schedule/TimeOffManager';
 import { isManagerMetadata } from '../../utils/userRoles';
+import { pushNotificationService } from '../../services/notifications/PushNotificationService';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -116,6 +117,7 @@ export default function ProfileScreen() {
         return;
       }
 
+      await pushNotificationService.unregister();
       await signOut();
       await SecureStore.deleteItemAsync(USER_CACHE_KEY);
     } catch (error) {

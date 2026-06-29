@@ -153,6 +153,21 @@ export class ApiClient {
     });
   }
 
+  private isDroppableExpoPushTokenReject(
+    table: string,
+    error?: string,
+    message?: string
+  ): boolean {
+    if (table !== 'expopushtokens') return false;
+
+    const normalizedMessage = (message || '').toLowerCase();
+    return (
+      error === 'STALE_PUSH_TOKEN_USER_MISMATCH' ||
+      normalizedMessage.includes('userid must match the authenticated user') ||
+      normalizedMessage.includes('your own push token')
+    );
+  }
+
   private async requestSync(
     method: SyncHttpMethod,
     payload: {
@@ -179,7 +194,9 @@ export class ApiClient {
       const message = parsedBody.message;
 
       let outcome: SyncOutcome = 'success';
-      if (response.status === 401 || response.status === 403) {
+      if (this.isDroppableExpoPushTokenReject(table, error, message)) {
+        outcome = 'business_reject';
+      } else if (response.status === 401 || response.status === 403) {
         outcome = 'auth_pause';
       } else if (response.status === 429 || response.status >= 500) {
         outcome = 'retryable_error';

@@ -39,6 +39,12 @@ class PushNotificationService {
   async initialize(userId: string, powerSync: AbstractPowerSyncDatabase): Promise<void> {
     debugLogger.info('PUSH', 'Initializing push notification service');
 
+    if (this.userId && this.userId !== userId) {
+      await this.unregister();
+    } else {
+      this.removeNotificationListeners();
+    }
+
     this.userId = userId;
     this.powerSync = powerSync;
 
@@ -121,6 +127,11 @@ class PushNotificationService {
     }
 
     try {
+      await this.powerSync.execute('DELETE FROM expopushtokens WHERE token = ? AND userId != ?', [
+        token,
+        userId
+      ]);
+
       // Check if token already exists for this user
       const existing = await this.powerSync.getAll(
         'SELECT * FROM expopushtokens WHERE userId = ? AND token = ?',
@@ -131,9 +142,11 @@ class PushNotificationService {
       const deviceName = Device.deviceName || 'Unknown Device';
 
       if (existing.length > 0) {
-        // Token already registered, no update needed
-        // (Expo tokens don't expire, only change on reinstall)
-        debugLogger.debug('PUSH', 'Push token already registered');
+        await this.powerSync.execute(
+          'UPDATE expopushtokens SET platform = ?, deviceName = ?, lastUsedAt = ?, updatedAt = ? WHERE userId = ? AND token = ?',
+          [Platform.OS, deviceName, now, now, userId, token]
+        );
+        debugLogger.debug('PUSH', 'Push token already registered; refreshed metadata');
       } else {
         // Insert new token with default preferences (both enabled)
         // Use MongoDB ObjectId format (same as photos)
@@ -159,6 +172,17 @@ class PushNotificationService {
       debugLogger.error('PUSH', 'Failed to save token to database', {
         error
       });
+    }
+  }
+
+  private removeNotificationListeners(): void {
+    if (this.notificationListener) {
+      this.notificationListener.remove();
+      this.notificationListener = null;
+    }
+    if (this.responseListener) {
+      this.responseListener.remove();
+      this.responseListener = null;
     }
   }
 
@@ -210,24 +234,16 @@ class PushNotificationService {
    * Unregister push token (e.g., on sign out)
    */
   async unregister(): Promise<void> {
-    if (!this.powerSync || !this.userId || !this.expoPushToken) {
-      return;
-    }
-
     try {
-      // Delete token from PowerSync (will sync to backend)
-      await this.powerSync.execute('DELETE FROM expopushtokens WHERE userId = ? AND token = ?', [
-        this.userId,
-        this.expoPushToken
-      ]);
+      if (this.powerSync && this.userId && this.expoPushToken) {
+        // Delete token from PowerSync (will sync to backend)
+        await this.powerSync.execute('DELETE FROM expopushtokens WHERE userId = ? AND token = ?', [
+          this.userId,
+          this.expoPushToken
+        ]);
+      }
 
-      // Clean up listeners
-      if (this.notificationListener) {
-        this.notificationListener.remove();
-      }
-      if (this.responseListener) {
-        this.responseListener.remove();
-      }
+      this.removeNotificationListeners();
 
       this.expoPushToken = null;
       this.userId = null;

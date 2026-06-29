@@ -265,6 +265,10 @@ export class BackendConnector implements PowerSyncBackendConnector {
         error: result.error,
         message: result.message
       });
+      if (table === 'expopushtokens') {
+        return;
+      }
+
       SyncEventBus.emit({
         type: 'business_reject',
         table,

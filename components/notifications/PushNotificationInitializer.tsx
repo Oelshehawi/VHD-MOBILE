@@ -26,11 +26,9 @@ export function PushNotificationInitializer() {
 
     // Cleanup on unmount or user change
     return () => {
-      if (!user?.id) {
-        pushNotificationService.unregister().catch((err) => {
-          debugLogger.error('PUSH', 'Failed to unregister push notifications', { error: err });
-        });
-      }
+      pushNotificationService.unregister().catch((err) => {
+        debugLogger.error('PUSH', 'Failed to unregister push notifications', { error: err });
+      });
     };
   }, [isInitialized, user?.id, powerSync]);
 
