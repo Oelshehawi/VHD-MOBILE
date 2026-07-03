@@ -25,7 +25,6 @@ import type {
   ReportStatus,
   TriState
 } from '@/types/report';
-import { ReasonChipRow } from '@/components/forms/ReasonChipRow';
 import { calculateActualServiceDurationMinutes } from '@/utils/scheduleTime';
 import { resolveReportDateCompleted } from '@/utils/reportCompletion';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
@@ -35,7 +34,6 @@ type ReportFormValues = {
   greaseLevel: number;
   deficiencyTags: DeficiencyKey[];
   deficiencyNotes: string;
-  recommendedCleaningFrequency?: number;
   recommendations?: string;
 };
 
@@ -48,17 +46,10 @@ const INSPECTION_ITEM_OPTIONS: ReadonlyArray<{
   { key: 'hoodInteriorCleaned', label: 'Hood interior cleaned' },
   { key: 'plenumCleaned', label: 'Plenum cleaned' },
   { key: 'filtersCleanedScope', label: 'Filters cleaned in scope' },
-  { key: 'ductCleaned', label: 'Duct cleaned' },
+  { key: 'ductCleaned', label: 'Accessible Duct Cleaned' },
   { key: 'adequateAccessPanels', label: 'Access panels adequate' },
   { key: 'exhaustFanCleaned', label: 'Exhaust fan cleaned' },
   { key: 'fireSuppressionNozzlesClear', label: 'Fire suppression nozzles clear' }
-];
-
-const FREQUENCY_OPTIONS: ReadonlyArray<{ value: number; label: string }> = [
-  { value: 1, label: '1x per year' },
-  { value: 2, label: '2x per year' },
-  { value: 3, label: '3x per year' },
-  { value: 4, label: '4x per year' }
 ];
 
 const DEFICIENCY_OPTIONS: ReadonlyArray<{ value: DeficiencyKey; label: string }> = [
@@ -211,7 +202,6 @@ export function ReportCloseoutContent({
         greaseLevel: 3,
         deficiencyTags: [],
         deficiencyNotes: '',
-        recommendedCleaningFrequency: undefined,
         recommendations: ''
       };
     }
@@ -246,7 +236,6 @@ export function ReportCloseoutContent({
       greaseLevel: report.greaseLevel ?? 3,
       deficiencyTags: deficiencies.tags ?? [],
       deficiencyNotes: deficiencies.notes ?? '',
-      recommendedCleaningFrequency: report.recommendedCleaningFrequency ?? undefined,
       recommendations: report.recommendations ?? report.comments ?? ''
     };
   };
@@ -296,7 +285,6 @@ export function ReportCloseoutContent({
       jobTitle,
       location,
       inspectionItems: normalizeInspectionItems(values.inspectionItems),
-      recommendedCleaningFrequency: values.recommendedCleaningFrequency,
       recommendations: values.recommendations?.trim() || undefined,
       greaseLevel: values.greaseLevel,
       deficiencies
@@ -366,12 +354,11 @@ export function ReportCloseoutContent({
                     reportStatus,
                     jobTitle,
                     location,
-                    recommendedCleaningFrequency,
                     inspectionItems,
                     greaseLevel,
                     deficiencies,
                     recommendations
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             reportId,
             payload.scheduleId,
@@ -381,7 +368,6 @@ export function ReportCloseoutContent({
             payload.reportStatus,
             payload.jobTitle,
             payload.location,
-            payload.recommendedCleaningFrequency ?? null,
             JSON.stringify(payload.inspectionItems),
             payload.greaseLevel ?? null,
             payload.deficiencies ? JSON.stringify(payload.deficiencies) : null,
@@ -488,25 +474,6 @@ export function ReportCloseoutContent({
                     <Text className='mt-1 text-xs text-red-600'>{fieldState.error.message}</Text>
                   )}
                 </>
-              )}
-            />
-          </View>
-
-          <View className='mt-8'>
-            <Text className='text-xl font-semibold text-gray-900 dark:text-white'>
-              Recommended Cleaning Frequency
-            </Text>
-            <Controller
-              control={control}
-              name='recommendedCleaningFrequency'
-              render={({ field: { onChange, value } }) => (
-                <View className='mt-3'>
-                  <ReasonChipRow<number>
-                    options={FREQUENCY_OPTIONS}
-                    value={value}
-                    onChange={onChange}
-                  />
-                </View>
               )}
             />
           </View>
