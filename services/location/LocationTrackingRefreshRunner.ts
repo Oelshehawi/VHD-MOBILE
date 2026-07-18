@@ -4,6 +4,7 @@ import { locationTrackingCoordinator } from '@/services/location/LocationTrackin
 import { debugLogger } from '@/utils/DebugLogger';
 import { system as powerSyncSystem } from '@/services/database/System';
 import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 export type LocationRefreshTrigger =
   | 'foreground'
@@ -28,13 +29,13 @@ async function resolveTechnicianId(): Promise<string | null> {
     const clerk = getClerkInstance({
       publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
     });
-    const userId = clerk?.user?.id ?? null;
+    const fieldStaffId = getMobileStaffIdentity(clerk?.user?.publicMetadata)?.fieldStaffId;
     const isManager = isManagerMetadata(clerk?.user?.publicMetadata);
     const isFieldTracker = isFieldTrackerMetadata(clerk?.user?.publicMetadata) && !isManager;
-    if (!userId || !isFieldTracker) {
+    if (!fieldStaffId || !isFieldTracker) {
       return null;
     }
-    return userId;
+    return fieldStaffId;
   } catch {
     return null;
   }

@@ -12,7 +12,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, usePowerSync } from '@powersync/react-native';
-import { useUser } from '@clerk/clerk-expo';
 import { DateRangeSelector } from './DateRangeSelector';
 import { TimeOffRequestItem } from './TimeOffRequestItem';
 import { ConfirmationModal } from '../common/ConfirmationModal';
@@ -30,8 +29,10 @@ interface TimeOffFormData {
  * TimeOffManager Component
  * Main screen for managing time-off requests
  */
-export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNavigateBack }) => {
-  const { user } = useUser();
+export const TimeOffManager: React.FC<{
+  fieldStaffId: string;
+  onNavigateBack?: () => void;
+}> = ({ fieldStaffId, onNavigateBack }) => {
   const insets = useSafeAreaInsets();
   const powerSync = usePowerSync();
   const colorScheme = useColorScheme();
@@ -52,7 +53,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
   // Fetch time-off requests from PowerSync
   const { data: requestsData } = useQuery(
     `SELECT * FROM timeoffrequests WHERE technicianId = ? ORDER BY startDate DESC`,
-    [user?.id || '']
+    [fieldStaffId]
   );
   const requests = (requestsData as TimeOffRequest[]) || [];
   const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
@@ -106,7 +107,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
 
   // Submit to PowerSync only (BackendConnector handles API sync)
   const submitRequest = async () => {
-    if (!user?.id || !formData.startDate || !formData.endDate) return;
+    if (!fieldStaffId || !formData.startDate || !formData.endDate) return;
 
     setIsSaving(true);
     try {
@@ -123,7 +124,7 @@ export const TimeOffManager: React.FC<{ onNavigateBack?: () => void }> = ({ onNa
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             generateObjectId(),
-            user.id,
+            fieldStaffId,
             formData.startDate,
             formData.endDate,
             formData.reason,

@@ -1,6 +1,10 @@
 import { getClerkInstance } from '@clerk/clerk-expo';
 import * as SecureStore from 'expo-secure-store';
 import { debugLogger } from '@/utils/DebugLogger';
+import {
+  hasPowerSyncStaffIdentityClaims,
+  parsePowerSyncTokenPayload
+} from '@/utils/powerSyncToken';
 
 const BACKGROUND_TOKEN_CACHE_KEY = 'vhd_background_powersync_token_cache';
 const BACKGROUND_TOKEN_TTL_MS = 25 * 60 * 1000;
@@ -12,23 +16,8 @@ interface CachedBackgroundToken {
 }
 
 function getJwtExpiryMs(token: string): number | null {
-  const parts = token.split('.');
-  if (parts.length !== 3) return null;
-  try {
-    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = payload + '='.repeat((4 - (payload.length % 4)) % 4);
-    const json = JSON.parse(
-      typeof atob === 'function'
-        ? atob(padded)
-        : Buffer.from(padded, 'base64').toString('utf8')
-    );
-    if (typeof json?.exp === 'number') {
-      return json.exp * 1000;
-    }
-    return null;
-  } catch {
-    return null;
-  }
+  const payload = parsePowerSyncTokenPayload(token);
+  return typeof payload?.exp === 'number' ? payload.exp * 1000 : null;
 }
 
 function parseCachedToken(rawValue: string | null): CachedBackgroundToken | null {
@@ -79,11 +68,14 @@ export async function getForegroundPowerSyncToken(): Promise<string | null> {
 
     const token = await clerk.session.getToken({
       template: 'Powersync',
-      skipCache: false
+      skipCache: true
     });
 
-    if (!token) {
-      debugLogger.warn('AUTH', 'BackgroundAuth: foreground PowerSync token unavailable');
+    if (!token || !hasPowerSyncStaffIdentityClaims(token)) {
+      debugLogger.warn(
+        'AUTH',
+        'BackgroundAuth: fresh PowerSync token missing staff identity claims'
+      );
       return null;
     }
 
@@ -97,8 +89,8 @@ export async function getForegroundPowerSyncToken(): Promise<string | null> {
 }
 
 export async function cacheBackgroundToken(token: string): Promise<void> {
-  if (!token) {
-    debugLogger.warn('AUTH', 'BackgroundAuth: skipping cache write due to empty token');
+  if (!token || !hasPowerSyncStaffIdentityClaims(token)) {
+    debugLogger.warn('AUTH', 'BackgroundAuth: skipping invalid PowerSync token cache write');
     return;
   }
 
@@ -134,6 +126,12 @@ export async function getBackgroundToken(): Promise<string | null> {
 
     if (!isCachedTokenFresh(cachedToken)) {
       debugLogger.warn('AUTH', 'BackgroundAuth: cached background token expired');
+      await clearBackgroundToken();
+      return null;
+    }
+
+    if (!hasPowerSyncStaffIdentityClaims(cachedToken.token)) {
+      debugLogger.warn('AUTH', 'BackgroundAuth: cached token lacks staff identity claims');
       await clearBackgroundToken();
       return null;
     }

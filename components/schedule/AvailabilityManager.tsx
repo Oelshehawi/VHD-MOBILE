@@ -12,7 +12,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { useQuery, usePowerSync } from '@powersync/react-native';
-import { useUser } from '@clerk/clerk-expo';
 import { TimePickerInput } from './TimePickerInput';
 import { DatePickerInput } from './DatePickerInput';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
@@ -40,10 +39,10 @@ interface AvailabilityFormData {
  * AvailabilityManager Component
  * Main screen for managing technician unavailable-time blocks
  */
-export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
-  onNavigateBack
-}) => {
-  const { user } = useUser();
+export const AvailabilityManager: React.FC<{
+  fieldStaffId: string;
+  onNavigateBack?: () => void;
+}> = ({ fieldStaffId, onNavigateBack }) => {
   const insets = useSafeAreaInsets();
   const powerSync = usePowerSync();
   const colorScheme = useColorScheme();
@@ -69,7 +68,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
   // Fetch unavailable blocks from PowerSync
   const { data: availabilityData } = useQuery(
     `SELECT * FROM availabilities WHERE technicianId = ? ORDER BY createdAt DESC`,
-    [user?.id || '']
+    [fieldStaffId]
   );
   const availability = (availabilityData as Availability[]) || [];
 
@@ -145,7 +144,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
 
   // Submit to PowerSync only (no API call)
   const submitAvailability = async () => {
-    if (!user?.id) return;
+    if (!fieldStaffId) return;
 
     setIsSaving(true);
     try {
@@ -173,7 +172,7 @@ export const AvailabilityManager: React.FC<{ onNavigateBack?: () => void }> = ({
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             generateObjectId(),
-            user.id,
+            fieldStaffId,
             formData.isRecurring ? (formData.dayOfWeek ?? null) : null,
             formData.startTime,
             formData.endTime,

@@ -22,6 +22,7 @@ import { AvailabilityManager } from '../../components/schedule/AvailabilityManag
 import { TimeOffManager } from '../../components/schedule/TimeOffManager';
 import { isManagerMetadata } from '../../utils/userRoles';
 import { pushNotificationService } from '../../services/notifications/PushNotificationService';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 const USER_CACHE_KEY = 'vhd_user_cache';
 
@@ -41,6 +42,7 @@ export default function ProfileScreen() {
 
   // Debug screens are manager-only
   const isManager = isManagerMetadata(user?.publicMetadata);
+  const identity = getMobileStaffIdentity(user?.publicMetadata);
 
   // Handle secret tap gesture on Version
   const handleVersionTap = useCallback(() => {
@@ -189,27 +191,29 @@ export default function ProfileScreen() {
             email={displayUser.email || displayUser.primaryEmailAddress?.emailAddress}
           />
 
-          <Card className='mb-4'>
-            <CardHeader>
-              <CardTitle>Work</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <View className='gap-3'>
-                <WorkRow
-                  icon='calendar-outline'
-                  label='Unavailable Time'
-                  detail='Block days or hours you cannot work'
-                  onPress={() => setShowAvailabilityModal(true)}
-                />
-                <WorkRow
-                  icon='time-outline'
-                  label='Time Off'
-                  detail='Request time away and review status'
-                  onPress={() => setShowTimeOffModal(true)}
-                />
-              </View>
-            </CardContent>
-          </Card>
+          {identity?.fieldStaffId ? (
+            <Card className='mb-4'>
+              <CardHeader>
+                <CardTitle>Work</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <View className='gap-3'>
+                  <WorkRow
+                    icon='calendar-outline'
+                    label='Unavailable Time'
+                    detail='Block days or hours you cannot work'
+                    onPress={() => setShowAvailabilityModal(true)}
+                  />
+                  <WorkRow
+                    icon='time-outline'
+                    label='Time Off'
+                    detail='Request time away and review status'
+                    onPress={() => setShowTimeOffModal(true)}
+                  />
+                </View>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card className='mb-4'>
             <CardHeader>
@@ -266,7 +270,10 @@ export default function ProfileScreen() {
         animationType='slide'
         onRequestClose={() => setShowAvailabilityModal(false)}
       >
-        <AvailabilityManager onNavigateBack={() => setShowAvailabilityModal(false)} />
+        <AvailabilityManager
+          fieldStaffId={identity?.fieldStaffId ?? ''}
+          onNavigateBack={() => setShowAvailabilityModal(false)}
+        />
       </Modal>
 
       <Modal
@@ -274,7 +281,10 @@ export default function ProfileScreen() {
         animationType='slide'
         onRequestClose={() => setShowTimeOffModal(false)}
       >
-        <TimeOffManager onNavigateBack={() => setShowTimeOffModal(false)} />
+        <TimeOffManager
+          fieldStaffId={identity?.fieldStaffId ?? ''}
+          onNavigateBack={() => setShowTimeOffModal(false)}
+        />
       </Modal>
     </SafeAreaView>
   );

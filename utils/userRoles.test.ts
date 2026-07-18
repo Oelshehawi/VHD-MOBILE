@@ -20,10 +20,10 @@ describe('user role metadata helpers', () => {
     expect(getStaffRole({ isTechnician: true })).toBe('technician');
   });
 
-  it('does not treat helpers or operators as hour viewers', () => {
+  it('allows managers and field staff to view hours', () => {
     expect(canViewHoursMetadata({ role: 'manager' })).toBe(true);
     expect(canViewHoursMetadata({ role: 'technician' })).toBe(true);
-    expect(canViewHoursMetadata({ role: 'helper' })).toBe(false);
+    expect(canViewHoursMetadata({ role: 'helper' })).toBe(true);
     expect(canViewHoursMetadata({ role: 'operator' })).toBe(false);
   });
 

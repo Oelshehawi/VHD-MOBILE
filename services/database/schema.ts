@@ -155,7 +155,7 @@ const payrollperiods = new Table(
 const availabilities = new Table(
   {
     // id column (text) is automatically included
-    technicianId: column.text, // Clerk user ID
+    technicianId: column.text, // Technician _id
     dayOfWeek: column.integer, // 0-6 for recurring patterns (nullable)
     startTime: column.text, // HH:mm format
     endTime: column.text, // HH:mm format
@@ -171,14 +171,14 @@ const availabilities = new Table(
 const timeoffrequests = new Table(
   {
     // id column (text) is automatically included
-    technicianId: column.text, // Clerk user ID
+    technicianId: column.text, // Technician _id
     startDate: column.text, // ISO date string
     endDate: column.text, // ISO date string
     reason: column.text,
     status: column.text, // "pending" | "approved" | "rejected"
     requestedAt: column.text, // ISO datetime
     reviewedAt: column.text, // ISO datetime (nullable)
-    reviewedBy: column.text, // Admin Clerk ID (nullable)
+    reviewedBy: column.text, // AppUser _id (nullable)
     notes: column.text // Admin notes (nullable)
   },
   { indexes: { technicians: ['technicianId'] } }
@@ -187,7 +187,7 @@ const timeoffrequests = new Table(
 const expopushtokens = new Table(
   {
     // id column (text) is automatically included
-    userId: column.text, // Clerk user ID
+    userId: column.text, // AppUser _id
     token: column.text, // ExponentPushToken[xxx]
     platform: column.text, // 'ios' | 'android'
     deviceName: column.text, // Device identifier
@@ -200,15 +200,14 @@ const expopushtokens = new Table(
   { indexes: { users: ['userId'] } }
 );
 
-const technicians = new Table(
+const fieldstaff = new Table(
   {
     // id column (text) is automatically included
-    clerkUserId: column.text,
     name: column.text,
     fieldRole: column.text,
     isActive: column.integer
   },
-  { indexes: { clerkUsers: ['clerkUserId'] } }
+  { indexes: { activeStaff: ['isActive'] } }
 );
 
 const techniciantrackingwindows = new Table(
@@ -250,25 +249,25 @@ const courseassignments = new Table(
   {
     // id column (text) is automatically included
     courseSlug: column.text,
-    clerkUserId: column.text, // Clerk user ID (owner)
+    appUserId: column.text,
     assignedByUserId: column.text,
     assignedAt: column.text, // ISO datetime
     status: column.text // 'assigned' | 'completed'
   },
-  { indexes: { users: ['clerkUserId'], courses: ['courseSlug'] } }
+  { indexes: { users: ['appUserId'], courses: ['courseSlug'] } }
 );
 
 const courseprogress = new Table(
   {
     // id column (text) is automatically included
     courseSlug: column.text,
-    clerkUserId: column.text, // Clerk user ID (owner)
+    appUserId: column.text,
     completedSectionIds: column.text, // JSON string array of section ids
     lastSectionId: column.text,
     lastVisitedAt: column.text, // ISO datetime
     completedAt: column.text // ISO datetime (nullable)
   },
-  { indexes: { users: ['clerkUserId'], courses: ['courseSlug'] } }
+  { indexes: { users: ['appUserId'], courses: ['courseSlug'] } }
 );
 
 // Add the attachments table from PowerSync
@@ -280,7 +279,7 @@ export const AppSchema = new Schema({
   availabilities,
   timeoffrequests,
   expopushtokens,
-  technicians,
+  fieldstaff,
   techniciantrackingwindows,
   photos,
   reports,
@@ -344,7 +343,8 @@ export type Availability = Database['availabilities'];
 export type TimeOffRequest = Database['timeoffrequests'];
 export type Report = Database['reports'];
 export type ExpoPushToken = Database['expopushtokens'];
-export type Technician = Database['technicians'];
+export type FieldStaff = Database['fieldstaff'];
+export type Technician = FieldStaff;
 export type TechnicianTrackingWindow = Database['techniciantrackingwindows'];
 export type CourseAssignmentRow = Database['courseassignments'];
 export type CourseProgressRow = Database['courseprogress'];

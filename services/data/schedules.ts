@@ -2,12 +2,12 @@ import { useQuery } from '@powersync/react-native';
 import { Schedule, InvoiceType } from '@/types';
 import { ASSIGNED_TO_USER_CLAUSE } from './sqlFragments';
 
-export function useSchedules(isManager: boolean, userId: string | null | undefined) {
+export function useSchedules(isManager: boolean, fieldStaffId: string | null | undefined) {
   return useQuery<Schedule>(
     `SELECT * FROM schedules
      WHERE (? = true OR (${ASSIGNED_TO_USER_CLAUSE}))
      ORDER BY scheduledStartAtUtc ASC`,
-    [isManager, userId ?? '']
+    [isManager, fieldStaffId ?? '']
   );
 }
 

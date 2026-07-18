@@ -5,6 +5,7 @@ import { usePowerSyncStatus } from '@/providers/PowerSyncProvider';
 import { hasRelevantLocationPermissionWindow } from '@/components/location/locationPermissionEligibility';
 import type { TechnicianTrackingWindow } from '@/types';
 import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 export interface UpcomingTrackingWindow {
   isReady: boolean;
@@ -16,13 +17,15 @@ export interface UpcomingTrackingWindow {
 // consumed by both LocationPermissionGate and BatteryOptimizationGate. Keeps the
 // two PowerSync queries and the eligibility check in one place.
 export function useUpcomingTrackingWindow(): UpcomingTrackingWindow {
-  const { isLoaded, isSignedIn, userId } = useAuth();
+  const { isLoaded, isSignedIn } = useAuth();
   const { isLoaded: isUserLoaded, user } = useUser();
   const { isInitialized } = usePowerSyncStatus();
 
   const isManager = isManagerMetadata(user?.publicMetadata);
   const isFieldTracker = isFieldTrackerMetadata(user?.publicMetadata) && !isManager;
-  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isFieldTracker;
+  const fieldStaffId = getMobileStaffIdentity(user?.publicMetadata)?.fieldStaffId;
+  const isReady =
+    isLoaded && isUserLoaded && isSignedIn && isInitialized && isFieldTracker && !!fieldStaffId;
 
   const windowsQuery = useQuery<TechnicianTrackingWindow>(
     isReady
@@ -31,7 +34,7 @@ export function useUpcomingTrackingWindow(): UpcomingTrackingWindow {
            AND status IN ('planned', 'active')
          ORDER BY startsAtUtc ASC`
       : `SELECT * FROM techniciantrackingwindows WHERE 0`,
-    [userId || ''],
+    [fieldStaffId || ''],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
   const completedSchedulesQuery = useQuery<{ id?: string | null }>(

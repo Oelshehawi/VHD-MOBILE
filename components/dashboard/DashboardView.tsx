@@ -31,13 +31,13 @@ import { JobDetailModal } from '@/components/schedule/JobDetailModal';
 import type { Schedule } from '@/types';
 
 interface DashboardViewProps {
-  userId: string;
+  fieldStaffId: string;
   isManager: boolean;
   /** Whether the user's role may ever view hours. The approval gate is layered on top. */
   canViewHoursRole: boolean;
 }
 
-export function DashboardView({ userId, isManager, canViewHoursRole }: DashboardViewProps) {
+export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: DashboardViewProps) {
   const [showSchedules, setShowSchedules] = useState(false);
   const [showThemeModal, setShowThemeModal] = useState(false);
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -60,7 +60,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   const { data: payrollSchedules = [] } = usePayrollSchedules(
     featuredPeriod?.id,
     isManager,
-    userId,
+    fieldStaffId,
     hoursVisible
   );
   const sortedPayrollSchedules = useMemo(
@@ -76,14 +76,14 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   const remainingTodaySchedules = getRemainingTodaySchedules(todaySchedules, now);
   const visibleTodaySchedules = remainingTodaySchedules.filter((schedule) => {
     if (isManager) return true;
-    return parseAssignedTechnicians(schedule.assignedTechnicians).includes(userId);
+    return parseAssignedTechnicians(schedule.assignedTechnicians).includes(fieldStaffId);
   });
   const nextUpSchedule = visibleTodaySchedules[0] ?? null;
   const nextUpContact = parseOnSiteContact(nextUpSchedule?.onSiteContact);
   const nextUpCrew = nextUpSchedule
     ? getAssignedTechnicianDisplays(
         nextUpSchedule.assignedTechnicians,
-        userId,
+        fieldStaffId,
         resolveTechnicianName
       )
     : [];
@@ -101,7 +101,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   })();
   const totalHours = payrollSchedules.reduce(
     (acc, schedule) =>
-      acc + getPayrollHoursForTechnician(schedule, userId),
+      acc + getPayrollHoursForTechnician(schedule, fieldStaffId),
     0
   );
 
@@ -113,7 +113,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
     })();
     const technicianDisplays = getAssignedTechnicianDisplays(
       schedule.assignedTechnicians,
-      userId,
+      fieldStaffId,
       resolveTechnicianName
     );
     const crewLabel = (() => {
@@ -126,7 +126,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
     })();
 
     const isAssignedToCurrentUser =
-      !isManager && Array.isArray(technicians) && technicians.includes(userId);
+      !isManager && Array.isArray(technicians) && technicians.includes(fieldStaffId);
 
     // Only show jobs assigned to the technician when in technician mode
     if (!isManager && !isAssignedToCurrentUser) {
@@ -191,7 +191,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
   const renderPayrollSchedule = (schedule: any) => {
     const technicianDisplays = getAssignedTechnicianDisplays(
       schedule.assignedTechnicians,
-      userId,
+      fieldStaffId,
       resolveTechnicianName
     );
 
@@ -203,7 +203,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
             {formatScheduleDateReadable(schedule)}
           </Text>
           <Text className='text-gray-600 dark:text-gray-400'>
-            {formatHoursDisplay(getPayrollHoursForTechnician(schedule, userId))}
+            {formatHoursDisplay(getPayrollHoursForTechnician(schedule, fieldStaffId))}
           </Text>
         </View>
         <Text className='text-gray-500 dark:text-gray-500 text-sm mt-1'>{schedule.location}</Text>
@@ -479,7 +479,7 @@ export function DashboardView({ userId, isManager, canViewHoursRole }: Dashboard
           visible={jobDetailVisible}
           onClose={() => setJobDetailVisible(false)}
           scheduleId={selectedSchedule.id}
-          technicianId={userId}
+          technicianId={fieldStaffId}
           isManager={isManager}
         />
       )}

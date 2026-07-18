@@ -17,6 +17,7 @@ import {
   isSectionAccessible
 } from '../../../services/data/courses';
 import type { LessonBlock } from '../../../services/courses/catalog';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 // Sentinel embed used in the catalog until a real video url is swapped in.
 // Render it as "coming soon" instead of loading a broken WebView.
@@ -186,6 +187,7 @@ export default function LessonScreen() {
     sectionId: string;
   }>();
   const { user } = useUser();
+  const identity = getMobileStaffIdentity(user?.publicMetadata);
   const { colorScheme } = useTheme();
   const isDark = colorScheme === 'dark';
 
@@ -194,9 +196,9 @@ export default function LessonScreen() {
     [slug, sectionId]
   );
 
-  const { assigned, isLoading } = useAssignedCourse(user?.id, slug ?? '');
+  const { assigned, isLoading } = useAssignedCourse(identity?.appUserId, slug ?? '');
   const { markSectionVisited, markSectionComplete } = useCourseProgressMutations(
-    user?.id
+    identity?.appUserId
   );
 
   const completedSectionIds = assigned?.progress.completedSectionIds ?? [];

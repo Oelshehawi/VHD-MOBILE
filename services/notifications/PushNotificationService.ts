@@ -23,7 +23,7 @@ class PushNotificationService {
   private notificationListener: Notifications.EventSubscription | null = null;
   private responseListener: Notifications.EventSubscription | null = null;
   private powerSync: AbstractPowerSyncDatabase | null = null;
-  private userId: string | null = null;
+  private appUserId: string | null = null;
 
   static getInstance(): PushNotificationService {
     if (!PushNotificationService.instance) {
@@ -36,16 +36,16 @@ class PushNotificationService {
    * Initialize push notification service
    * Should be called after user authentication
    */
-  async initialize(userId: string, powerSync: AbstractPowerSyncDatabase): Promise<void> {
+  async initialize(appUserId: string, powerSync: AbstractPowerSyncDatabase): Promise<void> {
     debugLogger.info('PUSH', 'Initializing push notification service');
 
-    if (this.userId && this.userId !== userId) {
+    if (this.appUserId && this.appUserId !== appUserId) {
       await this.unregister();
     } else {
       this.removeNotificationListeners();
     }
 
-    this.userId = userId;
+    this.appUserId = appUserId;
     this.powerSync = powerSync;
 
     // Configure notification handler for foreground notifications
@@ -63,7 +63,7 @@ class PushNotificationService {
 
     if (token) {
       this.expoPushToken = token;
-      await this.saveTokenToDatabase(userId, token);
+      await this.saveTokenToDatabase(appUserId, token);
     }
 
     // Set up notification listeners
@@ -120,7 +120,7 @@ class PushNotificationService {
   /**
    * Save push token to PowerSync database (auto-syncs to backend)
    */
-  private async saveTokenToDatabase(userId: string, token: string): Promise<void> {
+  private async saveTokenToDatabase(appUserId: string, token: string): Promise<void> {
     if (!this.powerSync) {
       debugLogger.error('PUSH', 'PowerSync not initialized');
       return;
@@ -129,13 +129,13 @@ class PushNotificationService {
     try {
       await this.powerSync.execute('DELETE FROM expopushtokens WHERE token = ? AND userId != ?', [
         token,
-        userId
+        appUserId
       ]);
 
       // Check if token already exists for this user
       const existing = await this.powerSync.getAll(
         'SELECT * FROM expopushtokens WHERE userId = ? AND token = ?',
-        [userId, token]
+        [appUserId, token]
       );
 
       const now = new Date().toISOString();
@@ -144,7 +144,7 @@ class PushNotificationService {
       if (existing.length > 0) {
         await this.powerSync.execute(
           'UPDATE expopushtokens SET platform = ?, deviceName = ?, lastUsedAt = ?, updatedAt = ? WHERE userId = ? AND token = ?',
-          [Platform.OS, deviceName, now, now, userId, token]
+          [Platform.OS, deviceName, now, now, appUserId, token]
         );
         debugLogger.debug('PUSH', 'Push token already registered; refreshed metadata');
       } else {
@@ -155,7 +155,7 @@ class PushNotificationService {
           'INSERT INTO expopushtokens (id, userId, token, platform, deviceName, notifyNewJobs, notifyScheduleChanges, lastUsedAt, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
           [
             id,
-            userId,
+            appUserId,
             token,
             Platform.OS,
             deviceName,
@@ -235,10 +235,10 @@ class PushNotificationService {
    */
   async unregister(): Promise<void> {
     try {
-      if (this.powerSync && this.userId && this.expoPushToken) {
+      if (this.powerSync && this.appUserId && this.expoPushToken) {
         // Delete token from PowerSync (will sync to backend)
         await this.powerSync.execute('DELETE FROM expopushtokens WHERE userId = ? AND token = ?', [
-          this.userId,
+          this.appUserId,
           this.expoPushToken
         ]);
       }
@@ -246,7 +246,7 @@ class PushNotificationService {
       this.removeNotificationListeners();
 
       this.expoPushToken = null;
-      this.userId = null;
+      this.appUserId = null;
       this.powerSync = null;
 
       debugLogger.info('PUSH', 'Push notifications unregistered');

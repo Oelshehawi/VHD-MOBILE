@@ -8,11 +8,13 @@ import {
   useAssignedCourse,
   isSectionAccessible
 } from '../../services/data/courses';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 export default function CourseSectionListScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const { user } = useUser();
-  const { assigned, isLoading } = useAssignedCourse(user?.id, slug ?? '');
+  const identity = getMobileStaffIdentity(user?.publicMetadata);
+  const { assigned, isLoading } = useAssignedCourse(identity?.appUserId, slug ?? '');
 
   const completedSectionIds = assigned?.progress.completedSectionIds ?? [];
 

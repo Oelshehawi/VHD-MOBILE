@@ -12,7 +12,7 @@ import {
 interface CourseAssignmentRow {
   id: string;
   courseSlug: string;
-  clerkUserId: string;
+  appUserId: string;
   assignedByUserId: string;
   assignedAt: string;
   status: string;
@@ -21,7 +21,7 @@ interface CourseAssignmentRow {
 interface CourseProgressRow {
   id: string;
   courseSlug: string;
-  clerkUserId: string;
+  appUserId: string;
   completedSectionIds: string | null;
   lastSectionId: string | null;
   lastVisitedAt: string | null;
@@ -80,21 +80,21 @@ function toParsedProgress(row?: CourseProgressRow): ParsedCourseProgress {
  * Courses assigned to the signed-in user, joined in JS with the bundled
  * catalog and their local progress. Mirrors services/data/schedules.ts.
  */
-export function useAssignedCourses(userId: string | null | undefined) {
+export function useAssignedCourses(appUserId: string | null | undefined) {
   const { data: assignments = [], isLoading: assignmentsLoading } =
     useQuery<CourseAssignmentRow>(
-      userId
-        ? `SELECT * FROM courseassignments WHERE clerkUserId = ? ORDER BY assignedAt DESC`
+      appUserId
+        ? `SELECT * FROM courseassignments WHERE appUserId = ? ORDER BY assignedAt DESC`
         : `SELECT * FROM courseassignments WHERE 0`,
-      [userId ?? '']
+      [appUserId ?? '']
     );
 
   const { data: progressRows = [], isLoading: progressLoading } =
     useQuery<CourseProgressRow>(
-      userId
-        ? `SELECT * FROM courseprogress WHERE clerkUserId = ?`
+      appUserId
+        ? `SELECT * FROM courseprogress WHERE appUserId = ?`
         : `SELECT * FROM courseprogress WHERE 0`,
-      [userId ?? '']
+      [appUserId ?? '']
     );
 
   const assignedCourses = useMemo<AssignedCourse[]>(() => {
@@ -140,10 +140,10 @@ export function useAssignedCourses(userId: string | null | undefined) {
 
 /** Course + parsed progress for a single course (returns null if not assigned). */
 export function useAssignedCourse(
-  userId: string | null | undefined,
+  appUserId: string | null | undefined,
   courseSlug: string
 ) {
-  const { assignedCourses, isLoading } = useAssignedCourses(userId);
+  const { assignedCourses, isLoading } = useAssignedCourses(appUserId);
   const assigned = assignedCourses.find((c) => c.course.slug === courseSlug);
   return { assigned: assigned ?? null, isLoading };
 }
@@ -162,20 +162,20 @@ export function isSectionAccessible(
 
 /**
  * Local writes that PowerSync pushes to /api/sync → courseprogress.handler.
- * One row per (clerkUserId, courseSlug); we upsert client-side too.
+ * One row per (appUserId, courseSlug); we upsert client-side too.
  */
 export function useCourseProgressMutations(
-  userId: string | null | undefined
+  appUserId: string | null | undefined
 ) {
   const powerSync = usePowerSync();
 
   const writeProgress = useCallback(
     async (courseSlug: string, next: Partial<ParsedCourseProgress>) => {
-      if (!userId) return;
+      if (!appUserId) return;
 
       const existing = await powerSync.getOptional<CourseProgressRow>(
-        `SELECT * FROM courseprogress WHERE clerkUserId = ? AND courseSlug = ?`,
-        [userId, courseSlug]
+        `SELECT * FROM courseprogress WHERE appUserId = ? AND courseSlug = ?`,
+        [appUserId, courseSlug]
       );
 
       const current = toParsedProgress(existing ?? undefined);
@@ -213,17 +213,17 @@ export function useCourseProgressMutations(
         );
       } else {
         await powerSync.execute(
-          `INSERT INTO courseprogress (id, courseSlug, clerkUserId, completedSectionIds, lastSectionId, lastVisitedAt, completedAt)
+          `INSERT INTO courseprogress (id, courseSlug, appUserId, completedSectionIds, lastSectionId, lastVisitedAt, completedAt)
            VALUES (?, ?, ?, ?, ?, ?, ?)`,
           [
             // Deterministic id per (user, course): the singleton progress row
             // always maps to the same `_id`, so a missing-local-row INSERT (cache
             // cleared, second device, not-yet-synced) reuses the id the server
             // already has → the backend upsert-by-_id becomes an update, never an
-            // E11000 against the unique {clerkUserId, courseSlug} index.
-            objectIdFromKey(`${userId}:${courseSlug}`),
+            // E11000 against the unique {appUserId, courseSlug} index.
+            objectIdFromKey(`${appUserId}:${courseSlug}`),
             courseSlug,
-            userId,
+            appUserId,
             sectionsJson,
             merged.lastSectionId,
             merged.lastVisitedAt,
@@ -232,7 +232,7 @@ export function useCourseProgressMutations(
         );
       }
     },
-    [powerSync, userId]
+    [powerSync, appUserId]
   );
 
   const markSectionVisited = useCallback(
@@ -247,10 +247,10 @@ export function useCourseProgressMutations(
 
   const markSectionComplete = useCallback(
     async (courseSlug: string, sectionId: string) => {
-      if (!userId) return;
+      if (!appUserId) return;
       const existing = await powerSync.getOptional<CourseProgressRow>(
-        `SELECT * FROM courseprogress WHERE clerkUserId = ? AND courseSlug = ?`,
-        [userId, courseSlug]
+        `SELECT * FROM courseprogress WHERE appUserId = ? AND courseSlug = ?`,
+        [appUserId, courseSlug]
       );
       const completed = new Set(
         parseSectionIds(existing?.completedSectionIds)
@@ -269,7 +269,7 @@ export function useCourseProgressMutations(
         completedAt: isCourseComplete ? new Date().toISOString() : null
       });
     },
-    [powerSync, userId, writeProgress]
+    [powerSync, appUserId, writeProgress]
   );
 
   return { markSectionVisited, markSectionComplete };

@@ -28,6 +28,7 @@ import type {
 import { calculateActualServiceDurationMinutes } from '@/utils/scheduleTime';
 import { resolveReportDateCompleted } from '@/utils/reportCompletion';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 type ReportFormValues = {
   inspectionItems: InspectionItems;
@@ -147,6 +148,7 @@ export function ReportCloseoutContent({
   showStackHeader = false
 }: ReportCloseoutContentProps) {
   const { user } = useUser();
+  const identity = getMobileStaffIdentity(user?.publicMetadata);
   const powerSync = usePowerSync();
   const insets = useSafeAreaInsets();
 
@@ -154,7 +156,7 @@ export function ReportCloseoutContent({
   const technicianId =
     typeof params.technicianId === 'string' && params.technicianId
       ? params.technicianId
-      : user?.id || '';
+      : identity?.fieldStaffId || '';
 
   const scheduleQuery = useQuery<Schedule>(
     scheduleId ? `SELECT * FROM schedules WHERE id = ?` : `SELECT * FROM schedules WHERE 0`,

@@ -5,10 +5,12 @@ import { useUser } from '@clerk/clerk-expo';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '../../components/ui/text';
 import { useAssignedCourses } from '../../services/data/courses';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 export default function TrainingScreen() {
   const { user } = useUser();
-  const { assignedCourses, isLoading } = useAssignedCourses(user?.id);
+  const identity = getMobileStaffIdentity(user?.publicMetadata);
+  const { assignedCourses, isLoading } = useAssignedCourses(identity?.appUserId);
 
   return (
     <SafeAreaView className='flex-1 bg-[#F7F5F1] dark:bg-gray-950'>

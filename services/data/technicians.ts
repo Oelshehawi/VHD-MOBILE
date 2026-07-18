@@ -1,25 +1,23 @@
 import { useCallback, useMemo } from 'react';
 import { DEFAULT_ROW_COMPARATOR, useQuery } from '@powersync/react-native';
-import type { Technician } from '@/services/database/schema';
+import type { FieldStaff } from '@/services/database/schema';
 
 export function useTechnicianDirectory() {
-  const { data: technicians = [] } = useQuery<Technician>(
-    `SELECT id, clerkUserId, name, fieldRole, isActive
-     FROM technicians
-     WHERE clerkUserId IS NOT NULL`,
+  const { data: technicians = [] } = useQuery<FieldStaff>(
+    `SELECT id, name, fieldRole, isActive FROM fieldstaff`,
     [],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
-  const namesByClerkUserId = useMemo(() => {
+  const namesByFieldStaffId = useMemo(() => {
     const names = new Map<string, string>();
 
     technicians.forEach((technician) => {
-      const clerkUserId = technician.clerkUserId?.trim();
+      const fieldStaffId = technician.id?.trim();
       const name = technician.name?.trim();
 
-      if (clerkUserId && name) {
-        names.set(clerkUserId, name);
+      if (fieldStaffId && name) {
+        names.set(fieldStaffId, name);
       }
     });
 
@@ -27,8 +25,8 @@ export function useTechnicianDirectory() {
   }, [technicians]);
 
   const resolveTechnicianName = useCallback(
-    (userId: string) => namesByClerkUserId.get(userId) ?? 'Unknown Technician',
-    [namesByClerkUserId]
+    (fieldStaffId: string) => namesByFieldStaffId.get(fieldStaffId) ?? 'Unknown Technician',
+    [namesByFieldStaffId]
   );
 
   return {

@@ -72,7 +72,7 @@ export function useMostRecentApprovedPayrollPeriod() {
 export function usePayrollSchedules(
   payrollId: string | undefined,
   isManager: boolean,
-  userId: string | null | undefined,
+  fieldStaffId: string | null | undefined,
   canViewHours: boolean = true
 ) {
   const query = useQuery<PayrollSchedule>(
@@ -91,7 +91,7 @@ export function usePayrollSchedules(
      AND (? IS NULL OR s.payrollPeriod = ?)
      AND (? = true OR (${ASSIGNED_TO_USER_CLAUSE}))
      ORDER BY s.scheduledStartAtUtc ASC`,
-    [canViewHours, payrollId, payrollId, isManager, userId ?? '']
+    [canViewHours, payrollId, payrollId, isManager, fieldStaffId ?? '']
   );
 
   return query;

@@ -10,6 +10,7 @@ import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import type { System } from './System';
 import { debugLogger } from '@/utils/DebugLogger';
 import { cacheBackgroundToken } from '@/services/background/BackgroundAuth';
+import { hasPowerSyncStaffIdentityClaims } from '@/utils/powerSyncToken';
 import { SyncEventBus } from '@/services/sync/SyncEventBus';
 import type { TokenProvider } from '../network/types';
 
@@ -64,8 +65,8 @@ export class BackendConnector implements PowerSyncBackendConnector {
       if (this.tokenProvider) {
         const token = await this.tokenProvider();
 
-        if (!token) {
-          debugLogger.warn('AUTH', 'No token received from token provider');
+        if (!token || !hasPowerSyncStaffIdentityClaims(token)) {
+          debugLogger.warn('AUTH', 'Token provider returned no valid staff identity token');
           return null;
         }
 
@@ -103,11 +104,11 @@ export class BackendConnector implements PowerSyncBackendConnector {
       debugLogger.debug('AUTH', 'Fetching token from Clerk');
       const token = await clerk.session.getToken({
         template: 'Powersync',
-        skipCache: false
+        skipCache: true
       });
 
-      if (!token) {
-        debugLogger.warn('AUTH', 'No token received from Clerk');
+      if (!token || !hasPowerSyncStaffIdentityClaims(token)) {
+        debugLogger.warn('AUTH', 'Fresh Clerk token missing PowerSync staff identity claims');
         if (retryCount < MAX_RETRIES) {
           debugLogger.debug('AUTH', `Retrying in ${RETRY_DELAY_MS}ms...`);
           await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS));

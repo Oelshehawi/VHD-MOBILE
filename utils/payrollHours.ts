@@ -5,7 +5,7 @@ import type { ShiftType } from '@/types';
  *
  * `schedule.hours` is the shared, planned/default duration for a job. A manager
  * correction for an individual worker is stored in `schedule.shifts[]` keyed by
- * the worker's Clerk userId (`shifts[].technicianId`, matching
+ * the worker's Technician `_id` (`shifts[].technicianId`, matching
  * `assignedTechnicians[]`). On-device, `shifts` arrives as a JSON text column,
  * so we parse it the same way `parseAssignedTechnicians` parses assignees.
  */

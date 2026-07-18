@@ -5,10 +5,12 @@ import { ScheduleView } from '../../components/schedule/ScheduleView';
 import { startOfDay } from 'date-fns';
 import { isManagerMetadata } from '@/utils/userRoles';
 import { getServiceDayStartIsoForInstant } from '@/utils/scheduleTime';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 export default function Page() {
   const { user } = useUser();
   const isManager = isManagerMetadata(user?.publicMetadata);
+  const identity = getMobileStaffIdentity(user?.publicMetadata);
 
   const [currentDate, setCurrentDate] = useState(() => {
     return getServiceDayStartIsoForInstant();
@@ -20,7 +22,7 @@ export default function Page() {
     setCurrentDate(newDate.toISOString());
   }, []);
 
-  if (!user?.id) return null;
+  if (!identity) return null;
 
   return (
     <>
@@ -30,7 +32,7 @@ export default function Page() {
         }}
       />
       <ScheduleView
-        userId={user?.id}
+        fieldStaffId={identity.fieldStaffId ?? ''}
         currentDate={currentDate}
         onDateChange={handleDateChange}
         isManager={isManager}

@@ -15,7 +15,7 @@ export function generateObjectId(): string {
 /**
  * Maps a string key to a STABLE, ObjectId-shaped 24-hex string. The same key
  * always produces the same id — across cache-clears and across devices — so a
- * singleton row (e.g. course progress, unique per `{clerkUserId, courseSlug}`)
+ * singleton row (e.g. course progress, unique per `{appUserId, courseSlug}`)
  * gets a fixed `_id` every creation site agrees on. This avoids the duplicate-
  * key wedge a random id causes when a second creation site inserts under a new
  * `_id` for a row the server already has.

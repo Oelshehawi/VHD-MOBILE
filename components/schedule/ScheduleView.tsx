@@ -16,7 +16,7 @@ import {
 import { ASSIGNED_TO_USER_CLAUSE } from '@/services/data/sqlFragments';
 
 interface ScheduleViewProps {
-  userId: string;
+  fieldStaffId: string;
   currentDate: string;
   onDateChange: (date: string) => void;
   isManager: boolean;
@@ -24,7 +24,12 @@ interface ScheduleViewProps {
 
 type ViewMode = 'week' | 'month';
 
-export function ScheduleView({ userId, currentDate, onDateChange, isManager }: ScheduleViewProps) {
+export function ScheduleView({
+  fieldStaffId,
+  currentDate,
+  onDateChange,
+  isManager
+}: ScheduleViewProps) {
   const colorScheme = useColorScheme();
   const [selectedDate, setSelectedDate] = useState<string>(
     startOfDay(new Date(currentDate)).toISOString()
@@ -58,7 +63,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
          ORDER BY scheduledStartAtUtc`,
     isManager
       ? [selectedDateParam, selectedDateParam]
-      : [selectedDateParam, selectedDateParam, userId ?? ''],
+      : [selectedDateParam, selectedDateParam, fieldStaffId],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
   const monthSchedules = useMemo<ReadonlyArray<Schedule>>(
@@ -166,7 +171,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
           selectedDate={selectedDate}
           onDateChange={handleDateSelection}
           onSchedulePress={handleSchedulePress}
-          currentUserId={userId}
+          currentUserId={fieldStaffId}
           isManager={isManager}
         />
       )}
@@ -188,7 +193,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
             <ScheduleAgendaList
               schedules={schedulesForSelectedDate}
               onSchedulePress={handleSchedulePress}
-              currentUserId={userId}
+              currentUserId={fieldStaffId}
               isManager={isManager}
             />
           </View>
@@ -200,7 +205,7 @@ export function ScheduleView({ userId, currentDate, onDateChange, isManager }: S
           visible={jobDetailVisible}
           onClose={() => setJobDetailVisible(false)}
           scheduleId={selectedScheduleForDetail.id}
-          technicianId={userId}
+          technicianId={fieldStaffId}
           isManager={isManager}
         />
       )}

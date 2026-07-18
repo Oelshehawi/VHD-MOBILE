@@ -6,16 +6,18 @@ import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Text } from '@/components/ui/text';
 import { debugLogger } from '@/utils/DebugLogger';
 import type { ExpoPushToken } from '@/services/database/schema';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
 export function NotificationPreferences() {
   const { user } = useUser();
   const powerSync = usePowerSync();
   const [isSaving, setIsSaving] = useState(false);
+  const appUserId = getMobileStaffIdentity(user?.publicMetadata)?.appUserId;
 
   // Query the current user's push token preferences
   const { data: tokens, isLoading } = useQuery<ExpoPushToken>(
     `SELECT * FROM expopushtokens WHERE userId = ? LIMIT 1`,
-    [user?.id || '']
+    [appUserId || '']
   );
 
   const currentToken = tokens?.[0];
@@ -35,7 +37,7 @@ export function NotificationPreferences() {
   }, [currentToken]);
 
   const handleToggle = async (field: 'notifyNewJobs' | 'notifyScheduleChanges', value: boolean) => {
-    if (!user?.id || !currentToken || !powerSync) {
+    if (!appUserId || !currentToken || !powerSync) {
       Alert.alert('Error', 'Unable to update preferences. Please try again.');
       return;
     }

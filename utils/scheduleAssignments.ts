@@ -1,4 +1,4 @@
-export type ResolveTechnicianName = (userId: string) => string;
+export type ResolveTechnicianName = (fieldStaffId: string) => string;
 
 export interface AssignedTechnicianDisplay {
   id: string;
@@ -33,13 +33,13 @@ function parseAssignedTechniciansJson(value: string): unknown {
 
 export function getAssignedTechnicianDisplays(
   value: unknown,
-  currentUserId: string | null | undefined,
+  currentFieldStaffId: string | null | undefined,
   resolveTechnicianName: ResolveTechnicianName
 ): AssignedTechnicianDisplay[] {
   return parseAssignedTechnicians(value).map((id) => ({
     id,
     name: resolveTechnicianName(id) || 'Unknown Technician',
-    isCurrentUser: Boolean(currentUserId) && id === currentUserId
+    isCurrentUser: Boolean(currentFieldStaffId) && id === currentFieldStaffId
   }));
 }
 
