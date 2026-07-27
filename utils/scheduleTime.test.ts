@@ -2,6 +2,7 @@ import { describe, expect, it } from '@jest/globals';
 
 import {
   calculateActualServiceDurationMinutes,
+  formatScheduleArrivalTime,
   formatScheduleDateReadable,
   formatScheduleTime,
   getScheduleHour,
@@ -116,5 +117,49 @@ describe('schedule service-day time helpers (true-instant storage)', () => {
     expect(getServiceDayKeyForInstant(new Date('2026-06-26T10:00:00.000Z'))).toBe(
       '2026-06-26'
     );
+  });
+
+  it('displays an optional forward arrival range and preserves exact-time fallback', () => {
+    const exact = {
+      scheduledStartAtUtc: '2026-06-26T03:00:00.000Z', // 20:00 Vancouver June 25
+      timeZone: 'America/Vancouver'
+    };
+    const ranged = {
+      ...exact,
+      arrivalWindowEndOffsetMinutes: 120
+    };
+
+    expect(formatScheduleArrivalTime(exact)).toBe('8:00 PM');
+    expect(formatScheduleArrivalTime(ranged)).toBe('8:00 PM - 10:00 PM');
+    expect(formatScheduleTime(ranged)).toBe('8:00 PM');
+  });
+
+  it('labels an arrival range that crosses local midnight', () => {
+    expect(
+      formatScheduleArrivalTime({
+        scheduledStartAtUtc: '2026-06-26T06:00:00.000Z', // 23:00 Vancouver June 25
+        timeZone: 'America/Vancouver',
+        arrivalWindowEndOffsetMinutes: 120
+      })
+    ).toBe('11:00 PM - Fri 1:00 AM');
+  });
+
+  it('ignores invalid ranges and keeps grouping and sorting tied to the start', () => {
+    const exact = {
+      scheduledStartAtUtc: '2026-06-26T03:00:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+    const ranged = {
+      ...exact,
+      arrivalWindowEndOffsetMinutes: 360
+    };
+    const invalid = {
+      ...exact,
+      arrivalWindowEndOffsetMinutes: 16
+    };
+
+    expect(formatScheduleArrivalTime(invalid)).toBe('8:00 PM');
+    expect(getScheduleServiceDayKey(ranged)).toBe(getScheduleServiceDayKey(exact));
+    expect(getScheduleSortTime(ranged)).toBe(getScheduleSortTime(exact));
   });
 });

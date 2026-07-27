@@ -29,6 +29,7 @@ export interface Schedule {
   startDateTime: string;
   scheduledStartAtUtc?: string;
   timeZone?: string;
+  arrivalWindowEndOffsetMinutes?: number | null;
   serviceTypes?: ScheduleServiceType[] | string;
   requiresReport?: boolean | number;
   requiresEquipmentProfile?: boolean | number;
@@ -221,6 +222,7 @@ export interface DashboardSchedule {
   startDateTime: string;
   scheduledStartAtUtc?: string;
   timeZone?: string;
+  arrivalWindowEndOffsetMinutes?: number | null;
   serviceTypes?: ScheduleServiceType[] | string;
   requiresReport?: boolean | number;
   requiresEquipmentProfile?: boolean | number;

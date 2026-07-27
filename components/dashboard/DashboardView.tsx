@@ -20,7 +20,7 @@ import {
 } from '@/utils/scheduleAssignments';
 import {
   formatScheduleDateReadable,
-  formatScheduleTime,
+  formatScheduleArrivalTime,
   getScheduleSortTime,
   getScheduleStartAtUtc
 } from '@/utils/scheduleTime';
@@ -149,7 +149,7 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
               {schedule.jobTitle?.trim() || 'Untitled Job'}
             </Text>
             <Text className='text-gray-600 dark:text-gray-400 mt-1'>
-              {formatScheduleTime(schedule)}
+              {formatScheduleArrivalTime(schedule)}
             </Text>
             <Text className='text-gray-600 dark:text-gray-400 mt-1'>
               {schedule.location || 'No location specified'}
@@ -259,8 +259,11 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
               </Text>
               <View className='overflow-hidden rounded-2xl border border-black/10 bg-white shadow-sm dark:border-white/10 dark:bg-[#16140F]'>
                 <View className='flex-row items-center bg-[#14110F] px-4 py-4 dark:bg-amber-400'>
-                  <Text className='font-mono text-2xl font-bold text-[#F7F5F1] dark:text-[#14110F]'>
-                    {formatScheduleTime(nextUpSchedule)}
+                  <Text
+                    className='flex-shrink font-mono text-xl font-bold text-[#F7F5F1] dark:text-[#14110F]'
+                    numberOfLines={2}
+                  >
+                    {formatScheduleArrivalTime(nextUpSchedule)}
                   </Text>
                   <View className='mx-3 h-px flex-1 bg-white/25 dark:bg-black/20' />
                   <Text className='text-xs font-bold uppercase tracking-widest text-[#F7F5F1]/80 dark:text-[#14110F]/70'>

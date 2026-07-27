@@ -7,6 +7,7 @@ type ScheduleTimeSource = {
   scheduledStartAtUtc?: string | null;
   startDateTime?: string | null;
   timeZone?: string | null;
+  arrivalWindowEndOffsetMinutes?: number | null;
 };
 
 type ScheduleClockParts = {
@@ -201,6 +202,37 @@ export function formatScheduleTime(schedule: ScheduleTimeSource): string {
 
   const date = new Date(Date.UTC(2000, 0, 1, parts.hour, parts.minute));
   return formatInTimeZone(date, 'UTC', 'h:mm a');
+}
+
+export function formatScheduleArrivalTime(schedule: ScheduleTimeSource): string {
+  const startLabel = formatScheduleTime(schedule);
+  const offsetMinutes = schedule.arrivalWindowEndOffsetMinutes;
+  if (
+    !startLabel ||
+    typeof offsetMinutes !== 'number' ||
+    !Number.isInteger(offsetMinutes) ||
+    offsetMinutes < 15 ||
+    offsetMinutes > 360 ||
+    offsetMinutes % 15 !== 0
+  ) {
+    return startLabel;
+  }
+
+  const startDate = getScheduleStartDate(schedule);
+  if (!startDate) return startLabel;
+
+  const timeZone = getScheduleTimeZone(schedule);
+  const endDate = new Date(startDate.getTime() + offsetMinutes * 60 * 1000);
+  const startDateKey = getScheduleLocalDateKey(schedule);
+  const endParts = parseZonedClockParts(endDate, timeZone);
+  if (!endParts) return startLabel;
+
+  const endLabel = formatInTimeZone(
+    endDate,
+    timeZone,
+    startDateKey === endParts.dateKey ? 'h:mm a' : 'EEE h:mm a'
+  );
+  return `${startLabel} - ${endLabel}`;
 }
 
 export function formatScheduleDateReadable(schedule: ScheduleTimeSource): string {

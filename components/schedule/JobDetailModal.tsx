@@ -19,7 +19,7 @@ import { PhotoDocumentationModal } from '@/components/PhotoComponents/PhotoDocum
 import { SignatureCapture } from './SignatureCapture';
 import { TechnicianNotes } from './TechnicianNotes';
 import { EquipmentProfilePanel } from './EquipmentProfilePanel';
-import { formatScheduleTime, getScheduleStartAtUtc } from '@/utils/scheduleTime';
+import { formatScheduleArrivalTime, getScheduleStartAtUtc } from '@/utils/scheduleTime';
 import { openMaps } from '@/utils/dashboard';
 import { isScheduleReportRequired } from '@/utils/schedules';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
@@ -358,8 +358,8 @@ export function JobDetailModal({
               <Text className='text-2xl font-bold text-[#14110F] dark:text-white' numberOfLines={2}>
                 {schedule?.jobTitle || 'Job details'}
               </Text>
-              <Text className='mt-1 text-xs font-medium text-gray-500' numberOfLines={1}>
-                {schedule ? `${formatScheduleTime(schedule)} - ${schedule.location}` : 'Loading...'}
+              <Text className='mt-1 text-xs font-medium text-gray-500' numberOfLines={2}>
+                {schedule ? `${formatScheduleArrivalTime(schedule)} - ${schedule.location}` : 'Loading...'}
               </Text>
             </View>
             <Pressable

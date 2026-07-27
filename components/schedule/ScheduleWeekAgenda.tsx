@@ -14,7 +14,7 @@ import {
   type ResolveTechnicianName
 } from '@/utils/scheduleAssignments';
 import {
-  formatScheduleTime,
+  formatScheduleArrivalTime,
   getLocalDateKey,
   getScheduleServiceDayKey,
   getScheduleSortTime,
@@ -168,9 +168,12 @@ function ScheduleRow({
       className='rounded-2xl border border-black/10 bg-white p-4 active:bg-gray-50 dark:border-white/10 dark:bg-[#16140F] dark:active:bg-[#1F1C16]'
     >
       <View className='flex-row gap-3'>
-        <View className='min-w-[54px] items-center'>
-          <Text className='font-mono text-base font-bold text-[#14110F] dark:text-white'>
-            {formatScheduleTime(schedule)}
+        <View className='w-[88px] items-center'>
+          <Text
+            className='text-center font-mono text-sm font-bold text-[#14110F] dark:text-white'
+            numberOfLines={2}
+          >
+            {formatScheduleArrivalTime(schedule)}
           </Text>
         </View>
         <View className='w-px bg-black/10 dark:bg-white/10' />

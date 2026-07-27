@@ -73,6 +73,7 @@ const schedules = new Table(
     startDateTime: column.text,
     scheduledStartAtUtc: column.text,
     timeZone: column.text,
+    arrivalWindowEndOffsetMinutes: column.integer,
     serviceTypes: column.text,
     requiresReport: column.integer,
     requiresEquipmentProfile: column.integer,
