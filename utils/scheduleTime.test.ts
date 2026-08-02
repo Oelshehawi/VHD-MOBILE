@@ -16,6 +16,51 @@ import {
 } from './scheduleTime';
 
 describe('schedule service-day time helpers (true-instant storage)', () => {
+  it('uses permanent UTC-7 for winter 2026 B.C. schedule displays', () => {
+    expect(
+      formatScheduleTime({
+        scheduledStartAtUtc: '2026-12-10T16:00:00.000Z',
+        timeZone: 'America/Vancouver'
+      })
+    ).toBe('9:00 AM');
+    expect(
+      formatScheduleTime({
+        scheduledStartAtUtc: '2026-12-10T17:00:00.000Z',
+        timeZone: 'America/Vancouver'
+      })
+    ).toBe('10:00 AM');
+  });
+
+  it('preserves historical Vancouver offsets before the final transition', () => {
+    expect(
+      formatScheduleTime({
+        scheduledStartAtUtc: '2026-01-10T17:00:00.000Z',
+        timeZone: 'America/Vancouver'
+      })
+    ).toBe('9:00 AM');
+    expect(
+      formatScheduleTime({
+        scheduledStartAtUtc: '2026-03-08T09:59:59.000Z',
+        timeZone: 'America/Vancouver'
+      })
+    ).toBe('1:59 AM');
+    expect(
+      formatScheduleTime({
+        scheduledStartAtUtc: '2026-03-08T10:00:00.000Z',
+        timeZone: 'America/Vancouver'
+      })
+    ).toBe('3:00 AM');
+  });
+
+  it('does not change schedule displays in other IANA timezones', () => {
+    expect(
+      formatScheduleTime({
+        scheduledStartAtUtc: '2026-12-10T16:00:00.000Z',
+        timeZone: 'America/Toronto'
+      })
+    ).toBe('11:00 AM');
+  });
+
   it('groups a true next-day midnight job under the prior service day', () => {
     // 2026-06-26T07:00:00Z is 2026-06-26 00:00 in America/Vancouver (PDT, -7).
     const midnight = {
@@ -142,6 +187,47 @@ describe('schedule service-day time helpers (true-instant storage)', () => {
         arrivalWindowEndOffsetMinutes: 120
       })
     ).toBe('11:00 PM - Fri 1:00 AM');
+  });
+
+  it('resolves arrival-window start and end zones independently at the transition', () => {
+    expect(
+      formatScheduleArrivalTime({
+        scheduledStartAtUtc: '2026-03-08T09:30:00.000Z',
+        timeZone: 'America/Vancouver',
+        arrivalWindowEndOffsetMinutes: 60
+      })
+    ).toBe('1:30 AM - 3:30 AM');
+  });
+
+  it('uses permanent B.C. time for a winter arrival range across midnight', () => {
+    expect(
+      formatScheduleArrivalTime({
+        scheduledStartAtUtc: '2026-12-11T06:30:00.000Z',
+        timeZone: 'America/Vancouver',
+        arrivalWindowEndOffsetMinutes: 120
+      })
+    ).toBe('11:30 PM - Fri 1:30 AM');
+  });
+
+  it('groups and sorts winter service-day visits using backend semantics', () => {
+    const twoFiftyNine = {
+      scheduledStartAtUtc: '2026-12-10T09:59:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+    const threeAm = {
+      scheduledStartAtUtc: '2026-12-10T10:00:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+    const priorEvening = {
+      scheduledStartAtUtc: '2026-12-10T06:30:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+
+    expect(getScheduleServiceDayKey(twoFiftyNine)).toBe('2026-12-09');
+    expect(getScheduleServiceDayKey(threeAm)).toBe('2026-12-10');
+    expect(getScheduleSortTime(twoFiftyNine)).toBeGreaterThan(
+      getScheduleSortTime(priorEvening)
+    );
   });
 
   it('ignores invalid ranges and keeps grouping and sorting tied to the start', () => {

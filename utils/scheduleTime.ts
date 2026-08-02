@@ -1,11 +1,16 @@
 import { format } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
-export const DEFAULT_SCHEDULE_TIME_ZONE = 'America/Vancouver';
+import {
+  DEFAULT_SCHEDULE_TIME_ZONE,
+  getEffectiveTimeZoneForInstant,
+  normalizeScheduleTimeZone
+} from './bcTime';
+
+export { DEFAULT_SCHEDULE_TIME_ZONE } from './bcTime';
 const SERVICE_DAY_START_HOUR = 3;
 
 type ScheduleTimeSource = {
   scheduledStartAtUtc?: string | null;
-  startDateTime?: string | null;
   timeZone?: string | null;
   arrivalWindowEndOffsetMinutes?: number | null;
 };
@@ -16,22 +21,12 @@ type ScheduleClockParts = {
   minute: number;
 };
 
-function isValidTimeZone(timeZone: string): boolean {
-  try {
-    new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date());
-    return true;
-  } catch {
-    return false;
-  }
-}
-
 export function getScheduleTimeZone(schedule: Pick<ScheduleTimeSource, 'timeZone'>): string {
-  const timeZone = typeof schedule.timeZone === 'string' ? schedule.timeZone.trim() : '';
-  return timeZone && isValidTimeZone(timeZone) ? timeZone : DEFAULT_SCHEDULE_TIME_ZONE;
+  return normalizeScheduleTimeZone(schedule.timeZone);
 }
 
 export function getScheduleStartAtUtc(schedule: ScheduleTimeSource): string {
-  return schedule.scheduledStartAtUtc || schedule.startDateTime || '';
+  return schedule.scheduledStartAtUtc || '';
 }
 
 function parseZonedClockParts(date: Date, timeZone: string): ScheduleClockParts | null {
@@ -77,7 +72,10 @@ function getScheduleClockParts(schedule: ScheduleTimeSource): ScheduleClockParts
   const startDate = getScheduleStartDate(schedule);
   if (!startDate) return null;
 
-  return parseZonedClockParts(startDate, getScheduleTimeZone(schedule));
+  return parseZonedClockParts(
+    startDate,
+    getEffectiveTimeZoneForInstant(getScheduleTimeZone(schedule), startDate)
+  );
 }
 
 export function getScheduleStartDate(schedule: ScheduleTimeSource): Date | null {
@@ -221,15 +219,15 @@ export function formatScheduleArrivalTime(schedule: ScheduleTimeSource): string 
   const startDate = getScheduleStartDate(schedule);
   if (!startDate) return startLabel;
 
-  const timeZone = getScheduleTimeZone(schedule);
   const endDate = new Date(startDate.getTime() + offsetMinutes * 60 * 1000);
   const startDateKey = getScheduleLocalDateKey(schedule);
-  const endParts = parseZonedClockParts(endDate, timeZone);
+  const endTimeZone = getEffectiveTimeZoneForInstant(getScheduleTimeZone(schedule), endDate);
+  const endParts = parseZonedClockParts(endDate, endTimeZone);
   if (!endParts) return startLabel;
 
   const endLabel = formatInTimeZone(
     endDate,
-    timeZone,
+    endTimeZone,
     startDateKey === endParts.dateKey ? 'h:mm a' : 'EEE h:mm a'
   );
   return `${startLabel} - ${endLabel}`;

@@ -1,7 +1,6 @@
 import { parseISO } from 'date-fns';
 import { formatInTimeZone } from 'date-fns-tz';
-
-const VANCOUVER_TIME_ZONE = 'America/Vancouver';
+import { getEffectiveTimeZoneForInstant, VANCOUVER_TIME_ZONE } from './bcTime';
 
 /**
  * Check if a date string or Date object is valid
@@ -58,7 +57,7 @@ export const formatDateShort = (date: string | Date | undefined | null): string 
 
 const getVancouverDateParts = (date: Date = new Date()) => {
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: VANCOUVER_TIME_ZONE,
+    timeZone: getEffectiveTimeZoneForInstant(VANCOUVER_TIME_ZONE, date),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit'
@@ -67,6 +66,14 @@ const getVancouverDateParts = (date: Date = new Date()) => {
   return Object.fromEntries(
     parts.filter((part) => part.type !== 'literal').map((part) => [part.type, part.value])
   ) as { year?: string; month?: string; day?: string };
+};
+
+/** Current/historical B.C. operational calendar date for a true instant. */
+export const getBcBusinessDateKey = (date: Date = new Date()): string => {
+  const values = getVancouverDateParts(date);
+  return values.year && values.month && values.day
+    ? `${values.year}-${values.month}-${values.day}`
+    : '';
 };
 
 const isUtcMidnight = (date: Date): boolean =>
@@ -103,7 +110,9 @@ export const formatStoredDateReadable = (date: string | Date | undefined | null)
       return '';
     }
 
-    const timeZone = isUtcMidnight(parsedDate) ? 'UTC' : VANCOUVER_TIME_ZONE;
+    const timeZone = isUtcMidnight(parsedDate)
+      ? 'UTC'
+      : getEffectiveTimeZoneForInstant(VANCOUVER_TIME_ZONE, parsedDate);
     return formatInTimeZone(parsedDate, timeZone, 'EEEE, MMM d, yyyy');
   } catch {
     return '';
@@ -132,18 +141,19 @@ export const toUTCDate = (date: string | Date): Date => {
 };
 
 /**
- * Format a timestamp in America/Vancouver with offset (e.g. 2026-01-27T14:05:33-08:00)
+ * Format a timestamp under the B.C. operational-time contract with its offset.
  */
 export const formatVancouverTimestamp = (date: Date = new Date()): string => {
+  const timeZone = getEffectiveTimeZoneForInstant(VANCOUVER_TIME_ZONE, date);
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: VANCOUVER_TIME_ZONE,
+    timeZone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-    hour12: false
+    hourCycle: 'h23'
   }).formatToParts(date);
 
   const values = Object.fromEntries(
@@ -153,7 +163,7 @@ export const formatVancouverTimestamp = (date: Date = new Date()): string => {
   const dateTime = `${values.year}-${values.month}-${values.day}T${values.hour}:${values.minute}:${values.second}`;
 
   const offsetPart = new Intl.DateTimeFormat('en-CA', {
-    timeZone: VANCOUVER_TIME_ZONE,
+    timeZone,
     timeZoneName: 'shortOffset'
   })
     .formatToParts(date)
@@ -164,7 +174,9 @@ export const formatVancouverTimestamp = (date: Date = new Date()): string => {
     return date.toISOString();
   }
 
-  const hours = match[1].padStart(3, '0');
+  const offsetHours = Number.parseInt(match[1], 10);
+  const sign = offsetHours < 0 ? '-' : '+';
+  const hours = `${sign}${String(Math.abs(offsetHours)).padStart(2, '0')}`;
   const minutes = match[2] ?? '00';
   return `${dateTime}${hours}:${minutes}`;
 };

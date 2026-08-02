@@ -119,7 +119,6 @@ type ReportScreenParams = {
   scheduleId?: string;
   jobTitle?: string;
   scheduledStartAtUtc?: string;
-  startDateTime?: string;
   timeZone?: string;
   technicianId?: string;
 };
@@ -190,9 +189,7 @@ export function ReportCloseoutContent({
   const fallbackScheduledStartAtUtc =
     typeof params.scheduledStartAtUtc === 'string' && params.scheduledStartAtUtc
       ? params.scheduledStartAtUtc
-      : typeof params.startDateTime === 'string'
-        ? params.startDateTime
-        : '';
+      : '';
 
   const [isSaving, setIsSaving] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);

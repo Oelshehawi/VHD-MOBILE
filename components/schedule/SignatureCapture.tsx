@@ -10,9 +10,8 @@ import { getScheduleStartAtUtc } from '@/utils/scheduleTime';
 export interface SignatureSchedule {
   id: string;
   jobTitle: string;
-  scheduledStartAtUtc?: string;
-  startDateTime?: string;
-  timeZone?: string;
+  scheduledStartAtUtc: string;
+  timeZone: string;
 }
 
 interface SignatureCaptureProps {

@@ -31,4 +31,16 @@ describe('resolveReportDateCompleted', () => {
       '2026-06-25T00:00:00.000Z'
     );
   });
+
+  it('uses the permanent B.C. calendar date after the former fall-back', () => {
+    const scheduleSource = {
+      scheduledStartAtUtc: '2026-12-10T16:00:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+    const completedAt = new Date('2026-12-10T07:30:00.000Z');
+
+    expect(resolveReportDateCompleted(scheduleSource, completedAt)).toBe(
+      '2026-12-10T00:00:00.000Z'
+    );
+  });
 });

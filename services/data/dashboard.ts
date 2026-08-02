@@ -1,6 +1,7 @@
 import { useQuery } from '@powersync/react-native';
 import { Schedule, PayrollPeriod, PayrollSchedule } from '@/types';
 import { ASSIGNED_TO_USER_CLAUSE } from './sqlFragments';
+import { getBcBusinessDateKey } from '@/utils/date';
 
 /**
  * Helper function to get formatted date strings with timezone handling
@@ -9,22 +10,19 @@ import { ASSIGNED_TO_USER_CLAUSE } from './sqlFragments';
  * @param referenceDate Optional reference date (defaults to today)
  * @returns Formatted datetime string for SQLite
  */
-function getLocalDateTimeString(
+function getBcBusinessDateTimeString(
   type: 'start' | 'end' = 'start',
   offsetDays: number = 0,
   referenceDate: Date = new Date()
 ): string {
-  // Apply day offset if any
-  if (offsetDays !== 0) {
-    referenceDate.setDate(referenceDate.getDate() + offsetDays);
-  }
-
-  const year = referenceDate.getFullYear();
-  const month = String(referenceDate.getMonth() + 1).padStart(2, '0');
-  const day = String(referenceDate.getDate()).padStart(2, '0');
-
-  // Format as YYYY-MM-DD
-  const dateStr = `${year}-${month}-${day}`;
+  const bcDateKey = getBcBusinessDateKey(referenceDate);
+  const [year, month, day] = bcDateKey.split('-').map(Number);
+  const offsetDate = new Date(Date.UTC(year, month - 1, day + offsetDays));
+  const dateStr = [
+    offsetDate.getUTCFullYear(),
+    String(offsetDate.getUTCMonth() + 1).padStart(2, '0'),
+    String(offsetDate.getUTCDate()).padStart(2, '0')
+  ].join('-');
 
   // Add time component based on type
   const timeStr = type === 'start' ? 'T00:00:00' : 'T23:59:59';
@@ -34,8 +32,8 @@ function getLocalDateTimeString(
 
 export function useCurrentPayrollPeriod() {
   // Get today's date boundaries
-  const todayStart = getLocalDateTimeString('start');
-  const todayEnd = getLocalDateTimeString('end');
+  const todayStart = getBcBusinessDateTimeString('start');
+  const todayEnd = getBcBusinessDateTimeString('end');
 
   const query = useQuery<PayrollPeriod>(
     `SELECT * FROM payrollperiods 
@@ -55,7 +53,7 @@ export function useCurrentPayrollPeriod() {
  * period), so this is the period whose finalized hours the employee cares about.
  */
 export function useMostRecentApprovedPayrollPeriod() {
-  const todayStart = getLocalDateTimeString('start');
+  const todayStart = getBcBusinessDateTimeString('start');
 
   const query = useQuery<PayrollPeriod>(
     `SELECT * FROM payrollperiods
@@ -99,8 +97,8 @@ export function usePayrollSchedules(
 
 export function useTodaySchedules() {
   // Get today's date boundaries using the helper
-  const startOfDayLocal = getLocalDateTimeString('start', -1);
-  const endOfDayLocal = getLocalDateTimeString('end', 1);
+  const startOfDayLocal = getBcBusinessDateTimeString('start', -1);
+  const endOfDayLocal = getBcBusinessDateTimeString('end', 1);
 
   const query = useQuery<Schedule>(
     `SELECT * FROM schedules

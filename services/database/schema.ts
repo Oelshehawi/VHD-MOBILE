@@ -70,7 +70,8 @@ const schedules = new Table(
     location: column.text,
     payrollPeriod: column.text,
     shifts: column.text,
-    startDateTime: column.text,
+    // Legacy startDateTime is intentionally not declared. PowerSync reconciles
+    // this projection without rewriting the canonical stored UTC instant.
     scheduledStartAtUtc: column.text,
     timeZone: column.text,
     arrivalWindowEndOffsetMinutes: column.integer,

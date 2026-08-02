@@ -48,7 +48,11 @@ Notes:
 
 ### 2. Schedule Time Migration
 
-Status: Not started
+Status: Completed 2026-08-02
+
+The active mobile runtime now uses only `scheduledStartAtUtc` plus `timeZone`.
+Permanent B.C. time behavior, local-schema compatibility, and verification are
+documented in `docs/2026-08-02-permanent-bc-time.md`.
 
 Move mobile schedule reads, sorting, filtering, and display away from `startDateTime` and onto:
 

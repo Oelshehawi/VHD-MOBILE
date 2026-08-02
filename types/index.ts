@@ -26,9 +26,8 @@ export interface Schedule {
   serviceJobId?: string;
   jobTitle: string;
   location: string;
-  startDateTime: string;
-  scheduledStartAtUtc?: string;
-  timeZone?: string;
+  scheduledStartAtUtc: string;
+  timeZone: string;
   arrivalWindowEndOffsetMinutes?: number | null;
   serviceTypes?: ScheduleServiceType[] | string;
   requiresReport?: boolean | number;
@@ -219,9 +218,8 @@ export interface DashboardSchedule {
   serviceJobId?: string;
   jobTitle: string;
   location: string;
-  startDateTime: string;
-  scheduledStartAtUtc?: string;
-  timeZone?: string;
+  scheduledStartAtUtc: string;
+  timeZone: string;
   arrivalWindowEndOffsetMinutes?: number | null;
   serviceTypes?: ScheduleServiceType[] | string;
   requiresReport?: boolean | number;

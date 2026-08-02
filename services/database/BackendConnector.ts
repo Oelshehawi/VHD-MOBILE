@@ -13,6 +13,7 @@ import { cacheBackgroundToken } from '@/services/background/BackgroundAuth';
 import { hasPowerSyncStaffIdentityClaims } from '@/utils/powerSyncToken';
 import { SyncEventBus } from '@/services/sync/SyncEventBus';
 import type { TokenProvider } from '../network/types';
+import { getMobileScheduleUploadData } from './scheduleUpload';
 
 type SyncMetricName =
   | 'sync_ack_success'
@@ -319,10 +320,29 @@ export class BackendConnector implements PowerSyncBackendConnector {
           continue;
         }
 
+        if (op.table === 'schedules' && op.op !== UpdateType.PATCH) {
+          debugLogger.warn('SYNC', 'Dropped unsupported mobile schedule mutation', {
+            id: op.id,
+            operation: op.op
+          });
+          continue;
+        }
+
         // Parse JSON fields for reports table before sending to backend
         let data = { ...op.opData, id: op.id };
         if (op.table === 'reports') {
           data = this.parseReportJsonFields(data);
+        }
+        if (op.table === 'schedules') {
+          const scheduleData = getMobileScheduleUploadData(op.opData);
+          if (Object.keys(scheduleData).length === 0) {
+            debugLogger.warn('SYNC', 'Dropped schedule write with no mobile-owned fields', {
+              id: op.id,
+              fields: Object.keys(op.opData || {})
+            });
+            continue;
+          }
+          data = { ...scheduleData, id: op.id };
         }
 
         const record = {

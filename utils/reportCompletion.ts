@@ -6,7 +6,6 @@ import { formatVancouverDateAsUtcDateOnly } from './date';
 
 type ReportScheduleSource = {
   scheduledStartAtUtc?: string | null;
-  startDateTime?: string | null;
   timeZone?: string | null;
 };
 

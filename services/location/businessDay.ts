@@ -4,7 +4,11 @@
 // Tracking registration has a slightly wider range so pre-midnight geofences
 // can be ready for 12 AM-2:59 AM service-date jobs.
 
-const FIELD_STATUS_TIME_ZONE = 'America/Vancouver';
+import {
+  getEffectiveTimeZoneForInstant,
+  VANCOUVER_TIME_ZONE
+} from '@/utils/bcTime';
+
 const SERVICE_DAY_CUTOFF_HOUR = 3;
 
 const LOCAL_DATE_TIME_PARTS = [
@@ -41,7 +45,7 @@ function getLocalDateTimeParts(isoUtc: string): {
   }
 
   const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: FIELD_STATUS_TIME_ZONE,
+    timeZone: getEffectiveTimeZoneForInstant(VANCOUVER_TIME_ZONE, date),
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
@@ -96,24 +100,24 @@ function addDaysToDateKey(dateKey: string, days: number): string {
 }
 
 function getTodayKey(now: Date): string {
-  return getServiceDayKey(now.toISOString());
+  return getLocalDateTimeParts(now.toISOString())?.dateKey ?? '';
 }
 
 /**
- * True when the window's scheduled start falls on the current Vancouver
- * business day.
+ * True when the window's scheduled start falls within the current B.C.
+ * calendar business day (local midnight to local midnight).
  */
 export function isWindowInCurrentBusinessDay(
   window: { scheduledStartAtUtc: string },
   now: Date = new Date()
 ): boolean {
-  const windowKey = getServiceDayKey(window.scheduledStartAtUtc);
-  if (!windowKey) {
+  const local = getLocalDateTimeParts(window.scheduledStartAtUtc);
+  if (!local) {
     return false;
   }
 
   const todayKey = getTodayKey(now);
-  return windowKey === todayKey;
+  return local.dateKey === todayKey;
 }
 
 /**
