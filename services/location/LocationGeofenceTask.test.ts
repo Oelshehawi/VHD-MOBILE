@@ -152,7 +152,6 @@ function activePersistedWindow(id: string): PersistedTrackingWindow {
     endsAtUtc: minutesFromNow(300),
     pingIntervalSeconds: 120,
     onSitePingIntervalSeconds: 180,
-    distanceIntervalMeters: 0,
     depotLat: 49.1,
     depotLng: -123.1,
     depotRadiusMeters: 150,
@@ -165,6 +164,7 @@ function activePersistedWindow(id: string): PersistedTrackingWindow {
 async function seedStateForGeofenceEvent(overrides?: {
   arrivedWindowIds?: string[];
   exitedWindowIds?: string[];
+  geofenceRegionsRegisteredAt?: string;
 }): Promise<void> {
   await writeLocationTrackingState({
     windows: [activePersistedWindow('w1')],
@@ -183,7 +183,8 @@ async function seedStateForGeofenceEvent(overrides?: {
     exitedWindowIds: overrides?.exitedWindowIds ?? [],
     activeLocationWindowIds: ['w1'],
     lastLocationPingAtByWindowId: {},
-    initialDepotCheckedWindowIds: []
+    initialDepotCheckedWindowIds: [],
+    geofenceRegionsRegisteredAt: overrides?.geofenceRegionsRegisteredAt
   });
 }
 
@@ -215,6 +216,46 @@ describe('processGeofenceEvent', () => {
         deviceAccuracyMeters: 18
       })
     );
+  });
+
+  it('flags an enter that fired right after regions were re-registered', async () => {
+    // iOS reports the device's current state for a freshly registered region.
+    // Relaunching the app while parked on site therefore produces an "enter"
+    // stamped at departure time — the 98-minute error in production.
+    await seedStateForGeofenceEvent({
+      geofenceRegionsRegisteredAt: new Date(Date.now() - 5_000).toISOString()
+    });
+
+    await processGeofenceEvent(jobRegionEvent(1));
+
+    expect(postOrQueueLocationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'geofence_enter', initialState: true })
+    );
+  });
+
+  it('does not flag an enter observed well after registration', async () => {
+    await seedStateForGeofenceEvent({
+      geofenceRegionsRegisteredAt: new Date(Date.now() - 10 * 60_000).toISOString()
+    });
+
+    await processGeofenceEvent(jobRegionEvent(1));
+
+    const emitted = jest.mocked(postOrQueueLocationEvent).mock.calls.at(-1)?.[0];
+    expect(emitted).toMatchObject({ eventType: 'geofence_enter' });
+    expect(emitted).not.toHaveProperty('initialState');
+  });
+
+  it('never flags an exit as initial state', async () => {
+    await seedStateForGeofenceEvent({
+      arrivedWindowIds: ['w1'],
+      geofenceRegionsRegisteredAt: new Date(Date.now() - 5_000).toISOString()
+    });
+
+    await processGeofenceEvent(jobRegionEvent(2));
+
+    const emitted = jest.mocked(postOrQueueLocationEvent).mock.calls.at(-1)?.[0];
+    expect(emitted).toMatchObject({ eventType: 'geofence_exit' });
+    expect(emitted).not.toHaveProperty('initialState');
   });
 
   it('still emits the event when the device fix is unavailable', async () => {

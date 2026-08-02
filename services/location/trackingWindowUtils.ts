@@ -155,15 +155,3 @@ export function getOnSitePingIntervalSeconds(
 
   return Math.min(600, Math.max(60, Math.round(value)));
 }
-
-export function getDistanceIntervalMeters(
-  window: Pick<TechnicianTrackingWindow, 'distanceIntervalMeters'>
-): number {
-  const fallbackMeters = 0;
-  const value = finiteCadenceValue(window.distanceIntervalMeters);
-  if (value === null) {
-    return fallbackMeters;
-  }
-
-  return Math.min(500, Math.max(0, Math.round(value)));
-}

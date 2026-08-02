@@ -8,6 +8,16 @@ import { debugLogger } from '@/utils/DebugLogger';
 
 const LOCATION_TRACKING_STATE_KEY = 'vhd_location_tracking_state_v1';
 const MAX_PERSISTED_WINDOWS = 12;
+let stateMutationTail: Promise<void> = Promise.resolve();
+
+function runStateMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const run = stateMutationTail.then(mutation, mutation);
+  stateMutationTail = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
 
 export type PermissionState =
   | { kind: 'granted' }
@@ -47,7 +57,6 @@ export interface PersistedTrackingWindow {
   endsAtUtc: string;
   pingIntervalSeconds: number;
   onSitePingIntervalSeconds?: number | null;
-  distanceIntervalMeters: number;
   depotLat?: number;
   depotLng?: number;
   depotRadiusMeters?: number;
@@ -82,6 +91,11 @@ export interface LocationTrackingState {
   windows: PersistedTrackingWindow[];
   geofenceRegions: PersistedGeofenceRegion[];
   geofenceSignature?: string;
+  // When regions were last (re-)registered with the OS. iOS reports the
+  // device's *initial* state for a freshly registered region as an enter, so a
+  // geofence_enter shortly after this timestamp may be a re-registration
+  // artifact rather than a real crossing.
+  geofenceRegionsRegisteredAt?: string;
   geofenceTransitions: PersistedGeofenceTransition[];
   arrivedWindowIds: string[];
   exitedWindowIds: string[];
@@ -177,6 +191,10 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
     geofenceRegions: Array.isArray(value.geofenceRegions) ? value.geofenceRegions : [],
     geofenceSignature:
       typeof value.geofenceSignature === 'string' ? value.geofenceSignature : undefined,
+    geofenceRegionsRegisteredAt:
+      typeof value.geofenceRegionsRegisteredAt === 'string'
+        ? value.geofenceRegionsRegisteredAt
+        : undefined,
     geofenceTransitions: normalizeGeofenceTransitions(value.geofenceTransitions),
     arrivedWindowIds: uniqueStrings(Array.isArray(value.arrivedWindowIds) ? value.arrivedWindowIds : []),
     exitedWindowIds: uniqueStrings(Array.isArray(value.exitedWindowIds) ? value.exitedWindowIds : []),
@@ -245,7 +263,7 @@ function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
   };
 }
 
-export async function writeLocationTrackingState(state: LocationTrackingState): Promise<void> {
+async function writeLocationTrackingStateUnsafe(state: LocationTrackingState): Promise<void> {
   try {
     await AsyncStorage.setItem(
       LOCATION_TRACKING_STATE_KEY,
@@ -258,20 +276,26 @@ export async function writeLocationTrackingState(state: LocationTrackingState): 
   }
 }
 
+export async function writeLocationTrackingState(state: LocationTrackingState): Promise<void> {
+  await runStateMutation(() => writeLocationTrackingStateUnsafe(state));
+}
+
 export async function updateLocationTrackingState(
   updater: (state: LocationTrackingState) => LocationTrackingState
 ): Promise<LocationTrackingState> {
-  const state = await readLocationTrackingState();
-  const nextState = normalizeState(updater(state));
-  await writeLocationTrackingState(nextState);
+  return runStateMutation(async () => {
+    const state = await readLocationTrackingState();
+    const nextState = normalizeState(updater(state));
+    await writeLocationTrackingStateUnsafe(nextState);
 
-  const previous = state.lastKnownPermissionState ?? null;
-  const next = nextState.lastKnownPermissionState ?? null;
-  if (JSON.stringify(previous) !== JSON.stringify(next)) {
-    notifyPermissionStateListeners(next);
-  }
+    const previous = state.lastKnownPermissionState ?? null;
+    const next = nextState.lastKnownPermissionState ?? null;
+    if (JSON.stringify(previous) !== JSON.stringify(next)) {
+      notifyPermissionStateListeners(next);
+    }
 
-  return nextState;
+    return nextState;
+  });
 }
 
 export async function clearLocationTrackingState(): Promise<void> {
@@ -288,7 +312,6 @@ export function toPersistedWindows(windows: ParsedTrackingWindow[]): PersistedTr
     endsAtUtc: window.endsAtUtc,
     pingIntervalSeconds: window.pingIntervalSeconds,
     onSitePingIntervalSeconds: window.onSitePingIntervalSeconds ?? null,
-    distanceIntervalMeters: window.distanceIntervalMeters,
     depotLat: window.depotTarget.lat,
     depotLng: window.depotTarget.lng,
     depotRadiusMeters: window.depotTarget.radiusMeters,

@@ -7,10 +7,11 @@ import type { MobileLocationEvent } from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
 
 const LOCATION_EVENT_QUEUE_KEY = 'vhd_location_event_queue_v1';
-const MAX_QUEUE_ITEMS = 200;
+const MAX_QUEUE_ITEMS = 500;
 const MAX_FLUSH_ITEMS = 25;
 const MAX_RETRY_ATTEMPTS = 10;
 const MAX_QUEUE_AGE_MS = 24 * 60 * 60 * 1000;
+const MAX_CRITICAL_QUEUE_AGE_MS = 13 * 24 * 60 * 60 * 1000;
 
 interface QueuedLocationEvent {
   id: string;
@@ -22,6 +23,20 @@ interface QueuedLocationEvent {
 }
 
 let flushInFlight: Promise<void> | null = null;
+let queueMutationTail: Promise<void> = Promise.resolve();
+
+function isCriticalEvent(event: MobileLocationEvent): boolean {
+  return event.eventType === 'geofence_enter' || event.eventType === 'geofence_exit';
+}
+
+function runQueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  const run = queueMutationTail.then(mutation, mutation);
+  queueMutationTail = run.then(
+    () => undefined,
+    () => undefined
+  );
+  return run;
+}
 
 function createQueueId(event: MobileLocationEvent): string {
   return [
@@ -69,9 +84,28 @@ async function readQueue(): Promise<QueuedLocationEvent[]> {
   }
 }
 
+function trimQueue(queue: QueuedLocationEvent[]): QueuedLocationEvent[] {
+  if (queue.length <= MAX_QUEUE_ITEMS) {
+    return queue;
+  }
+
+  const critical = queue.filter((item) => isCriticalEvent(item.event)).slice(-MAX_QUEUE_ITEMS);
+  const criticalIds = new Set(critical.map((item) => item.id));
+  const routineSlots = Math.max(0, MAX_QUEUE_ITEMS - critical.length);
+  const routine =
+    routineSlots > 0
+      ? queue
+          .filter((item) => !criticalIds.has(item.id) && !isCriticalEvent(item.event))
+          .slice(-routineSlots)
+      : [];
+  const retainedIds = new Set([...critical, ...routine].map((item) => item.id));
+
+  return queue.filter((item) => retainedIds.has(item.id));
+}
+
 async function writeQueue(queue: QueuedLocationEvent[]): Promise<void> {
   try {
-    await AsyncStorage.setItem(LOCATION_EVENT_QUEUE_KEY, JSON.stringify(queue.slice(-MAX_QUEUE_ITEMS)));
+    await AsyncStorage.setItem(LOCATION_EVENT_QUEUE_KEY, JSON.stringify(trimQueue(queue)));
   } catch (error) {
     debugLogger.warn('LOCATION', 'Failed to write location event queue', {
       error: error instanceof Error ? error.message : String(error)
@@ -83,51 +117,78 @@ export async function enqueueLocationEvent(
   event: MobileLocationEvent,
   lastError?: string
 ): Promise<void> {
-  const queue = await readQueue();
-  queue.push({
-    id: createQueueId(event),
-    event,
-    firstQueuedAt: new Date().toISOString(),
-    attemptCount: 0,
-    lastError
-  });
+  await runQueueMutation(async () => {
+    const queue = await readQueue();
+    queue.push({
+      id: createQueueId(event),
+      event,
+      firstQueuedAt: new Date().toISOString(),
+      attemptCount: 0,
+      lastError
+    });
 
-  await writeQueue(queue);
-  debugLogger.info('LOCATION', 'Queued location event for retry', {
-    eventType: event.eventType,
-    trackingWindowId: event.trackingWindowId,
-    scheduleId: event.scheduleId,
-    queueDepth: Math.min(queue.length, MAX_QUEUE_ITEMS),
-    lastError
+    const trimmed = trimQueue(queue);
+    await writeQueue(trimmed);
+    debugLogger.info('LOCATION', 'Queued location event for retry', {
+      eventType: event.eventType,
+      trackingWindowId: event.trackingWindowId,
+      scheduleId: event.scheduleId,
+      queueDepth: trimmed.length,
+      lastError
+    });
   });
 }
 
 export async function postOrQueueLocationEvent(event: MobileLocationEvent): Promise<boolean> {
+  const [posted] = await postOrQueueLocationEvents([event]);
+  return posted === true;
+}
+
+/**
+ * Posts a whole batch in one request, queueing only the events that failed
+ * retryably. Returns one boolean per input event, aligned by index.
+ */
+export async function postOrQueueLocationEvents(
+  events: MobileLocationEvent[]
+): Promise<boolean[]> {
+  if (events.length === 0) {
+    return [];
+  }
+
   const apiClient = createApiClient();
-  const result = await apiClient.postLocationEvent(event);
+  const results = await apiClient.postLocationEvents(events);
+  const posted: boolean[] = [];
 
-  if (result.success) {
-    debugLogger.debug('LOCATION', 'Posted location event', {
-      eventType: event.eventType,
-      trackingWindowId: event.trackingWindowId,
-      scheduleId: event.scheduleId
-    });
-    return true;
+  for (const [index, event] of events.entries()) {
+    const result = results[index];
+
+    if (result?.success) {
+      debugLogger.debug('LOCATION', 'Posted location event', {
+        eventType: event.eventType,
+        trackingWindowId: event.trackingWindowId,
+        scheduleId: event.scheduleId
+      });
+      posted.push(true);
+      continue;
+    }
+
+    if (result?.retryable === false) {
+      debugLogger.warn('LOCATION', 'Dropping non-retryable location event', {
+        eventType: event.eventType,
+        trackingWindowId: event.trackingWindowId,
+        scheduleId: event.scheduleId,
+        statusCode: result.statusCode,
+        error: result.error
+      });
+      posted.push(false);
+      continue;
+    }
+
+    await enqueueLocationEvent(event, result?.error);
+    posted.push(false);
   }
 
-  if (result.retryable === false) {
-    debugLogger.warn('LOCATION', 'Dropping non-retryable location event', {
-      eventType: event.eventType,
-      trackingWindowId: event.trackingWindowId,
-      scheduleId: event.scheduleId,
-      statusCode: result.statusCode,
-      error: result.error
-    });
-    return false;
-  }
-
-  await enqueueLocationEvent(event, result.error);
-  return false;
+  return posted;
 }
 
 export async function flushLocationEventQueue(): Promise<void> {
@@ -135,7 +196,7 @@ export async function flushLocationEventQueue(): Promise<void> {
     return flushInFlight;
   }
 
-  flushInFlight = flushLocationEventQueueInternal().finally(() => {
+  flushInFlight = runQueueMutation(flushLocationEventQueueInternal).finally(() => {
     flushInFlight = null;
   });
 
@@ -153,7 +214,10 @@ async function flushLocationEventQueueInternal(): Promise<void> {
   const nowMs = Date.now();
   const isExpired = (item: QueuedLocationEvent): boolean => {
     const queuedAtMs = Date.parse(item.firstQueuedAt);
-    return Number.isFinite(queuedAtMs) && nowMs - queuedAtMs > MAX_QUEUE_AGE_MS;
+    const maxAgeMs = isCriticalEvent(item.event)
+      ? MAX_CRITICAL_QUEUE_AGE_MS
+      : MAX_QUEUE_AGE_MS;
+    return Number.isFinite(queuedAtMs) && nowMs - queuedAtMs > maxAgeMs;
   };
   const fresh = queue.filter((item) => !isExpired(item));
   const droppedExpired = queue.length - fresh.length;
@@ -162,14 +226,27 @@ async function flushLocationEventQueueInternal(): Promise<void> {
       droppedExpired
     });
   }
-  const batch = fresh.slice(0, MAX_FLUSH_ITEMS);
-  const deferred = fresh.slice(MAX_FLUSH_ITEMS);
+  // Exact geofence evidence flushes ahead of routine pings when the queue is
+  // deep; the server re-sorts the request by recordedAt before ingesting, so
+  // presence ordering is unaffected by this transmission order.
+  const prioritized = [
+    ...fresh.filter((item) => isCriticalEvent(item.event)),
+    ...fresh.filter((item) => !isCriticalEvent(item.event))
+  ];
+  const batch = prioritized.slice(0, MAX_FLUSH_ITEMS);
+  const deferred = prioritized.slice(MAX_FLUSH_ITEMS);
 
   let droppedNonRetryable = 0;
   let droppedExhausted = 0;
 
-  for (const item of batch) {
-    const result = await apiClient.postLocationEvent(item.event);
+  const results = await apiClient.postLocationEvents(batch.map((item) => item.event));
+
+  for (const [index, item] of batch.entries()) {
+    const result = results[index] ?? {
+      success: false,
+      retryable: true,
+      error: 'Missing batch result'
+    };
     if (result.success) {
       continue;
     }
@@ -185,7 +262,7 @@ async function flushLocationEventQueueInternal(): Promise<void> {
     }
 
     const nextAttemptCount = item.attemptCount + 1;
-    if (nextAttemptCount >= MAX_RETRY_ATTEMPTS) {
+    if (!isCriticalEvent(item.event) && nextAttemptCount >= MAX_RETRY_ATTEMPTS) {
       droppedExhausted += 1;
       debugLogger.warn('LOCATION', 'Dropping location event after max retries', {
         eventType: item.event.eventType,

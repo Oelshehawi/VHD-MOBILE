@@ -4,7 +4,9 @@ import '@/services/location/__testSupport__/mockNativeModules';
 import {
   MAX_FUTURE_RECORDED_AT_SKEW_MS,
   MAX_RECORDED_AT_STALENESS_MS,
+  MAX_TRAIL_RECORDED_AT_STALENESS_MS,
   getActivePersistedPingWindows,
+  getActivePersistedPresenceWindows,
   getPingIntervalSecondsForState,
   hasFiniteFixCoords,
   isPersistedWindowPingActive,
@@ -30,7 +32,6 @@ function persistedWindow(
     endsAtUtc: minutesFromNow(300),
     pingIntervalSeconds: 120,
     onSitePingIntervalSeconds: 180,
-    distanceIntervalMeters: 0,
     ...overrides
   };
 }
@@ -91,6 +92,24 @@ describe('getActivePersistedPingWindows', () => {
     ];
 
     expect(getActivePersistedPingWindows(windows, [])).toEqual([]);
+  });
+});
+
+describe('getActivePersistedPresenceWindows', () => {
+  it('keeps every overlapping live window and places the selected window last', () => {
+    const windows = [
+      persistedWindow({ id: 'selected', scheduledStartAtUtc: minutesFromNow(-90) }),
+      persistedWindow({ id: 'overlap', scheduledStartAtUtc: minutesFromNow(-30) }),
+      persistedWindow({
+        id: 'ended',
+        startsAtUtc: minutesFromNow(-180),
+        endsAtUtc: minutesFromNow(-1)
+      })
+    ];
+
+    expect(
+      getActivePersistedPresenceWindows(windows, 'selected').map((window) => window.id)
+    ).toEqual(['overlap', 'selected']);
   });
 });
 
@@ -183,6 +202,31 @@ describe('normalizeRecordedAt', () => {
   it('falls back to now for an unparseable timestamp', () => {
     expect(normalizeRecordedAt(Number.NaN, now)).toBe(new Date(now).toISOString());
     expect(normalizeRecordedAt('not-a-date', now)).toBe(new Date(now).toISOString());
+  });
+
+  it('keeps a buffered trail fix the 1-hour bound would have deleted', () => {
+    // The trail the OS collected while the app was suspended is exactly the
+    // evidence of when the technician arrived; dropping it on-device is what
+    // produced the 98-minute arrival errors.
+    const fixMs = now - 100 * 60_000;
+    expect(normalizeRecordedAt(fixMs, now)).toBeNull();
+    expect(
+      normalizeRecordedAt(fixMs, now, MAX_TRAIL_RECORDED_AT_STALENESS_MS)
+    ).toBe(new Date(fixMs).toISOString());
+  });
+
+  it('still drops a trail fix beyond the backend retention bound', () => {
+    const fixMs = now - MAX_TRAIL_RECORDED_AT_STALENESS_MS - 60_000;
+    expect(
+      normalizeRecordedAt(fixMs, now, MAX_TRAIL_RECORDED_AT_STALENESS_MS)
+    ).toBeNull();
+  });
+
+  it('re-stamps future skew regardless of the staleness bound in use', () => {
+    const fixMs = now + MAX_FUTURE_RECORDED_AT_SKEW_MS + 60_000;
+    expect(
+      normalizeRecordedAt(fixMs, now, MAX_TRAIL_RECORDED_AT_STALENESS_MS)
+    ).toBe(new Date(now).toISOString());
   });
 });
 

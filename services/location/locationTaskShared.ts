@@ -48,12 +48,22 @@ export function getEventPlatform(): LocationEventPlatform | null {
 export const MAX_FUTURE_RECORDED_AT_SKEW_MS = 2 * 60 * 1000; // 2 minutes
 export const MAX_RECORDED_AT_STALENESS_MS = 60 * 60 * 1000; // 1 hour
 
+// Buffered trail fixes are different: iOS hands the updates task an array of
+// fixes it collected while the app was suspended, each carrying its own real
+// capture timestamp. Those are exactly the samples that prove when the tech
+// arrived, so they must survive a long suspension (or a dead zone) instead of
+// being deleted on-device. The 1-hour bound above still guards any path that
+// cannot vouch for a fix's provenance (e.g. getLastKnownPositionAsync). Stay
+// just inside the backend's 14-day MAX_PAST_EVENT_AGE_MS.
+export const MAX_TRAIL_RECORDED_AT_STALENESS_MS = 13 * 24 * 60 * 60 * 1000;
+
 // Returns an ISO recordedAt guaranteed inside the backend bounds, or null when
 // the fix is too stale to attribute to the current moment (caller should skip
 // emitting rather than post a doomed/misleading event).
 export function normalizeRecordedAt(
   candidate: number | string,
-  now: number = Date.now()
+  now: number = Date.now(),
+  maxStalenessMs: number = MAX_RECORDED_AT_STALENESS_MS
 ): string | null {
   const candidateMs =
     typeof candidate === 'number' ? candidate : Date.parse(candidate);
@@ -70,7 +80,7 @@ export function normalizeRecordedAt(
 
   // Unusably stale cached fix: drop it instead of reporting an old position as
   // if it were current.
-  if (candidateMs < now - MAX_RECORDED_AT_STALENESS_MS) {
+  if (candidateMs < now - maxStalenessMs) {
     return null;
   }
 
@@ -135,6 +145,25 @@ export function getActivePersistedPingWindows(
 ): PersistedTrackingWindow[] {
   const selected = selectActivePingWindow(windows, arrivedWindowIds, now);
   return selected ? [selected] : [];
+}
+
+/**
+ * Every live window receives the same physical GPS fix so overlapping jobs can
+ * independently confirm arrival/departure. The selected window is last: its
+ * event remains the technician's dashboard context when timestamps are equal.
+ */
+export function getActivePersistedPresenceWindows(
+  windows: PersistedTrackingWindow[],
+  selectedWindowId: string,
+  now: Date = new Date()
+): PersistedTrackingWindow[] {
+  return windows
+    .filter((window) => isPersistedWindowPingActive(window, now))
+    .sort((left, right) => {
+      if (left.id === selectedWindowId) return 1;
+      if (right.id === selectedWindowId) return -1;
+      return Date.parse(left.scheduledStartAtUtc) - Date.parse(right.scheduledStartAtUtc);
+    });
 }
 
 export function isWindowOnSite(
@@ -321,7 +350,12 @@ export async function startLocationUpdatesForWindows(
           TRAVEL_INTERVAL_MIN_SECONDS,
           Math.min(TRAVEL_INTERVAL_MAX_SECONDS, Math.min(...windows.map(getPingIntervalSeconds)))
         );
-  const locationUpdatesSignature = `${mode}:${intervalSeconds}:0`;
+  // Deferral asks iOS to batch fixes and hand them over later. That is a real
+  // battery win while parked on site, where liveness matters least. During
+  // travel it only delays the live map — exactly when the truck's position is
+  // most useful — so deliver those fixes as they arrive.
+  const deferredUpdatesInterval = mode === 'on-site' ? intervalSeconds * 1000 : 0;
+  const locationUpdatesSignature = `${mode}:${intervalSeconds}:0:${deferredUpdatesInterval}`;
   const state = await readLocationTrackingState();
   const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
 
@@ -337,7 +371,7 @@ export async function startLocationUpdatesForWindows(
     accuracy: mode === 'on-site' ? Location.Accuracy.Balanced : Location.Accuracy.High,
     timeInterval: intervalSeconds * 1000,
     distanceInterval: 0,
-    deferredUpdatesInterval: intervalSeconds * 1000,
+    deferredUpdatesInterval,
     deferredUpdatesDistance: 0,
     pausesUpdatesAutomatically: false,
     showsBackgroundLocationIndicator: true,
@@ -356,7 +390,8 @@ export async function startLocationUpdatesForWindows(
   debugLogger.info('LOCATION', 'Started background location updates', {
     windowIds: windows.map((window) => window.id),
     mode,
-    intervalSeconds
+    intervalSeconds,
+    deferredUpdatesInterval
   });
 }
 

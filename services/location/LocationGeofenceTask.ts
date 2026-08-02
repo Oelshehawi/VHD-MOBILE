@@ -37,6 +37,37 @@ const MAX_GEOFENCE_WINDOWS = 8;
 // ~20-region iOS budget.
 const MAX_TOTAL_GEOFENCE_REGIONS = 18;
 
+// iOS reports the device's current state for a newly registered region, so a
+// re-registration while the tech is parked on site surfaces as a fresh
+// geofence_enter stamped "now" — which is departure time, not arrival. Enters
+// this close to registration are still reported (they are real presence
+// evidence) but flagged so the server refuses to confirm an arrival on them
+// alone.
+export const GEOFENCE_REGISTRATION_INITIAL_STATE_WINDOW_MS = 90 * 1000;
+
+// True when an enter fired close enough to the last region registration that
+// it is more likely the OS reporting "you are already inside" than a crossing.
+export function isInitialStateGeofenceEnter(args: {
+  eventType: 'geofence_enter' | 'geofence_exit';
+  geofenceRegionsRegisteredAt: string | undefined;
+  nowMs: number;
+}): boolean {
+  if (args.eventType !== 'geofence_enter' || !args.geofenceRegionsRegisteredAt) {
+    return false;
+  }
+
+  const registeredAtMs = Date.parse(args.geofenceRegionsRegisteredAt);
+  if (!Number.isFinite(registeredAtMs)) {
+    return false;
+  }
+
+  const sinceRegistrationMs = args.nowMs - registeredAtMs;
+  return (
+    sinceRegistrationMs >= 0 &&
+    sinceRegistrationMs <= GEOFENCE_REGISTRATION_INITIAL_STATE_WINDOW_MS
+  );
+}
+
 // Standing depot wake region: stays registered after a shift winds down so
 // iOS region monitoring can relaunch a force-quit app the next time the
 // technician passes the depot. Belongs to no tracking window.
@@ -212,7 +243,8 @@ export async function syncGeofences(regions: Location.LocationRegion[]): Promise
   await Location.startGeofencingAsync(LOCATION_GEOFENCE_TASK_NAME, regions);
   await updateLocationTrackingState((current) => ({
     ...current,
-    geofenceSignature
+    geofenceSignature,
+    geofenceRegionsRegisteredAt: new Date().toISOString()
   }));
 
   debugLogger.info('LOCATION', 'Synced location geofences', {
@@ -355,7 +387,13 @@ if (!region?.identifier || taskData?.eventType === undefined) {
     return;
   }
 
-  const recordedAt = new Date().toISOString();
+  const recordedAtMs = Date.now();
+  const recordedAt = new Date(recordedAtMs).toISOString();
+  const initialState = isInitialStateGeofenceEnter({
+    eventType,
+    geofenceRegionsRegisteredAt: state.geofenceRegionsRegisteredAt,
+    nowMs: recordedAtMs
+  });
   const transition = await recordGeofenceTransition({
     trackingWindowId: metadata.trackingWindowId,
     regionType: metadata.regionType,
@@ -389,7 +427,8 @@ if (!region?.identifier || taskData?.eventType === undefined) {
     ...(deviceCoords ?? {}),
     recordedAt,
     source: 'geofence',
-    platform
+    platform,
+    ...(initialState ? { initialState: true } : {})
   };
 
   await flushLocationEventQueue();

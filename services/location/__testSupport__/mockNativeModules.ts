@@ -41,6 +41,7 @@ jest.mock('expo-task-manager', () => ({
 
 jest.mock('@/services/location/LocationEventQueue', () => ({
   postOrQueueLocationEvent: jest.fn(),
+  postOrQueueLocationEvents: jest.fn(),
   flushLocationEventQueue: jest.fn()
 }));
 

@@ -276,29 +276,96 @@ export class ApiClient {
   // ============ LOCATION TRACKING EVENTS ============
 
   async postLocationEvent(event: MobileLocationEvent): Promise<LocationEventPostResult> {
+    const [result] = await this.postLocationEventPayload(event, [event]);
+    return result;
+  }
+
+  /**
+   * Posts a whole batch in one request. Returns one result per input event,
+   * aligned by index, so the caller can retry only the events that failed.
+   * A backfilled trail is dozens of events; serial posting from a phone on a
+   * weak connection is where those events get lost.
+   */
+  async postLocationEvents(events: MobileLocationEvent[]): Promise<LocationEventPostResult[]> {
+    if (events.length === 0) {
+      return [];
+    }
+
+    if (events.length === 1) {
+      // Single-event body keeps the cheapest path unchanged.
+      return this.postLocationEventPayload(events[0], events);
+    }
+
+    return this.postLocationEventPayload({ events }, events);
+  }
+
+  private async postLocationEventPayload(
+    body: unknown,
+    events: MobileLocationEvent[]
+  ): Promise<LocationEventPostResult[]> {
+    const logContext = {
+      eventCount: events.length,
+      eventTypes: Array.from(new Set(events.map((event) => event.eventType))),
+      trackingWindowId: events[0]?.trackingWindowId,
+      scheduleId: events[0]?.scheduleId
+    };
+
     try {
       const headers = await this.ensureAuthHeaders();
       const response = await this.fetchImpl(`${this.baseUrl}/api/mobile/location-events`, {
         method: 'POST',
         headers,
-        body: JSON.stringify(event)
+        body: JSON.stringify(body)
       });
 
-      if (response.ok) {
-        return { success: true, statusCode: response.status };
-      }
-
       const rawBody = await response.text();
-      let parsedBody: { error?: string; message?: string; details?: string } = {};
+      let parsedBody: {
+        error?: string;
+        message?: string;
+        details?: string;
+        results?: Array<{ error?: string } | null>;
+      } = {};
       try {
-        parsedBody = JSON.parse(rawBody);
+        parsedBody = rawBody ? JSON.parse(rawBody) : {};
       } catch {
-        parsedBody = {
-          error: rawBody || `HTTP ${response.status}`
-        };
+        parsedBody = { error: rawBody || `HTTP ${response.status}` };
       }
 
-      const retryable = response.status === 429 || response.status >= 500;
+      if (response.ok) {
+        // Per-event rejections ride back in `results` with a 200: the batch as
+        // a whole was accepted, individual events were not. They are the same
+        // class as a single-event 400 — permanent, so never retried.
+        const results = Array.isArray(parsedBody.results) ? parsedBody.results : null;
+        return events.map((event, index) => {
+          const eventError = results?.[index]?.error;
+          if (!eventError) {
+            return { success: true, statusCode: response.status };
+          }
+
+          debugLogger.warn('LOCATION', 'Location event rejected within batch', {
+            eventType: event.eventType,
+            trackingWindowId: event.trackingWindowId,
+            scheduleId: event.scheduleId,
+            error: eventError
+          });
+
+          return {
+            success: false,
+            error: eventError,
+            statusCode: response.status,
+            retryable: false
+          };
+        });
+      }
+
+      // A headless location task can outlive the cached Clerk token. Preserve
+      // the event until the foreground app can refresh auth instead of
+      // permanently dropping exact geofence evidence on a 401.
+      const retryable =
+        response.status === 401 ||
+        response.status === 408 ||
+        response.status === 429 ||
+        response.status >= 500;
       const error =
         parsedBody.message ||
         parsedBody.error ||
@@ -306,35 +373,31 @@ export class ApiClient {
         `Location event POST failed with status ${response.status}`;
 
       debugLogger.warn('LOCATION', 'Location event POST failed', {
-        eventType: event.eventType,
-        trackingWindowId: event.trackingWindowId,
-        scheduleId: event.scheduleId,
+        ...logContext,
         statusCode: response.status,
         retryable,
         error
       });
 
-      return {
+      return events.map(() => ({
         success: false,
         error,
         statusCode: response.status,
         retryable
-      };
+      }));
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Unknown error';
       debugLogger.warn('LOCATION', 'Location event POST transport failure', {
-        eventType: event.eventType,
-        trackingWindowId: event.trackingWindowId,
-        scheduleId: event.scheduleId,
+        ...logContext,
         error: message
       });
 
-      return {
+      return events.map(() => ({
         success: false,
         error: message,
         statusCode: 0,
         retryable: true
-      };
+      }));
     }
   }
 

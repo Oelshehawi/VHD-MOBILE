@@ -238,10 +238,17 @@ export class LocationTrackingCoordinator {
 
     await flushLocationEventQueue();
 
-    const now = new Date();
-    const liveWindows = windows.filter((window) => !completedScheduleIds.has(window.scheduleId));
-    const relevantWindows = getRelevantTrackingWindows(liveWindows, now);
     const existingState = await readLocationTrackingState();
+    const now = new Date();
+    // A report can be completed before the truck leaves. Keep that window
+    // alive until the phone observes its job exit; completion alone must not
+    // erase the departure evidence needed for an on-site duration.
+    const liveWindows = windows.filter(
+      (window) =>
+        !completedScheduleIds.has(window.scheduleId) ||
+        !existingState.exitedWindowIds.includes(window.id)
+    );
+    const relevantWindows = getRelevantTrackingWindows(liveWindows, now);
     // Field Status tracking acts on today's service-date windows, plus
     // next-day pre-cutoff windows whose tracking may begin before midnight.
     // Later future windows from PowerSync must not start tracking today.

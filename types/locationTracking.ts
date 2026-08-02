@@ -6,8 +6,7 @@ export type LocationEventType =
   | 'geofence_exit'
   | 'tracking_started'
   | 'tracking_stopped'
-  | 'permission_denied'
-  | 'location_stale';
+  | 'permission_denied';
 export type LocationRegionType = 'depot' | 'job';
 export type LocationEventSource = 'geofence' | 'background_location' | 'manual' | 'system';
 export type LocationEventPlatform = 'ios' | 'android';
@@ -63,4 +62,8 @@ export interface MobileLocationEvent {
   recordedAt: string;
   source: LocationEventSource;
   platform: LocationEventPlatform;
+  // Set on a geofence_enter that fired right after regions were (re-)registered
+  // with the OS. iOS reports the device's initial region state as an enter, so
+  // these are evidence of presence but not of a crossing at this timestamp.
+  initialState?: boolean;
 }

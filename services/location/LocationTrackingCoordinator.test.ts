@@ -7,6 +7,7 @@ import { LocationTrackingCoordinator } from '@/services/location/LocationTrackin
 import { STANDING_DEPOT_REGION_IDENTIFIER } from '@/services/location/LocationGeofenceTask';
 import {
   clearLocationTrackingState,
+  markWindowExited,
   readLocationTrackingState,
   writeLocationTrackingState
 } from '@/services/location/LocationTrackingState';
@@ -45,7 +46,7 @@ describe('LocationTrackingCoordinator', () => {
     await clearLocationTrackingState();
   });
 
-  it('excludes locally completed schedules from selection and persistence', async () => {
+  it('keeps a completed schedule active until the phone observes its exit', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-14T18:00:00.000Z'));
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
@@ -55,6 +56,25 @@ describe('LocationTrackingCoordinator', () => {
       [trackingWindow({ id: 'completed-window', scheduleId: 'completed-schedule' })],
       new Set(['completed-schedule'])
     );
+
+    const state = await readLocationTrackingState();
+    expect(state.windows.map((window) => window.id)).toEqual(['completed-window']);
+    expect(state.activeLocationWindowIds).toEqual(['completed-window']);
+  });
+
+  it('stops a completed schedule after the phone observes its job exit', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-05-14T18:00:00.000Z'));
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
+    const coordinator = new LocationTrackingCoordinator();
+    const window = trackingWindow({
+      id: 'completed-window',
+      scheduleId: 'completed-schedule'
+    });
+
+    await coordinator.sync([window], new Set());
+    await markWindowExited(window.id);
+    await coordinator.sync([window], new Set([window.scheduleId]));
 
     const state = await readLocationTrackingState();
     expect(state.windows).toEqual([]);
@@ -101,7 +121,6 @@ describe('LocationTrackingCoordinator', () => {
       endsAtUtc: '2026-05-13T23:00:00.000Z',
       pingIntervalSeconds: 120,
       onSitePingIntervalSeconds: 180,
-      distanceIntervalMeters: 0,
       depotLat: 49.1,
       depotLng: -123.1,
       depotRadiusMeters: 150,
