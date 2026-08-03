@@ -168,6 +168,7 @@ async function seedStateForGeofenceEvent(overrides?: {
 }): Promise<void> {
   await writeLocationTrackingState({
     windows: [activePersistedWindow('w1')],
+    closedScheduleIds: [],
     geofenceRegions: [
       {
         identifier: 'vhd:w1:job',
@@ -260,9 +261,7 @@ describe('processGeofenceEvent', () => {
 
   it('still emits the event when the device fix is unavailable', async () => {
     await seedStateForGeofenceEvent();
-    jest
-      .mocked(Location.getLastKnownPositionAsync)
-      .mockRejectedValueOnce(new Error('no fix'));
+    jest.mocked(Location.getLastKnownPositionAsync).mockRejectedValueOnce(new Error('no fix'));
 
     await processGeofenceEvent(jobRegionEvent(1));
 
@@ -322,6 +321,7 @@ describe('processGeofenceEvent', () => {
   it('a wake region refreshes tracking without emitting a presence event', async () => {
     await writeLocationTrackingState({
       windows: [],
+      closedScheduleIds: [],
       geofenceRegions: [
         {
           identifier: STANDING_DEPOT_REGION_IDENTIFIER,

@@ -7,6 +7,7 @@ import { LocationTrackingCoordinator } from '@/services/location/LocationTrackin
 import { STANDING_DEPOT_REGION_IDENTIFIER } from '@/services/location/LocationGeofenceTask';
 import {
   clearLocationTrackingState,
+  markScheduleTrackingClosed,
   markWindowExited,
   readLocationTrackingState,
   writeLocationTrackingState
@@ -46,23 +47,22 @@ describe('LocationTrackingCoordinator', () => {
     await clearLocationTrackingState();
   });
 
-  it('keeps a completed schedule active until the phone observes its exit', async () => {
+  it('keeps tracking independent from report completion', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-14T18:00:00.000Z'));
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
     const coordinator = new LocationTrackingCoordinator();
 
-    await coordinator.sync(
-      [trackingWindow({ id: 'completed-window', scheduleId: 'completed-schedule' })],
-      new Set(['completed-schedule'])
-    );
+    await coordinator.sync([
+      trackingWindow({ id: 'completed-window', scheduleId: 'completed-schedule' })
+    ]);
 
     const state = await readLocationTrackingState();
     expect(state.windows.map((window) => window.id)).toEqual(['completed-window']);
     expect(state.activeLocationWindowIds).toEqual(['completed-window']);
   });
 
-  it('stops a completed schedule after the phone observes its job exit', async () => {
+  it('keeps a locally exited window active until the server confirms closure', async () => {
     jest.useFakeTimers();
     jest.setSystemTime(new Date('2026-05-14T18:00:00.000Z'));
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
@@ -72,13 +72,30 @@ describe('LocationTrackingCoordinator', () => {
       scheduleId: 'completed-schedule'
     });
 
-    await coordinator.sync([window], new Set());
+    await coordinator.sync([window]);
     await markWindowExited(window.id);
-    await coordinator.sync([window], new Set([window.scheduleId]));
+    await coordinator.sync([window]);
+
+    const state = await readLocationTrackingState();
+    expect(state.windows.map((item) => item.id)).toEqual([window.id]);
+    expect(state.activeLocationWindowIds).toEqual([window.id]);
+  });
+
+  it('suppresses stale PowerSync rows after the server closes a schedule', async () => {
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-05-14T18:00:00.000Z'));
+    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
+    const coordinator = new LocationTrackingCoordinator();
+    const window = trackingWindow({ id: 'closed-window', scheduleId: 'closed-schedule' });
+
+    await coordinator.sync([window]);
+    await markScheduleTrackingClosed(window.scheduleId);
+    await coordinator.sync([window]);
 
     const state = await readLocationTrackingState();
     expect(state.windows).toEqual([]);
     expect(state.activeLocationWindowIds).toEqual([]);
+    expect(state.closedScheduleIds).toEqual([window.scheduleId]);
   });
 
   it('registers a next-day midnight window while its tracking window is active tonight', async () => {
@@ -87,18 +104,15 @@ describe('LocationTrackingCoordinator', () => {
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
     const coordinator = new LocationTrackingCoordinator();
 
-    await coordinator.sync(
-      [
-        trackingWindow({
-          id: 'midnight-window',
-          scheduleId: 'schedule-midnight',
-          scheduledStartAtUtc: '2026-05-15T07:00:00.000Z',
-          startsAtUtc: '2026-05-15T06:00:00.000Z',
-          endsAtUtc: '2026-05-15T11:45:00.000Z'
-        })
-      ],
-      new Set()
-    );
+    await coordinator.sync([
+      trackingWindow({
+        id: 'midnight-window',
+        scheduleId: 'schedule-midnight',
+        scheduledStartAtUtc: '2026-05-15T07:00:00.000Z',
+        startsAtUtc: '2026-05-15T06:00:00.000Z',
+        endsAtUtc: '2026-05-15T11:45:00.000Z'
+      })
+    ]);
 
     const state = await readLocationTrackingState();
     expect(state.windows.map((window) => window.id)).toEqual(['midnight-window']);
@@ -130,6 +144,7 @@ describe('LocationTrackingCoordinator', () => {
     };
     await writeLocationTrackingState({
       windows: [yesterdayWindow],
+      closedScheduleIds: [],
       geofenceRegions: [],
       geofenceTransitions: [],
       arrivedWindowIds: [],
@@ -139,7 +154,7 @@ describe('LocationTrackingCoordinator', () => {
       initialDepotCheckedWindowIds: []
     });
 
-    await coordinator.sync([], new Set());
+    await coordinator.sync([]);
 
     const state = await readLocationTrackingState();
     expect(state.windows).toEqual([]);
@@ -171,18 +186,15 @@ describe('LocationTrackingCoordinator', () => {
     Object.defineProperty(Platform, 'OS', { configurable: true, value: 'ios' });
     const coordinator = new LocationTrackingCoordinator();
 
-    await coordinator.sync(
-      [
-        trackingWindow({
-          id: 'tomorrow-window',
-          scheduleId: 'schedule-tomorrow',
-          scheduledStartAtUtc: '2026-05-15T17:00:00.000Z',
-          startsAtUtc: '2026-05-15T16:30:00.000Z',
-          endsAtUtc: '2026-05-15T23:00:00.000Z'
-        })
-      ],
-      new Set()
-    );
+    await coordinator.sync([
+      trackingWindow({
+        id: 'tomorrow-window',
+        scheduleId: 'schedule-tomorrow',
+        scheduledStartAtUtc: '2026-05-15T17:00:00.000Z',
+        startsAtUtc: '2026-05-15T16:30:00.000Z',
+        endsAtUtc: '2026-05-15T23:00:00.000Z'
+      })
+    ]);
 
     const state = await readLocationTrackingState();
     expect(state.windows).toEqual([]);

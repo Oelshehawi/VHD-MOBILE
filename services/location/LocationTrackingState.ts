@@ -89,6 +89,9 @@ export interface PersistedGeofenceTransition {
 
 export interface LocationTrackingState {
   windows: PersistedTrackingWindow[];
+  // Server-confirmed schedule closures suppress stale PowerSync window rows
+  // until their expired status arrives locally.
+  closedScheduleIds: string[];
   geofenceRegions: PersistedGeofenceRegion[];
   geofenceSignature?: string;
   // When regions were last (re-)registered with the OS. iOS reports the
@@ -134,6 +137,7 @@ function normalizePermissionState(value: unknown): PermissionState | null {
 
 const EMPTY_STATE: LocationTrackingState = {
   windows: [],
+  closedScheduleIds: [],
   geofenceRegions: [],
   geofenceTransitions: [],
   arrivedWindowIds: [],
@@ -188,6 +192,9 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
 
   return {
     windows: Array.isArray(value.windows) ? value.windows : [],
+    closedScheduleIds: uniqueStrings(
+      Array.isArray(value.closedScheduleIds) ? value.closedScheduleIds : []
+    ),
     geofenceRegions: Array.isArray(value.geofenceRegions) ? value.geofenceRegions : [],
     geofenceSignature:
       typeof value.geofenceSignature === 'string' ? value.geofenceSignature : undefined,
@@ -196,16 +203,18 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
         ? value.geofenceRegionsRegisteredAt
         : undefined,
     geofenceTransitions: normalizeGeofenceTransitions(value.geofenceTransitions),
-    arrivedWindowIds: uniqueStrings(Array.isArray(value.arrivedWindowIds) ? value.arrivedWindowIds : []),
-    exitedWindowIds: uniqueStrings(Array.isArray(value.exitedWindowIds) ? value.exitedWindowIds : []),
+    arrivedWindowIds: uniqueStrings(
+      Array.isArray(value.arrivedWindowIds) ? value.arrivedWindowIds : []
+    ),
+    exitedWindowIds: uniqueStrings(
+      Array.isArray(value.exitedWindowIds) ? value.exitedWindowIds : []
+    ),
     activeLocationWindowIds: uniqueStrings(
       Array.isArray(value.activeLocationWindowIds) ? value.activeLocationWindowIds : []
     ),
     lastLocationPingAtByWindowId: normalizeLastLocationPingAt(value.lastLocationPingAtByWindowId),
     initialDepotCheckedWindowIds: uniqueStrings(
-      Array.isArray(value.initialDepotCheckedWindowIds)
-        ? value.initialDepotCheckedWindowIds
-        : []
+      Array.isArray(value.initialDepotCheckedWindowIds) ? value.initialDepotCheckedWindowIds : []
     ),
     permissionDeniedSentAt:
       typeof value.permissionDeniedSentAt === 'string' ? value.permissionDeniedSentAt : undefined,
@@ -338,6 +347,38 @@ export async function markWindowExited(windowId: string): Promise<LocationTracki
     ...state,
     exitedWindowIds: uniqueStrings([...state.exitedWindowIds, windowId])
   }));
+}
+
+export async function markScheduleTrackingClosed(
+  scheduleId: string
+): Promise<LocationTrackingState> {
+  return updateLocationTrackingState((state) => {
+    const closedWindowIds = new Set(
+      state.windows.filter((window) => window.scheduleId === scheduleId).map((window) => window.id)
+    );
+    const keepWindow = (window: PersistedTrackingWindow) => window.scheduleId !== scheduleId;
+    const keepWindowId = (windowId: string) => !closedWindowIds.has(windowId);
+
+    return {
+      ...state,
+      windows: state.windows.filter(keepWindow),
+      closedScheduleIds: uniqueStrings([...state.closedScheduleIds, scheduleId]),
+      geofenceRegions: state.geofenceRegions.filter((region) => region.scheduleId !== scheduleId),
+      geofenceSignature: undefined,
+      geofenceTransitions: state.geofenceTransitions.filter((transition) =>
+        keepWindowId(transition.trackingWindowId)
+      ),
+      arrivedWindowIds: state.arrivedWindowIds.filter(keepWindowId),
+      exitedWindowIds: state.exitedWindowIds.filter(keepWindowId),
+      activeLocationWindowIds: state.activeLocationWindowIds.filter(keepWindowId),
+      initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter(keepWindowId),
+      lastLocationPingAtByWindowId: Object.fromEntries(
+        Object.entries(state.lastLocationPingAtByWindowId).filter(([windowId]) =>
+          keepWindowId(windowId)
+        )
+      )
+    };
+  });
 }
 
 export async function recordGeofenceTransition(

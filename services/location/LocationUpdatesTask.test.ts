@@ -62,6 +62,7 @@ function postedEvents(): MobileLocationEvent[] {
 async function seedState(windows: PersistedTrackingWindow[]): Promise<void> {
   await writeLocationTrackingState({
     windows,
+    closedScheduleIds: [],
     geofenceRegions: [],
     geofenceTransitions: [],
     arrivedWindowIds: [],
@@ -136,16 +137,12 @@ describe('processLocationUpdate', () => {
     await processLocationUpdate({ locations: [fix(-600), fix(-480), fix(-360)] });
 
     const state = await readLocationTrackingState();
-    expect(state.lastLocationPingAtByWindowId.w1).toBe(
-      new Date(T0 - 360_000).toISOString()
-    );
+    expect(state.lastLocationPingAtByWindowId.w1).toBe(new Date(T0 - 360_000).toISOString());
   });
 
   it('caps a pathological batch and keeps the newest fixes', async () => {
     const count = MAX_RECONSTRUCTED_PINGS_PER_INVOCATION + 15;
-    const locations = Array.from({ length: count }, (_, index) =>
-      fix(-(count - index) * 130)
-    );
+    const locations = Array.from({ length: count }, (_, index) => fix(-(count - index) * 130));
 
     await processLocationUpdate({ locations });
 
@@ -156,17 +153,12 @@ describe('processLocationUpdate', () => {
     );
     // The dropped tail must not advance the throttle past what was posted.
     const state = await readLocationTrackingState();
-    expect(state.lastLocationPingAtByWindowId.w1).toBe(
-      events[events.length - 1].recordedAt
-    );
+    expect(state.lastLocationPingAtByWindowId.w1).toBe(events[events.length - 1].recordedAt);
   });
 
   it('skips fixes with non-finite coords without advancing the throttle', async () => {
     await processLocationUpdate({
-      locations: [
-        fix(-600, { latitude: Number.NaN }),
-        fix(-590)
-      ]
+      locations: [fix(-600, { latitude: Number.NaN }), fix(-590)]
     });
 
     const events = postedEvents();

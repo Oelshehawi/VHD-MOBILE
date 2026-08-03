@@ -17,11 +17,14 @@ const event: MobileLocationEvent = {
   platform: 'ios'
 };
 
-function response(status: number): Response {
+function response(
+  status: number,
+  body: Record<string, unknown> = { error: `HTTP ${status}` }
+): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
-    text: async () => JSON.stringify({ error: `HTTP ${status}` })
+    text: async () => JSON.stringify(body)
   } as Response;
 }
 
@@ -47,6 +50,31 @@ describe('ApiClient.postLocationEvent', () => {
 
     await expect(client.postLocationEvent(event)).resolves.toEqual(
       expect.objectContaining({ success: false, statusCode: 403, retryable: false })
+    );
+  });
+
+  it('returns server-confirmed schedule closure metadata', async () => {
+    const fetchImpl = jest.fn(async () =>
+      response(200, {
+        success: true,
+        stored: true,
+        scheduleId: 'schedule-1',
+        jobDepartureConfirmed: true,
+        scheduleTrackingClosed: true
+      })
+    ) as unknown as FetchLike;
+    const client = new ApiClient('', {
+      fetchImpl,
+      tokenProvider: async () => null
+    });
+
+    await expect(client.postLocationEvent({ ...event, scheduleId: 'schedule-1' })).resolves.toEqual(
+      expect.objectContaining({
+        success: true,
+        scheduleId: 'schedule-1',
+        jobDepartureConfirmed: true,
+        scheduleTrackingClosed: true
+      })
     );
   });
 });

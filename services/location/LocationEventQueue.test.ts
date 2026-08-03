@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import type { LocationEventPostResult } from '@/services/ApiClient';
+import type { MobileLocationEvent } from '@/types/locationTracking';
 
 jest.mock('@clerk/clerk-expo', () => ({ getClerkInstance: () => null }));
 jest.mock('@/services/background/BackgroundAuth', () => ({
@@ -13,8 +15,12 @@ jest.mock('@react-native-async-storage/async-storage', () =>
 );
 
 jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
+jest.mock('@/services/location/LocationTrackingRefreshRunner', () => ({
+  refreshLocationTrackingAfterClosure: jest.fn()
+}));
 
-const mockPostLocationEvents = jest.fn();
+const mockPostLocationEvents =
+  jest.fn<(events: MobileLocationEvent[]) => Promise<LocationEventPostResult[]>>();
 jest.mock('@/services/ApiClient', () => ({
   ApiClient: class {
     postLocationEvents = mockPostLocationEvents;
@@ -26,8 +32,11 @@ import {
   flushLocationEventQueue,
   postOrQueueLocationEvents
 } from '@/services/location/LocationEventQueue';
-import type { MobileLocationEvent } from '@/types/locationTracking';
-
+import {
+  readLocationTrackingState,
+  writeLocationTrackingState
+} from '@/services/location/LocationTrackingState';
+import { refreshLocationTrackingAfterClosure } from '@/services/location/LocationTrackingRefreshRunner';
 const QUEUE_KEY = 'vhd_location_event_queue_v1';
 
 function event(overrides: Partial<MobileLocationEvent> = {}): MobileLocationEvent {
@@ -87,6 +96,48 @@ describe('LocationEventQueue batching', () => {
     expect(queue[0].event.recordedAt).toBe('2026-08-02T15:02:00.000Z');
   });
 
+  it('applies a directly returned schedule closure and refreshes native tracking', async () => {
+    await writeLocationTrackingState({
+      windows: [
+        {
+          id: 'w1',
+          scheduleId: 's1',
+          serviceJobId: 'job-1',
+          startsAtUtc: '2026-08-02T14:00:00.000Z',
+          scheduledStartAtUtc: '2026-08-02T15:00:00.000Z',
+          endsAtUtc: '2026-08-02T18:00:00.000Z',
+          pingIntervalSeconds: 120
+        }
+      ],
+      closedScheduleIds: [],
+      geofenceRegions: [],
+      geofenceTransitions: [],
+      arrivedWindowIds: ['w1'],
+      exitedWindowIds: [],
+      activeLocationWindowIds: ['w1'],
+      lastLocationPingAtByWindowId: {},
+      initialDepotCheckedWindowIds: []
+    });
+    mockPostLocationEvents.mockResolvedValueOnce([
+      {
+        success: true,
+        statusCode: 200,
+        scheduleId: 's1',
+        jobDepartureConfirmed: true,
+        scheduleTrackingClosed: true
+      }
+    ]);
+
+    await postOrQueueLocationEvents([
+      event({ eventType: 'geofence_exit', regionType: 'job', source: 'geofence' })
+    ]);
+
+    const state = await readLocationTrackingState();
+    expect(state.windows).toEqual([]);
+    expect(state.closedScheduleIds).toEqual(['s1']);
+    expect(refreshLocationTrackingAfterClosure).toHaveBeenCalledTimes(1);
+  });
+
   it('flushes geofence evidence ahead of routine pings', async () => {
     await enqueueLocationEvent(event({ recordedAt: '2026-08-02T15:00:00.000Z' }));
     await enqueueLocationEvent(
@@ -116,5 +167,47 @@ describe('LocationEventQueue batching', () => {
 
     const queue = await readQueue();
     expect(queue).toHaveLength(1);
+  });
+
+  it('applies a schedule closure returned while flushing a queued event', async () => {
+    await writeLocationTrackingState({
+      windows: [
+        {
+          id: 'w1',
+          scheduleId: 's1',
+          serviceJobId: 'job-1',
+          startsAtUtc: '2026-08-02T14:00:00.000Z',
+          scheduledStartAtUtc: '2026-08-02T15:00:00.000Z',
+          endsAtUtc: '2026-08-02T18:00:00.000Z',
+          pingIntervalSeconds: 120
+        }
+      ],
+      closedScheduleIds: [],
+      geofenceRegions: [],
+      geofenceTransitions: [],
+      arrivedWindowIds: ['w1'],
+      exitedWindowIds: ['w1'],
+      activeLocationWindowIds: ['w1'],
+      lastLocationPingAtByWindowId: {},
+      initialDepotCheckedWindowIds: []
+    });
+    await enqueueLocationEvent(
+      event({ eventType: 'geofence_exit', regionType: 'job', source: 'geofence' })
+    );
+    mockPostLocationEvents.mockResolvedValueOnce([
+      {
+        success: true,
+        statusCode: 200,
+        scheduleId: 's1',
+        jobDepartureConfirmed: true,
+        scheduleTrackingClosed: true
+      }
+    ]);
+
+    await flushLocationEventQueue();
+
+    const state = await readLocationTrackingState();
+    expect(state.windows).toEqual([]);
+    expect(state.closedScheduleIds).toEqual(['s1']);
   });
 });

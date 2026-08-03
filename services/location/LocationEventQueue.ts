@@ -1,10 +1,12 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetch as expoFetch } from 'expo/fetch';
 import { ApiClient } from '@/services/ApiClient';
+import type { LocationEventPostResult } from '@/services/ApiClient';
 import { getBackgroundToken } from '@/services/background/BackgroundAuth';
 import type { FetchLike } from '@/services/network/types';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
+import { markScheduleTrackingClosed } from './LocationTrackingState';
 
 const LOCATION_EVENT_QUEUE_KEY = 'vhd_location_event_queue_v1';
 const MAX_QUEUE_ITEMS = 500;
@@ -20,6 +22,11 @@ interface QueuedLocationEvent {
   lastAttemptAt?: string;
   attemptCount: number;
   lastError?: string;
+}
+
+export interface LocationEventDeliveryResult extends LocationEventPostResult {
+  posted: boolean;
+  queued: boolean;
 }
 
 let flushInFlight: Promise<void> | null = null;
@@ -139,25 +146,63 @@ export async function enqueueLocationEvent(
   });
 }
 
-export async function postOrQueueLocationEvent(event: MobileLocationEvent): Promise<boolean> {
-  const [posted] = await postOrQueueLocationEvents([event]);
-  return posted === true;
+async function applyScheduleClosures(
+  events: MobileLocationEvent[],
+  results: LocationEventPostResult[],
+  refreshNativeTracking = true
+): Promise<void> {
+  const closedScheduleIds = new Set<string>();
+  for (const [index, result] of results.entries()) {
+    if (result.success && result.scheduleTrackingClosed) {
+      const scheduleId = result.scheduleId ?? events[index]?.scheduleId;
+      if (scheduleId) closedScheduleIds.add(scheduleId);
+    }
+  }
+  if (closedScheduleIds.size === 0) return;
+
+  for (const scheduleId of closedScheduleIds) {
+    await markScheduleTrackingClosed(scheduleId);
+  }
+
+  // Reconcile the single native location stream and registered regions after
+  // locally suppressing the closed schedule. A lazy require avoids a static
+  // queue -> refresh -> coordinator -> queue cycle and works in headless tasks.
+  if (refreshNativeTracking) {
+    const { refreshLocationTrackingAfterClosure } =
+      require('./LocationTrackingRefreshRunner') as typeof import('./LocationTrackingRefreshRunner');
+    await refreshLocationTrackingAfterClosure();
+  }
+}
+
+export async function postOrQueueLocationEvent(
+  event: MobileLocationEvent
+): Promise<LocationEventDeliveryResult> {
+  const [result] = await postOrQueueLocationEvents([event]);
+  return (
+    result ?? {
+      success: false,
+      retryable: true,
+      posted: false,
+      queued: true,
+      error: 'Missing location delivery result'
+    }
+  );
 }
 
 /**
  * Posts a whole batch in one request, queueing only the events that failed
- * retryably. Returns one boolean per input event, aligned by index.
+ * retryably. Returns one delivery result per input event, aligned by index.
  */
 export async function postOrQueueLocationEvents(
   events: MobileLocationEvent[]
-): Promise<boolean[]> {
+): Promise<LocationEventDeliveryResult[]> {
   if (events.length === 0) {
     return [];
   }
 
   const apiClient = createApiClient();
   const results = await apiClient.postLocationEvents(events);
-  const posted: boolean[] = [];
+  const deliveries: LocationEventDeliveryResult[] = [];
 
   for (const [index, event] of events.entries()) {
     const result = results[index];
@@ -168,7 +213,7 @@ export async function postOrQueueLocationEvents(
         trackingWindowId: event.trackingWindowId,
         scheduleId: event.scheduleId
       });
-      posted.push(true);
+      deliveries.push({ ...result, posted: true, queued: false });
       continue;
     }
 
@@ -180,15 +225,20 @@ export async function postOrQueueLocationEvents(
         statusCode: result.statusCode,
         error: result.error
       });
-      posted.push(false);
+      deliveries.push({ ...result, posted: false, queued: false });
       continue;
     }
 
     await enqueueLocationEvent(event, result?.error);
-    posted.push(false);
+    deliveries.push({
+      ...(result ?? { success: false, retryable: true }),
+      posted: false,
+      queued: true
+    });
   }
 
-  return posted;
+  await applyScheduleClosures(events, results);
+  return deliveries;
 }
 
 export async function flushLocationEventQueue(): Promise<void> {
@@ -214,9 +264,7 @@ async function flushLocationEventQueueInternal(): Promise<void> {
   const nowMs = Date.now();
   const isExpired = (item: QueuedLocationEvent): boolean => {
     const queuedAtMs = Date.parse(item.firstQueuedAt);
-    const maxAgeMs = isCriticalEvent(item.event)
-      ? MAX_CRITICAL_QUEUE_AGE_MS
-      : MAX_QUEUE_AGE_MS;
+    const maxAgeMs = isCriticalEvent(item.event) ? MAX_CRITICAL_QUEUE_AGE_MS : MAX_QUEUE_AGE_MS;
     return Number.isFinite(queuedAtMs) && nowMs - queuedAtMs > maxAgeMs;
   };
   const fresh = queue.filter((item) => !isExpired(item));
@@ -240,6 +288,11 @@ async function flushLocationEventQueueInternal(): Promise<void> {
   let droppedExhausted = 0;
 
   const results = await apiClient.postLocationEvents(batch.map((item) => item.event));
+  await applyScheduleClosures(
+    batch.map((item) => item.event),
+    results,
+    false
+  );
 
   for (const [index, item] of batch.entries()) {
     const result = results[index] ?? {

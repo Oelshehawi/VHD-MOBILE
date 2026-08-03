@@ -3,9 +3,10 @@
 ## Current Contract
 
 - A completed report or saved service duration does not prove that the technician left the job.
-- Mobile keeps a completed tracking window active until it observes that window's job-geofence exit or the window expires.
+- Mobile keeps tracking independent from report completion. It stops every local window for a schedule only after the backend confirms that the schedule is closed, or after ordinary expiry/cancellation reaches the device.
 - One native location stream still owns the battery cadence, but each fix is posted for every overlapping live window. The selected window is posted last so it remains the technician's current Field Status context.
 - Each phone reports its own authenticated field-staff identity. Technicians sharing a truck remain separate location streams and separate per-job presence records.
+- A successful single or batch event result can include `scheduleId`, `jobDepartureConfirmed`, and `scheduleTrackingClosed`. Direct delivery and queued delivery both apply a confirmed schedule closure locally; the saved closed-schedule id suppresses stale active PowerSync rows until backend expiry syncs down.
 
 ## Delivery Guarantees
 
@@ -45,11 +46,11 @@ the samples were being discarded on the device, not lost in transit.
 
 ## Duration Fusion
 
-- Per-technician streams stay separate — correct for the live map and for a split crew.
-- The schedule-level rollup is recomputed from every window on the visit: earliest arrival,
-  latest departure, fused span. A second phone can only widen the span, never truncate it.
-- `geofenceDurationSource` (`single` / `fused`) plus the contributing technician count
-  distinguish a duration backed by one reporting phone from one corroborated by the crew.
+- Per-technician streams stay separate, which is required for the live map and durable technician evidence.
+- The schedule-level GPS visit starts at the earliest confirmed technician arrival and ends at the first confirmed technician exit. The first exit immediately expires all visit windows, whether or not report submission is complete.
+- An open visit has no schedule-level GPS duration. Once both endpoints exist, `geofenceOnSiteMinutes` is their non-negative span.
+- `geofenceTechnicianEvidence` preserves each reporting technician's arrival, exit when captured, and accumulated on-site minutes. Managers can inspect this secondary evidence without mixing it into the primary completion duration.
+- `geofenceDurationSource` (`single` / `fused`) and its technician count describe whether the selected arrival and exit endpoints came from one phone or two.
 
 ## Observability
 

@@ -18,10 +18,8 @@ export const ACTIVE_TRACKING_WINDOWS_SQL = `SELECT * FROM techniciantrackingwind
            AND status IN ('planned', 'active')
          ORDER BY startsAtUtc ASC`;
 
-export const COMPLETED_SCHEDULE_IDS_SQL = `SELECT id FROM schedules
-         WHERE actualServiceDurationMinutes IS NOT NULL`;
-
 let inFlight: Promise<void> | null = null;
+let pendingTrigger: LocationRefreshTrigger | null = null;
 
 async function resolveTechnicianId(): Promise<string | null> {
   try {
@@ -59,23 +57,6 @@ async function readActiveTrackingWindows(
   }
 }
 
-async function readCompletedScheduleIds(): Promise<ReadonlySet<string> | null> {
-  const db = powerSyncSystem.powersync;
-  if (!db || typeof db.getAll !== 'function') {
-    return null;
-  }
-
-  try {
-    const rows = await db.getAll<{ id?: string | null }>(COMPLETED_SCHEDULE_IDS_SQL);
-    return new Set(rows.map((row) => row.id).filter((id): id is string => Boolean(id)));
-  } catch (error) {
-    debugLogger.warn('LOCATION', 'Failed to read completed schedules for refresh', {
-      error: error instanceof Error ? error.message : String(error)
-    });
-    return null;
-  }
-}
-
 export async function refreshLocationTracking(trigger: LocationRefreshTrigger): Promise<void> {
   if (inFlight) {
     return inFlight;
@@ -101,20 +82,11 @@ export async function refreshLocationTracking(trigger: LocationRefreshTrigger): 
         return;
       }
 
-      const completedScheduleIds = await readCompletedScheduleIds();
-      if (completedScheduleIds === null) {
-        debugLogger.debug('LOCATION', 'Skipping location tracking refresh; schedules not ready', {
-          trigger
-        });
-        return;
-      }
-
-      await locationTrackingCoordinator.sync(windows, completedScheduleIds);
+      await locationTrackingCoordinator.sync(windows);
 
       debugLogger.info('LOCATION', 'Location tracking refresh completed', {
         trigger,
-        windowCount: windows.length,
-        completedScheduleCount: completedScheduleIds.size
+        windowCount: windows.length
       });
     } catch (error) {
       debugLogger.error('LOCATION', 'Location tracking refresh failed', {
@@ -129,4 +101,22 @@ export async function refreshLocationTracking(trigger: LocationRefreshTrigger): 
   } finally {
     inFlight = null;
   }
+
+  const nextTrigger = pendingTrigger;
+  pendingTrigger = null;
+  if (nextTrigger) {
+    await refreshLocationTracking(nextTrigger);
+  }
+}
+
+export async function refreshLocationTrackingAfterClosure(): Promise<void> {
+  if (inFlight) {
+    // A location upload can confirm closure while this refresh is inside the
+    // coordinator. Awaiting the same promise from that call stack deadlocks;
+    // queue one follow-up pass and let the active refresh finish first.
+    pendingTrigger = 'background-task';
+    return;
+  }
+
+  await refreshLocationTracking('background-task');
 }

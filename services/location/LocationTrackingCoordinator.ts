@@ -46,7 +46,9 @@ function shouldSendPermissionDenied(lastSentAt?: string): boolean {
   }
 
   const lastSentAtMs = Date.parse(lastSentAt);
-  return Number.isNaN(lastSentAtMs) || Date.now() - lastSentAtMs > PERMISSION_DENIED_EVENT_COOLDOWN_MS;
+  return (
+    Number.isNaN(lastSentAtMs) || Date.now() - lastSentAtMs > PERMISSION_DENIED_EVENT_COOLDOWN_MS
+  );
 }
 
 function locationTrackingPlatform(): MobileLocationEvent['platform'] | null {
@@ -103,9 +105,7 @@ async function readPermissionStateFromOs(): Promise<PermissionState> {
 }
 
 function hasPersistedLocationUpdates(state: LocationTrackingState): boolean {
-  return (
-    state.activeLocationWindowIds.length > 0 || Boolean(state.locationUpdatesStartedAt)
-  );
+  return state.activeLocationWindowIds.length > 0 || Boolean(state.locationUpdatesStartedAt);
 }
 
 const FALLBACK_DEPOT_RADIUS_METERS = 150;
@@ -164,23 +164,19 @@ export class LocationTrackingCoordinator {
   private syncInFlight: Promise<void> | null = null;
   private lastWindowSignature = '';
 
-  sync(
-    windows: ReadonlyArray<TechnicianTrackingWindow>,
-    completedScheduleIds: ReadonlySet<string> = new Set()
-  ): Promise<void> {
+  sync(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
     const signature = windows
       .map((window) => `${window.id}|${window.status}|${window.updatedAt}`)
       .sort()
       .join(',');
-    const completedSignature = Array.from(completedScheduleIds).sort().join(',');
-    const syncSignature = `${signature}::completed:${completedSignature}`;
+    const syncSignature = signature;
 
     if (this.syncInFlight && syncSignature === this.lastWindowSignature) {
       return this.syncInFlight;
     }
 
     this.lastWindowSignature = syncSignature;
-    this.syncInFlight = this.syncInternal(windows, completedScheduleIds).finally(() => {
+    this.syncInFlight = this.syncInternal(windows).finally(() => {
       this.syncInFlight = null;
     });
 
@@ -207,6 +203,7 @@ export class LocationTrackingCoordinator {
       geofenceSignature: undefined,
       geofenceTransitions: [],
       windows: [],
+      closedScheduleIds: [],
       exitedWindowIds: [],
       lastLocationPingAtByWindowId: {},
       locationUpdatesSignature: undefined,
@@ -228,10 +225,7 @@ export class LocationTrackingCoordinator {
     });
   }
 
-  private async syncInternal(
-    windows: ReadonlyArray<TechnicianTrackingWindow>,
-    completedScheduleIds: ReadonlySet<string>
-  ): Promise<void> {
+  private async syncInternal(windows: ReadonlyArray<TechnicianTrackingWindow>): Promise<void> {
     if (Platform.OS !== 'ios' && Platform.OS !== 'android') {
       return;
     }
@@ -240,14 +234,14 @@ export class LocationTrackingCoordinator {
 
     const existingState = await readLocationTrackingState();
     const now = new Date();
-    // A report can be completed before the truck leaves. Keep that window
-    // alive until the phone observes its job exit; completion alone must not
-    // erase the departure evidence needed for an on-site duration.
-    const liveWindows = windows.filter(
-      (window) =>
-        !completedScheduleIds.has(window.scheduleId) ||
-        !existingState.exitedWindowIds.includes(window.id)
+    const incomingScheduleIds = new Set(windows.map((window) => window.scheduleId));
+    const pendingClosedScheduleIds = existingState.closedScheduleIds.filter((scheduleId) =>
+      incomingScheduleIds.has(scheduleId)
     );
+    const closedScheduleIdSet = new Set(pendingClosedScheduleIds);
+    // A local closure acknowledgement suppresses stale PowerSync rows until
+    // the backend's expired status reaches the device.
+    const liveWindows = windows.filter((window) => !closedScheduleIdSet.has(window.scheduleId));
     const relevantWindows = getRelevantTrackingWindows(liveWindows, now);
     // Field Status tracking acts on today's service-date windows, plus
     // next-day pre-cutoff windows whose tracking may begin before midnight.
@@ -259,9 +253,7 @@ export class LocationTrackingCoordinator {
     // They never start tracking today, but their job sites are registered as
     // wake regions so iOS can relaunch a force-quit app on first arrival.
     const currentDayWindowIds = new Set(currentDayWindows.map((window) => window.id));
-    const upcomingWindows = relevantWindows.filter(
-      (window) => !currentDayWindowIds.has(window.id)
-    );
+    const upcomingWindows = relevantWindows.filter((window) => !currentDayWindowIds.has(window.id));
     const standingDepotTarget = resolveStandingDepotTarget({
       currentDayWindows,
       upcomingWindows,
@@ -279,8 +271,8 @@ export class LocationTrackingCoordinator {
     const activeWindows = selectedPingWindow ? [selectedPingWindow] : [];
     const selectedIsOnSite = Boolean(
       selectedPingWindow &&
-        existingState.arrivedWindowIds.includes(selectedPingWindow.id) &&
-        !existingState.exitedWindowIds.includes(selectedPingWindow.id)
+      existingState.arrivedWindowIds.includes(selectedPingWindow.id) &&
+      !existingState.exitedWindowIds.includes(selectedPingWindow.id)
     );
     const locationUpdatesMode: LocationUpdatesMode = selectedIsOnSite ? 'on-site' : 'travel';
     // Depot events (geofence region + synthetic initial enter) only make
@@ -314,6 +306,7 @@ export class LocationTrackingCoordinator {
       await updateLocationTrackingState((state) => ({
         ...state,
         windows: [],
+        closedScheduleIds: pendingClosedScheduleIds,
         geofenceRegions: keepWakeRegions ? metadata : [],
         geofenceSignature: keepWakeRegions ? state.geofenceSignature : undefined,
         geofenceTransitions: [],
@@ -322,15 +315,20 @@ export class LocationTrackingCoordinator {
         lastLocationPingAtByWindowId: {},
         locationUpdatesSignature: undefined
       }));
-      debugLogger.info('LOCATION', 'No current business-day tracking windows; location updates stopped', {
-        wakeRegionCount: keepWakeRegions ? regions.length : 0
-      });
+      debugLogger.info(
+        'LOCATION',
+        'No current business-day tracking windows; location updates stopped',
+        {
+          wakeRegionCount: keepWakeRegions ? regions.length : 0
+        }
+      );
       return;
     }
 
     await updateLocationTrackingState((state) => ({
       ...state,
       windows: toPersistedWindows(currentDayWindows),
+      closedScheduleIds: pendingClosedScheduleIds,
       lastCoordinatorRunAt: new Date().toISOString()
     }));
 
@@ -486,7 +484,10 @@ export class LocationTrackingCoordinator {
 
     for (const windowId of stoppedWindowIds) {
       const persistedWindow = previousWindows.find((window) => window.id === windowId);
-      const event = createSystemEventFromPersistedWindow(persistedWindow ?? null, 'tracking_stopped');
+      const event = createSystemEventFromPersistedWindow(
+        persistedWindow ?? null,
+        'tracking_stopped'
+      );
       if (event) {
         await postOrQueueLocationEvent(event);
       }

@@ -37,6 +37,9 @@ export interface LocationEventPostResult {
   error?: string;
   statusCode?: number;
   retryable?: boolean;
+  scheduleId?: string;
+  jobDepartureConfirmed?: boolean;
+  scheduleTrackingClosed?: boolean;
 }
 
 const PROD_URL = process.env.EXPO_PUBLIC_API_URL || '';
@@ -153,11 +156,7 @@ export class ApiClient {
     });
   }
 
-  private isDroppableExpoPushTokenReject(
-    table: string,
-    error?: string,
-    message?: string
-  ): boolean {
+  private isDroppableExpoPushTokenReject(table: string, error?: string, message?: string): boolean {
     if (table !== 'expopushtokens') return false;
 
     const normalizedMessage = (message || '').toLowerCase();
@@ -323,7 +322,15 @@ export class ApiClient {
         error?: string;
         message?: string;
         details?: string;
-        results?: Array<{ error?: string } | null>;
+        scheduleId?: string;
+        jobDepartureConfirmed?: boolean;
+        scheduleTrackingClosed?: boolean;
+        results?: Array<{
+          error?: string;
+          scheduleId?: string;
+          jobDepartureConfirmed?: boolean;
+          scheduleTrackingClosed?: boolean;
+        } | null>;
       } = {};
       try {
         parsedBody = rawBody ? JSON.parse(rawBody) : {};
@@ -337,9 +344,16 @@ export class ApiClient {
         // class as a single-event 400 — permanent, so never retried.
         const results = Array.isArray(parsedBody.results) ? parsedBody.results : null;
         return events.map((event, index) => {
-          const eventError = results?.[index]?.error;
+          const eventResult = results?.[index] ?? (events.length === 1 ? parsedBody : null);
+          const eventError = eventResult?.error;
           if (!eventError) {
-            return { success: true, statusCode: response.status };
+            return {
+              success: true,
+              statusCode: response.status,
+              scheduleId: eventResult?.scheduleId ?? event.scheduleId,
+              jobDepartureConfirmed: eventResult?.jobDepartureConfirmed === true,
+              scheduleTrackingClosed: eventResult?.scheduleTrackingClosed === true
+            };
           }
 
           debugLogger.warn('LOCATION', 'Location event rejected within batch', {
