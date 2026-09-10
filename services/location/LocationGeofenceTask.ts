@@ -347,6 +347,9 @@ export async function processGeofenceEvent(taskData: GeofenceTaskData | undefine
   const recordedAtMs = Date.now();
   const wake = await serializeLocationCapture(() => captureGeofenceEvent(taskData, recordedAtMs));
   if (wake) {
+    // Upload a job wake crossing first: the refresh (PowerSync connect) can
+    // outlast iOS's short background budget.
+    await flushLocationEventQueue();
     const { refreshLocationTracking } = require('./LocationTrackingRefreshRunner') as typeof import('./LocationTrackingRefreshRunner');
     await refreshLocationTracking('geofence-wake');
   } else {

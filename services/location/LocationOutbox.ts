@@ -5,6 +5,9 @@ import type { MobileLocationEvent } from '@/types/locationTracking';
 
 export const LOCATION_RETENTION_MS = 13 * 86400000;
 export const LOCATION_OUTBOX_LIMIT = 100000;
+// Consecutive per-event server crashes (INTERNAL_ERROR) before an event is set
+// aside in location_dead_letter so it cannot hold back later evidence.
+export const LOCATION_DEAD_LETTER_ATTEMPTS = 12;
 let database: Promise<SQLite.SQLiteDatabase> | null = null;
 let tail: Promise<unknown> = Promise.resolve();
 let writeTail: Promise<void> = Promise.resolve();
@@ -35,8 +38,10 @@ export async function getLocationDatabase() {
         last_error TEXT, PRIMARY KEY(owner, id));
       CREATE INDEX IF NOT EXISTS location_outbox_order ON location_outbox(owner, recorded_at, id);
       CREATE TABLE IF NOT EXISTS location_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS location_receipts (
-        owner TEXT NOT NULL, id TEXT NOT NULL, result TEXT NOT NULL, received_at INTEGER NOT NULL,
+      DROP TABLE IF EXISTS location_receipts;
+      CREATE TABLE IF NOT EXISTS location_dead_letter (
+        owner TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL,
+        recorded_at INTEGER NOT NULL, failed_at INTEGER NOT NULL, code TEXT NOT NULL,
         PRIMARY KEY(owner, id));
       CREATE TABLE IF NOT EXISTS location_closures (
         owner TEXT NOT NULL, schedule_id TEXT NOT NULL, closed_at INTEGER NOT NULL,
@@ -132,7 +137,7 @@ export async function pruneLocationOutbox(db: SQLite.SQLiteDatabase, owner: stri
     const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM location_meta WHERE key = ?', `${owner}:dropped`);
     await db.runAsync('INSERT OR REPLACE INTO location_meta(key,value) VALUES (?,?)', `${owner}:dropped`, JSON.stringify(Number(row?.value ?? 0) + expired.changes));
   }
-  await db.runAsync('DELETE FROM location_receipts WHERE received_at < ?', cutoff);
+  await db.runAsync('DELETE FROM location_dead_letter WHERE failed_at < ?', cutoff);
   await db.runAsync('DELETE FROM location_closures WHERE closed_at < ?', cutoff);
   await db.runAsync('DELETE FROM location_throttle WHERE recorded_at < ?', cutoff);
   await db.runAsync('DELETE FROM location_samples WHERE bucket < ?', Math.floor(cutoff / 60000));

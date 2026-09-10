@@ -109,7 +109,6 @@ export interface LocationTrackingState {
   arrivedWindowIds: string[];
   exitedWindowIds: string[];
   activeLocationWindowIds: string[];
-  lastLocationPingAtByWindowId: Record<string, string>;
   initialDepotCheckedWindowIds: string[];
   permissionDeniedSentAt?: string;
   locationUpdatesStartedAt?: string;
@@ -151,7 +150,6 @@ const EMPTY_STATE: LocationTrackingState = {
   arrivedWindowIds: [],
   exitedWindowIds: [],
   activeLocationWindowIds: [],
-  lastLocationPingAtByWindowId: {},
   initialDepotCheckedWindowIds: []
 };
 
@@ -178,19 +176,6 @@ function normalizeGeofenceTransitions(value: unknown): PersistedGeofenceTransiti
       typeof candidate.recordedAt === 'string'
     );
   });
-}
-
-function normalizeLastLocationPingAt(value: unknown): Record<string, string> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
-  }
-
-  return Object.entries(value).reduce<Record<string, string>>((acc, [key, timestamp]) => {
-    if (key && typeof timestamp === 'string') {
-      acc[key] = timestamp;
-    }
-    return acc;
-  }, {});
 }
 
 function normalizeState(value: Partial<LocationTrackingState> | null): LocationTrackingState {
@@ -222,7 +207,6 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
     activeLocationWindowIds: uniqueStrings(
       Array.isArray(value.activeLocationWindowIds) ? value.activeLocationWindowIds : []
     ),
-    lastLocationPingAtByWindowId: normalizeLastLocationPingAt(value.lastLocationPingAtByWindowId),
     initialDepotCheckedWindowIds: uniqueStrings(
       Array.isArray(value.initialDepotCheckedWindowIds) ? value.initialDepotCheckedWindowIds : []
     ),
@@ -260,15 +244,6 @@ export async function readLocationTrackingState(): Promise<LocationTrackingState
 
 function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
   const windowIds = new Set(state.windows.map((window) => window.id));
-  const filterRecord = (record: Record<string, string>): Record<string, string> => {
-    const next: Record<string, string> = {};
-    for (const [key, value] of Object.entries(record)) {
-      if (windowIds.has(key)) {
-        next[key] = value;
-      }
-    }
-    return next;
-  };
   return {
     ...state,
     arrivedWindowIds: state.arrivedWindowIds.filter((id) => windowIds.has(id)),
@@ -277,8 +252,7 @@ function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
     initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter((id) =>
       windowIds.has(id)
     ),
-    geofenceTransitions: state.geofenceTransitions.filter((t) => windowIds.has(t.trackingWindowId)),
-    lastLocationPingAtByWindowId: filterRecord(state.lastLocationPingAtByWindowId)
+    geofenceTransitions: state.geofenceTransitions.filter((t) => windowIds.has(t.trackingWindowId))
   };
 }
 
@@ -388,12 +362,7 @@ export async function markScheduleTrackingClosed(
       arrivedWindowIds: state.arrivedWindowIds.filter(keepWindowId),
       exitedWindowIds: state.exitedWindowIds.filter(keepWindowId),
       activeLocationWindowIds: state.activeLocationWindowIds.filter(keepWindowId),
-      initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter(keepWindowId),
-      lastLocationPingAtByWindowId: Object.fromEntries(
-        Object.entries(state.lastLocationPingAtByWindowId).filter(([windowId]) =>
-          keepWindowId(windowId)
-        )
-      )
+      initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter(keepWindowId)
     };
   });
 }

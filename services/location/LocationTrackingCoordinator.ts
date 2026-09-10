@@ -194,7 +194,6 @@ export class LocationTrackingCoordinator {
       ownerAppUserId: undefined,
       closedScheduleIds: [],
       exitedWindowIds: [],
-      lastLocationPingAtByWindowId: {},
       locationUpdatesSignature: undefined,
       locationUpdatesStartedAt: undefined,
       lastCoordinatorRunAt: new Date().toISOString()
@@ -299,7 +298,6 @@ export class LocationTrackingCoordinator {
         geofenceTransitions: [],
         exitedWindowIds: [],
         activeLocationWindowIds: [],
-        lastLocationPingAtByWindowId: {},
         locationUpdatesSignature: undefined
       }));
       debugLogger.info(
@@ -337,7 +335,6 @@ export class LocationTrackingCoordinator {
         geofenceRegions: [],
         geofenceSignature: undefined,
         geofenceTransitions: [],
-        lastLocationPingAtByWindowId: {},
         locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));
@@ -455,7 +452,6 @@ export class LocationTrackingCoordinator {
       await updateLocationTrackingState((state) => ({
         ...state,
         activeLocationWindowIds: [],
-        lastLocationPingAtByWindowId: {},
         locationUpdatesSignature: undefined,
         locationUpdatesStartedAt: undefined
       }));

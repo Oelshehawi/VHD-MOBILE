@@ -3,6 +3,21 @@ import { AttachmentTable } from '@powersync/attachments';
 
 export const SCHEDULES_TABLE = 'schedules';
 
+// Local-only: writes the server rejected. Kept on the phone so a rejected
+// report or photo change is never silently discarded; the sync banner retries.
+const sync_quarantine = new Table(
+  {
+    tableName: column.text,
+    rowId: column.text,
+    op: column.text,
+    data: column.text, // JSON of the original local opData
+    httpStatus: column.integer,
+    error: column.text,
+    quarantinedAt: column.text
+  },
+  { localOnly: true }
+);
+
 const invoices = new Table(
   {
     // id column (text) is automatically included
@@ -289,6 +304,7 @@ export const AppSchema = new Schema({
   reports,
   courseassignments,
   courseprogress,
+  sync_quarantine,
   attachments: new AttachmentTable({
     name: 'attachments',
     additionalColumns: [
@@ -352,3 +368,4 @@ export type Technician = FieldStaff;
 export type TechnicianTrackingWindow = Database['techniciantrackingwindows'];
 export type CourseAssignmentRow = Database['courseassignments'];
 export type CourseProgressRow = Database['courseprogress'];
+export type SyncQuarantineRow = Database['sync_quarantine'];

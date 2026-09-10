@@ -61,8 +61,6 @@ jest.mock('@/services/location/LocationEventQueue', () => {
   const enqueue = jest.fn();
   return {
   enqueueLocationEvent: enqueue,
-  postOrQueueLocationEvent: enqueue,
-  postOrQueueLocationEvents: jest.fn(),
   flushLocationEventQueue: jest.fn()
 }; });
 

@@ -24,5 +24,5 @@ jest.mock('expo-crypto', () => ({ randomUUID: () => (jest.requireActual('node:cr
 export async function resetLocationTestDatabase() {
   const { getLocationDatabase } = require('../LocationOutbox') as typeof import('../LocationOutbox');
   const db = await getLocationDatabase();
-  await db.execAsync('DELETE FROM location_outbox; DELETE FROM location_meta; DELETE FROM location_receipts; DELETE FROM location_closures; DELETE FROM location_throttle; DELETE FROM location_samples;');
+  await db.execAsync('DELETE FROM location_outbox; DELETE FROM location_meta; DELETE FROM location_dead_letter; DELETE FROM location_closures; DELETE FROM location_throttle; DELETE FROM location_samples;');
 }

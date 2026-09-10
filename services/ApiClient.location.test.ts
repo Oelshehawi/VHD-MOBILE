@@ -4,6 +4,9 @@ import '@/services/location/__testSupport__/mockNativeModules';
 jest.mock('@clerk/clerk-expo', () => ({
   getClerkInstance: () => null
 }));
+jest.mock('@/services/background/BackgroundAuth', () => ({
+  refreshBackgroundToken: jest.fn(async () => null)
+}));
 
 import { ApiClient } from '@/services/ApiClient';
 import type { FetchLike } from '@/services/network/types';
@@ -29,11 +32,24 @@ function response(
 }
 
 describe('ApiClient.postLocationEvent', () => {
-  it('queues an unauthorized headless event for foreground re-authentication', async () => {
-    const fetchImpl = jest.fn(async () => response(401)) as unknown as FetchLike;
+  it('keeps an event queued without sending it when no token is available', async () => {
+    const fetchImpl = jest.fn(async () => response(200)) as unknown as FetchLike;
     const client = new ApiClient('', {
       fetchImpl,
       tokenProvider: async () => null
+    });
+
+    await expect(client.postLocationEvent(event)).resolves.toEqual(
+      expect.objectContaining({ success: false, code: 'AUTH_UNAVAILABLE', retryable: true })
+    );
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unauthorized headless event retryable for re-authentication', async () => {
+    const fetchImpl = jest.fn(async () => response(401)) as unknown as FetchLike;
+    const client = new ApiClient('', {
+      fetchImpl,
+      tokenProvider: async () => 'token'
     });
 
     await expect(client.postLocationEvent(event)).resolves.toEqual(
@@ -45,7 +61,7 @@ describe('ApiClient.postLocationEvent', () => {
     const fetchImpl = jest.fn(async () => response(403)) as unknown as FetchLike;
     const client = new ApiClient('', {
       fetchImpl,
-      tokenProvider: async () => null
+      tokenProvider: async () => 'token'
     });
 
     await expect(client.postLocationEvent(event)).resolves.toEqual(
@@ -65,7 +81,7 @@ describe('ApiClient.postLocationEvent', () => {
     ) as unknown as FetchLike;
     const client = new ApiClient('', {
       fetchImpl,
-      tokenProvider: async () => null
+      tokenProvider: async () => 'token'
     });
 
     await expect(client.postLocationEvent({ ...event, scheduleId: 'schedule-1' })).resolves.toEqual(

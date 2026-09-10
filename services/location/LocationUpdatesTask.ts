@@ -218,26 +218,15 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
   );
 
   // Save the entire downsampled trail before the independently chunked upload.
+  // The same transaction advances the SQLite throttle, the only ping throttle.
   await persistLocationEvents(owner.appUserId, events);
-
-  // Only the pings we actually posted may advance the throttle marker.
-  const persistedLastPingAt: Record<string, string> = {};
-  for (const ping of retained) {
-    for (const window of ping.windows) {
-      persistedLastPingAt[window.id] = ping.recordedAt;
-    }
-  }
 
   await updateLocationTrackingState((current) => ({
     ...current,
     windows: current.windows.map(window => {
       const extended = windows.find(item => item.id === window.id && item.definitionVersion === window.definitionVersion && Date.parse(item.endsAtUtc) > Date.parse(window.endsAtUtc));
       return extended && !current.closedScheduleIds.includes(window.scheduleId) ? { ...window, endsAtUtc: extended.endsAtUtc } : window;
-    }),
-    lastLocationPingAtByWindowId: {
-      ...current.lastLocationPingAtByWindowId,
-      ...persistedLastPingAt
-    }
+    })
   }));
 
   if (locations.length > 1) {

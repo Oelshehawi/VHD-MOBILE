@@ -5,12 +5,9 @@ import type * as Location from 'expo-location';
 import {
   processLocationUpdate
 } from '@/services/location/LocationUpdatesTask';
-import { persistLocationEvents } from '@/services/location/LocationOutbox';
+import { persistLocationEvents, readThrottle } from '@/services/location/LocationOutbox';
 import { resetLocationTestDatabase } from './__testSupport__/mockSqlite';
-import {
-  readLocationTrackingState,
-  writeLocationTrackingState
-} from '@/services/location/LocationTrackingState';
+import { writeLocationTrackingState } from '@/services/location/LocationTrackingState';
 import type { PersistedTrackingWindow } from '@/services/location/LocationTrackingState';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 
@@ -68,7 +65,6 @@ async function seedState(windows: PersistedTrackingWindow[]): Promise<void> {
     arrivedWindowIds: [],
     exitedWindowIds: [],
     activeLocationWindowIds: windows.map((window) => window.id),
-    lastLocationPingAtByWindowId: {},
     initialDepotCheckedWindowIds: []
   });
 }
@@ -134,8 +130,8 @@ describe('processLocationUpdate', () => {
   it('persists only the last emitted ping timestamp per window', async () => {
     await processLocationUpdate({ locations: [fix(-600), fix(-480), fix(-360)] });
 
-    const state = await readLocationTrackingState();
-    expect(state.lastLocationPingAtByWindowId.w1).toBe(new Date(T0 - 360_000).toISOString());
+    const throttle = await readThrottle('app-user-1');
+    expect(throttle['w1:1']).toBe(new Date(T0 - 360_000).toISOString());
   });
 
   it('retains more than the former 60-fix cap for chunked delivery', async () => {
@@ -150,8 +146,8 @@ describe('processLocationUpdate', () => {
       new Date(locations[locations.length - 1].timestamp).toISOString()
     );
     expect(events[0].recordedAt).toBe(new Date(locations[0].timestamp).toISOString());
-    const state = await readLocationTrackingState();
-    expect(state.lastLocationPingAtByWindowId.w1).toBe(events[events.length - 1].recordedAt);
+    const throttle = await readThrottle('app-user-1');
+    expect(throttle['w1:1']).toBe(events[events.length - 1].recordedAt);
   });
 
   it('skips fixes with non-finite coords without advancing the throttle', async () => {
