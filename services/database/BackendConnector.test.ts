@@ -111,6 +111,20 @@ describe('BackendConnector rejected writes', () => {
     expect(execute).toHaveBeenCalledWith('DELETE FROM sync_quarantine WHERE id = ?', ['q1']);
   });
 
+  it('drops quarantined writes older than 14 days before retrying', async () => {
+    const { connector, database, execute } = setup([], outcome('success'));
+    const now = Date.parse('2026-09-10T18:00:00.000Z');
+    jest.spyOn(Date, 'now').mockReturnValue(now);
+
+    await connector.retryQuarantinedWrites(database as never);
+
+    expect(execute).toHaveBeenNthCalledWith(1, 'DELETE FROM sync_quarantine WHERE quarantinedAt < ?', [
+      new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString()
+    ]);
+    expect(execute.mock.invocationCallOrder[0]).toBeLessThan(database.getAll.mock.invocationCallOrder[0]);
+    jest.mocked(Date.now).mockRestore();
+  });
+
   it('stops retrying quarantined writes while the server is unreachable', async () => {
     const { connector, database, execute, send } = setup([], outcome('retryable_error'));
     database.getAll.mockResolvedValueOnce([
@@ -123,6 +137,8 @@ describe('BackendConnector rejected writes', () => {
       remaining: 2
     });
     expect(send).toHaveBeenCalledTimes(1);
-    expect(execute).not.toHaveBeenCalled();
+    // Only the age-based prune ran; neither pending write was touched.
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute).toHaveBeenCalledWith(expect.stringContaining('quarantinedAt <'), expect.any(Array));
   });
 });

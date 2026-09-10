@@ -26,7 +26,6 @@ import { LocationTrackingInitializer } from '@/components/location/LocationTrack
 import { LocationPermissionGate } from '@/components/location/LocationPermissionGate';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { SyncToastListener } from '@/components/sync/SyncToastListener';
-import { SyncQuarantineBanner } from '@/components/sync/SyncQuarantineBanner';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
@@ -384,7 +383,6 @@ export default function RootLayout() {
                   <PushNotificationInitializer />
                   <PowerSyncStatusBanner />
                   <SyncToastListener />
-                  <SyncQuarantineBanner />
                   <BottomSheetModalProvider>
                     <LocationPermissionGate />
                     <Stack screenOptions={{ headerShown: false }}>

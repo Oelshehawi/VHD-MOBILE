@@ -35,4 +35,14 @@ export async function runForegroundStartupRecovery(): Promise<void> {
       error: error instanceof Error ? error.message : String(error)
     });
   }
+
+  // Writes the server rejected earlier are retried silently once per launch,
+  // so a server-side fix clears them without the technician doing anything.
+  try {
+    await system.backendConnector.retryQuarantinedWrites(system.powersync);
+  } catch (error) {
+    void debugLogger.warn('SYNC', 'Retrying quarantined writes at startup failed', {
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
 }

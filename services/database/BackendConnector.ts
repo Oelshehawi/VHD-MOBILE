@@ -32,6 +32,8 @@ interface BackendConnectorOptions {
 
 type QueuedOp = Pick<CrudEntry, 'table' | 'id' | 'op' | 'opData'>;
 
+const QUARANTINE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+
 interface QuarantinedWrite {
   id: string;
   tableName: string;
@@ -403,13 +405,17 @@ export class BackendConnector implements PowerSyncBackendConnector {
   }
 
   /**
-   * Re-sends writes the server rejected earlier. A write leaves quarantine once
-   * the server accepts it; a repeat rejection keeps it with the new reason.
-   * Stops at the first offline/auth failure so the rest wait for a later retry.
+   * Re-sends writes the server rejected earlier; runs silently at app start.
+   * A write leaves quarantine once the server accepts it; a repeat rejection
+   * keeps it with the new reason. Writes older than the retention window are
+   * dropped first: those target records the office deleted and can never
+   * succeed. Stops at the first offline/auth failure.
    */
   async retryQuarantinedWrites(
     database: AbstractPowerSyncDatabase
   ): Promise<{ resolved: number; remaining: number }> {
+    const cutoff = new Date(Date.now() - QUARANTINE_RETENTION_MS).toISOString();
+    await database.execute('DELETE FROM sync_quarantine WHERE quarantinedAt < ?', [cutoff]);
     const rows = await database.getAll<QuarantinedWrite>(
       'SELECT id, tableName, rowId, op, data FROM sync_quarantine ORDER BY quarantinedAt'
     );
