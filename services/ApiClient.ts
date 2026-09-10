@@ -484,4 +484,37 @@ export class ApiClient {
       };
     }
   }
+
+  // ============ APP CONFIG ============
+
+  /**
+   * Server-controlled app settings. Returns null when the server cannot be
+   * reached or does not answer cleanly, so callers keep their cached value.
+   */
+  async getAppConfig(): Promise<{ minAppVersion: string | null } | null> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      const headers = await this.ensureAuthHeaders();
+      if (!headers.Authorization) return null;
+      const response = await this.fetchImpl(`${this.baseUrl}/api/mobile/app-config`, {
+        method: 'GET',
+        headers,
+        signal: controller.signal
+      });
+      if (!response.ok) return null;
+      const body = JSON.parse(await response.text()) as {
+        success?: boolean;
+        minAppVersion?: unknown;
+      };
+      if (body?.success !== true) return null;
+      return {
+        minAppVersion: typeof body.minAppVersion === 'string' ? body.minAppVersion : null
+      };
+    } catch {
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 }

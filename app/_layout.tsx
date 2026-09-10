@@ -30,6 +30,7 @@ import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
 import { debugLogger } from '@/utils/DebugLogger';
+import { ForceUpdateGate } from '@/components/app/ForceUpdateGate';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -377,6 +378,7 @@ export default function RootLayout() {
               <ThemeProvider>
                 <PowerSyncProvider>
                   <BackgroundSyncLifecycle />
+                  <ForceUpdateGate />
                   <LocationTrackingInitializer />
                   <PushNotificationInitializer />
                   <PowerSyncStatusBanner />
