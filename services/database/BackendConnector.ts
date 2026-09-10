@@ -5,7 +5,7 @@ import {
   UpdateType
 } from '@powersync/react-native';
 import { ApiClient, SyncOperationResult } from '../ApiClient';
-import { getClerkInstance } from '@clerk/clerk-expo';
+import { getPersistentClerk } from '@/services/background/clerkBootstrap';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import type { System } from './System';
 import { debugLogger } from '@/utils/DebugLogger';
@@ -87,9 +87,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
         };
       }
 
-      const clerk = getClerkInstance({
-        publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-      });
+      const clerk = getPersistentClerk();
 
       if (!clerk?.session) {
         debugLogger.warn('AUTH', 'No Clerk session available');

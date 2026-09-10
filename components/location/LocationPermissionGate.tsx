@@ -1,194 +1,107 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, useColorScheme, View } from 'react-native';
-import * as Location from 'expo-location';
-import BottomSheet, { BottomSheetBackdrop, BottomSheetView } from '@gorhom/bottom-sheet';
-import type { BottomSheetBackdropProps } from '@gorhom/bottom-sheet';
+import { AppState, Linking, Modal, Platform, Pressable, ScrollView, View } from 'react-native';
+import { useAuth, useUser } from '@clerk/clerk-expo';
+import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import * as Location from 'expo-location';
 import { Text } from '@/components/ui/text';
-import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
+import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
+import { reportTrackingHealth, subscribeTrackingHealth, type TrackingHealthSnapshot } from '@/services/location/TrackingHealth';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
-import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
-import { getLocationPermissionCopy } from '@/components/location/locationPermissionCopy';
-import { useUpcomingTrackingWindow } from '@/components/location/useUpcomingTrackingWindow';
-import { debugLogger } from '@/utils/DebugLogger';
+import { getLocationMeta, setLocationMeta } from '@/services/location/LocationOutbox';
+import { shouldRemindTracking, trackingAttention } from './trackingAttention';
 
 export function LocationPermissionGate() {
-  const { isReady, hasUpcomingWindow } = useUpcomingTrackingWindow();
-  const permissionState = useLocationPermissionState();
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
+  const eligible = isLoaded && isSignedIn && isFieldTrackerMetadata(user?.publicMetadata) && !isManagerMetadata(user?.publicMetadata);
   const insets = useSafeAreaInsets();
-  const sheetRef = useRef<BottomSheet>(null);
-  const dismissedKindRef = useRef<string | null>(null);
-  const [isWorking, setIsWorking] = useState(false);
-  const copy = getLocationPermissionCopy(Platform.OS);
-  const colorScheme = useColorScheme();
-  const isDark = colorScheme === 'dark';
-  const sheetBackgroundColor = isDark ? '#16140F' : '#FFFFFF';
-
-  const needsAttention =
-    permissionState !== null &&
-    permissionState.kind !== 'granted' &&
-    permissionState.kind !== 'unavailable';
-
-  const shouldShow = isReady && hasUpcomingWindow && needsAttention;
+  const [health, setHealth] = useState<TrackingHealthSnapshot | null>(null);
+  const [open, setOpen] = useState(false);
+  const [renderedMessage, setRenderedMessage] = useState('');
+  const [working, setWorking] = useState(false);
+  const [tick, setTick] = useState(0);
+  const lastShown = useRef<number | null>(null);
+  const reminderKey = `trackingReminder:${user?.id ?? ''}`;
+  const attention = eligible ? trackingAttention(health) : null;
 
   useEffect(() => {
-    if (!shouldShow || !permissionState) {
-      sheetRef.current?.close();
-      return;
-    }
-    if (dismissedKindRef.current === permissionState.kind) {
-      return;
-    }
-    sheetRef.current?.expand();
-  }, [shouldShow, permissionState]);
+    setHealth(null);
+    lastShown.current = null;
+    let disposed = false;
+    void getLocationMeta<number>(reminderKey).then(value => { if (!disposed) lastShown.current = value ?? 0; }).catch(() => { if (!disposed) lastShown.current = 0; });
+    if (!eligible) return () => { disposed = true; };
+    const unsubscribe = subscribeTrackingHealth(setHealth);
+    void reportTrackingHealth();
+    const timer = setInterval(() => {
+      if (AppState.currentState === 'active') {
+        setTick(value => value + 1);
+        void reportTrackingHealth();
+      }
+    }, 30000);
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') {
+        void refreshLocationTracking('app-resume');
+        void reportTrackingHealth();
+        setTick(value => value + 1);
+      }
+    });
+    return () => { disposed = true; unsubscribe(); clearInterval(timer); subscription.remove(); };
+  }, [eligible, reminderKey]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop {...props} appearsOnIndex={0} disappearsOnIndex={-1} pressBehavior='close' />
-    ),
-    []
-  );
+  const show = useCallback(() => {
+    if (!attention) return;
+    lastShown.current = Date.now();
+    void setLocationMeta(reminderKey, lastShown.current).catch(() => undefined);
+    setRenderedMessage(attention);
+    setOpen(true);
+  }, [attention, reminderKey]);
 
-  const handleAllow = useCallback(async () => {
-    if (isWorking) return;
-    setIsWorking(true);
+  useEffect(() => {
+    if (!attention) { setOpen(false); return; }
+    if (lastShown.current !== null && shouldRemindTracking({ foreground: AppState.currentState === 'active', needsAttention: true, lastShownAt: lastShown.current, now: Date.now() })) show();
+  }, [attention, show, tick]);
+
+  const requestPermission = async () => {
+    setWorking(true);
     try {
       const foreground = await Location.requestForegroundPermissionsAsync();
-      if (foreground.granted) {
-        await Location.requestBackgroundPermissionsAsync();
-      }
-      await locationTrackingCoordinator.checkLocationPermissionStatus();
+      if (foreground.granted) await Location.requestBackgroundPermissionsAsync();
       await refreshLocationTracking('foreground');
-    } catch (error) {
-      debugLogger.warn('LOCATION', 'Permission gate Allow flow failed', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    } finally {
-      setIsWorking(false);
-      sheetRef.current?.close();
-    }
-  }, [isWorking]);
+      await reportTrackingHealth();
+    } finally { setWorking(false); }
+  };
 
-  const handleOpenSettings = useCallback(async () => {
-    if (isWorking) return;
-    setIsWorking(true);
-    try {
-      await Linking.openSettings();
-    } catch (error) {
-      debugLogger.warn('LOCATION', 'Failed to open settings from permission gate', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    } finally {
-      setIsWorking(false);
-      sheetRef.current?.close();
-    }
-  }, [isWorking]);
-
-  const handleNotNow = useCallback(() => {
-    if (permissionState) {
-      dismissedKindRef.current = permissionState.kind;
-    }
-    sheetRef.current?.close();
-  }, [permissionState]);
-
-  const openPermissionSheet = useCallback(() => {
-    if (!permissionState) return;
-    dismissedKindRef.current = null;
-    sheetRef.current?.expand();
-  }, [permissionState]);
-
-  const showOpenSettings =
-    permissionState !== null &&
-    ((permissionState.kind === 'foreground-denied' && !permissionState.canAskAgain) ||
-      (permissionState.kind === 'background-denied' && !permissionState.canAskAgain) ||
-      permissionState.kind === 'services-disabled');
-
-  const permissionSheet = permissionState ? (
-    <BottomSheet
-      ref={sheetRef}
-      index={-1}
-      snapPoints={[420]}
-      enablePanDownToClose
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: sheetBackgroundColor }}
-      handleIndicatorStyle={{ backgroundColor: isDark ? '#A8A29E' : '#78716C' }}
-    >
-      <BottomSheetView className='bg-white px-6 pb-8 pt-2 dark:bg-[#16140F]'>
-        <Text className='text-lg font-bold text-[#14110F] dark:text-white'>
-          {copy.title}
-        </Text>
-        <Text className='mt-2 text-sm leading-5 text-gray-600 dark:text-gray-300'>
-          {copy.rationale}
-        </Text>
-        {copy.requiredSettings ? (
-          <View className='mt-4 rounded-xl border border-red-200 bg-red-50 p-3 dark:border-red-900/60 dark:bg-red-950/40'>
-            <Text className='text-sm font-semibold text-red-900 dark:text-red-100'>
-              {copy.requiredSettings.heading}
-            </Text>
-            <Text className='mt-1 text-sm leading-5 text-red-800 dark:text-red-200'>
-              {copy.requiredSettings.detail}
-            </Text>
-          </View>
-        ) : null}
-        {permissionState.kind === 'services-disabled' && (
-          <Text className='mt-3 text-sm font-medium text-amber-700 dark:text-amber-300'>
-            Location Services appear to be turned off. Enable them in Settings to continue.
-          </Text>
-        )}
-        {copy.settingsNote ? (
-          <Text className='mt-3 text-xs leading-5 text-gray-500 dark:text-gray-400'>
-            {copy.settingsNote}
-          </Text>
-        ) : null}
-
-        <View className='mt-6 gap-3'>
-          {!showOpenSettings ? (
-            <Pressable
-              onPress={handleAllow}
-              disabled={isWorking}
-              className='items-center rounded-xl bg-[#14110F] px-4 py-4 dark:bg-amber-400'
-            >
-              <Text className='font-bold text-[#F7F5F1] dark:text-[#14110F]'>
-                {isWorking ? 'Requesting…' : copy.requestLabel}
-              </Text>
-            </Pressable>
-          ) : null}
-          <Pressable
-            onPress={handleOpenSettings}
-            disabled={isWorking}
-            className='items-center rounded-xl bg-red-700 px-4 py-4 dark:bg-red-500'
-          >
-            <Text className='font-bold text-white'>{copy.openSettingsLabel}</Text>
-          </Pressable>
-          <Pressable
-            onPress={handleNotNow}
-            disabled={isWorking}
-            className='items-center rounded-xl border border-black/15 bg-white px-4 py-4 dark:border-white/20 dark:bg-[#16140F]'
-          >
-            <Text className='font-semibold text-[#14110F] dark:text-white'>Not now</Text>
-          </Pressable>
-        </View>
-      </BottomSheetView>
-    </BottomSheet>
-  ) : null;
-
-  if (!shouldShow || !permissionState) {
-    return null;
-  }
-
-  return (
-    <>
-      <Pressable
-        onPress={openPermissionSheet}
-        className='absolute left-3 right-3 z-50 rounded-xl border border-red-300 bg-red-600 px-4 py-3 shadow-lg dark:border-red-800 dark:bg-red-700'
-        style={{ top: Math.max(insets.top + 8, 14) }}
-      >
-        <Text className='text-sm font-bold text-white'>Location tracking needs attention</Text>
-        <Text className='mt-0.5 text-xs leading-4 text-red-50'>
-          {copy.banner(permissionState.kind)}
-        </Text>
+  return <>
+    {attention ? <View style={{ paddingTop: insets.top }} className='bg-red-700'>
+      <Pressable accessibilityRole='button' onPress={show} className='flex-row items-center gap-3 px-4 py-3'>
+        <FontAwesome name='exclamation-triangle' size={18} color='white' />
+        <View className='flex-1'><Text className='text-sm font-bold text-white'>Location tracking needs attention</Text>
+          <Text className='mt-1 text-xs text-white'>{attention}</Text></View>
+        <FontAwesome name='chevron-right' size={14} color='white' />
       </Pressable>
-      {permissionSheet}
-    </>
-  );
+    </View> : null}
+    <Modal visible={open} transparent animationType='fade' onRequestClose={() => setOpen(false)}>
+      <View className='flex-1 justify-center bg-black/50 px-5' style={{ paddingTop: insets.top + 16, paddingBottom: insets.bottom + 16 }}>
+        <View className='max-h-full rounded-lg bg-white p-5 dark:bg-neutral-900'>
+          <ScrollView bounces={false}>
+            <View className='flex-row items-center justify-between gap-3'>
+              <Text className='flex-1 text-lg font-bold'>Location tracking needs attention</Text>
+              <Pressable accessibilityRole='button' accessibilityLabel='Dismiss' onPress={() => setOpen(false)} className='h-11 w-11 items-center justify-center'>
+                <FontAwesome name='close' size={22} color='#b91c1c' />
+              </Pressable>
+            </View>
+            <Text className='mt-3 text-sm text-red-700 dark:text-red-300'>{renderedMessage}</Text>
+            <Text className='mt-4 text-sm leading-6'>{Platform.OS === 'ios' ? 'Required settings: Location Always, Precise Location on, and Background App Refresh on.' : 'Required settings: Allow all the time, Precise Location on, and battery usage Unrestricted.'}</Text>
+            <Text className='mt-3 text-sm leading-6'>Tracking is limited to scheduled work. Phone settings and operating-system restrictions can delay background updates.</Text>
+            {(health?.permissionKind === 'foreground-denied' || health?.permissionKind === 'background-denied') ? <Pressable disabled={working} onPress={() => { void requestPermission().catch(() => undefined); }} className='mt-5 min-h-12 items-center justify-center rounded-lg bg-red-700 p-3'>
+              <Text className='font-semibold text-white'>{working ? 'Checking permissions...' : 'Allow location'}</Text>
+            </Pressable> : null}
+            <Pressable onPress={() => { setOpen(false); void Linking.openSettings().catch(() => undefined); }} className='mt-3 min-h-12 items-center justify-center rounded-lg bg-red-700 p-3'><Text className='font-semibold text-white'>Open Settings</Text></Pressable>
+            <Pressable onPress={() => setOpen(false)} className='mt-3 min-h-12 items-center justify-center p-3'><Text className='font-semibold'>Not now</Text></Pressable>
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
+  </>;
 }

@@ -353,7 +353,7 @@ describe('processGeofenceEvent', () => {
     });
 
     expect(postOrQueueLocationEvent).not.toHaveBeenCalled();
-    expect(flushLocationEventQueue).toHaveBeenCalled();
+    expect(flushLocationEventQueue).not.toHaveBeenCalled();
     expect(refreshLocationTracking).toHaveBeenCalledWith('geofence-wake');
 
     const state = await readLocationTrackingState();

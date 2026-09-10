@@ -37,27 +37,12 @@ export function useUpcomingTrackingWindow(): UpcomingTrackingWindow {
     [fieldStaffId || ''],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
-  const completedSchedulesQuery = useQuery<{ id?: string | null }>(
-    isReady
-      ? `SELECT id FROM schedules
-         WHERE actualServiceDurationMinutes IS NOT NULL`
-      : `SELECT id FROM schedules WHERE 0`,
-    [],
-    { rowComparator: DEFAULT_ROW_COMPARATOR }
-  );
-
   const hasUpcomingWindow = useMemo(() => {
     if (!isReady) return false;
-    const completedScheduleIds = new Set(
-      (completedSchedulesQuery.data ?? [])
-        .map((schedule) => schedule.id)
-        .filter((id): id is string => Boolean(id))
-    );
     return hasRelevantLocationPermissionWindow({
-      windows: windowsQuery.data ?? [],
-      completedScheduleIds
+      windows: windowsQuery.data ?? []
     });
-  }, [completedSchedulesQuery.data, isReady, windowsQuery.data]);
+  }, [isReady, windowsQuery.data]);
 
   return { isReady, isFieldTracker, hasUpcomingWindow };
 }

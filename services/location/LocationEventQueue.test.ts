@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
+import { resetLocationTestDatabase } from './__testSupport__/mockSqlite';
+import { getLocationDatabase } from './LocationOutbox';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { LocationEventPostResult } from '@/services/ApiClient';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 
 jest.mock('@clerk/clerk-expo', () => ({ getClerkInstance: () => null }));
+jest.mock('@/services/location/LocationAccount', () => ({
+  getLocationOwner: jest.fn(async () => ({ appUserId: 'app-user-1', fieldStaffId: 'tech-1' }))
+}));
 jest.mock('@/services/background/BackgroundAuth', () => ({
   getBackgroundToken: async () => 'token'
 }));
@@ -52,13 +57,16 @@ function event(overrides: Partial<MobileLocationEvent> = {}): MobileLocationEven
 }
 
 async function readQueue(): Promise<Array<{ event: MobileLocationEvent }>> {
-  const raw = await AsyncStorage.getItem(QUEUE_KEY);
-  return raw ? JSON.parse(raw) : [];
+  const db = await getLocationDatabase();
+  const rows = await db.getAllAsync<{ payload: string }>('SELECT payload FROM location_outbox ORDER BY recorded_at,id');
+  return rows.map(row => ({ event: JSON.parse(row.payload) as MobileLocationEvent }));
 }
 
 describe('LocationEventQueue batching', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
+    jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-03T00:00:00Z'));
+    await resetLocationTestDatabase();
     await AsyncStorage.removeItem(QUEUE_KEY);
     mockPostLocationEvents.mockImplementation(async (...args: unknown[]) =>
       (args[0] as MobileLocationEvent[]).map(() => ({ success: true, statusCode: 200 }))
@@ -138,10 +146,10 @@ describe('LocationEventQueue batching', () => {
     expect(refreshLocationTrackingAfterClosure).toHaveBeenCalledTimes(1);
   });
 
-  it('flushes geofence evidence ahead of routine pings', async () => {
+  it('flushes evidence in capture-time order', async () => {
     await enqueueLocationEvent(event({ recordedAt: '2026-08-02T15:00:00.000Z' }));
     await enqueueLocationEvent(
-      event({ eventType: 'geofence_enter', regionType: 'job', source: 'geofence' })
+      event({ eventType: 'geofence_enter', regionType: 'job', source: 'geofence', recordedAt: '2026-08-02T14:59:00.000Z' })
     );
     await enqueueLocationEvent(event({ recordedAt: '2026-08-02T15:04:00.000Z' }));
 

@@ -123,7 +123,7 @@ const reports = new Table(
     invoiceId: column.text,
     technicianId: column.text,
     dateCompleted: column.text,
-    reportStatus: column.text, // 'draft' | 'in_progress' | 'completed'
+    reportStatus: column.text, // Writes draft/completed; reads legacy in_progress rows.
     jobTitle: column.text,
     location: column.text,
     cookingVolume: column.text, // 'High' | 'Medium' | 'Low'
@@ -214,6 +214,8 @@ const fieldstaff = new Table(
 
 const techniciantrackingwindows = new Table(
   {
+    definitionVersion: column.integer,
+    definitionUpdatedAt: column.text,
     // id column (text) is automatically included
     technicianId: column.text,
     scheduleId: column.text,

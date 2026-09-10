@@ -2,7 +2,10 @@ import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
-import { flushLocationEventQueue, postOrQueueLocationEvents } from './LocationEventQueue';
+import { flushLocationEventQueue } from './LocationEventQueue';
+import { getLocationOwner } from './LocationAccount';
+import { locationThrottleKey, persistLocationEvents, readCapturedBuckets, readThrottle, serializeLocationCapture } from './LocationOutbox';
+import { windowsAtSampleTime } from './locationWindowHistory';
 import {
   readLocationTrackingState,
   updateLocationTrackingState
@@ -14,6 +17,7 @@ import {
   getActivePersistedPresenceWindows,
   getActivePersistedPingWindows,
   getEventPlatform,
+  getJobSiteDistanceMeters,
   getPingIntervalSecondsForState,
   hasFiniteFixCoords,
   isWindowOnSite,
@@ -26,12 +30,6 @@ import {
 export type LocationUpdatesTaskData = {
   locations: Location.LocationObject[];
 };
-
-// A single OS invocation can hand over a long buffered trail (iOS delivers
-// everything it collected while the app was suspended). Bound how many
-// reconstructed pings one invocation posts so a pathological batch cannot
-// storm the API; the newest fixes are the ones kept.
-export const MAX_RECONSTRUCTED_PINGS_PER_INVOCATION = 60;
 
 type ReconstructedPing = {
   location: Location.LocationObject;
@@ -89,6 +87,13 @@ function selectDueWindows(args: {
 export async function processLocationUpdate(
   taskData: LocationUpdatesTaskData | undefined
 ): Promise<void> {
+  await serializeLocationCapture(() => captureLocationUpdate(taskData));
+  await flushLocationEventQueue();
+  const { reportTrackingHealth } = require('./TrackingHealth') as typeof import('./TrackingHealth');
+  await reportTrackingHealth();
+}
+
+async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefined): Promise<void> {
   const locations = (taskData?.locations ?? [])
     .filter((location): location is Location.LocationObject => Boolean(location?.coords))
     // The presence engine drops out-of-order samples (presence.job.lastSampleAt),
@@ -106,20 +111,15 @@ export async function processLocationUpdate(
   }
 
   const state = await readLocationTrackingState();
-  const pingWindows = getActivePersistedPingWindows(state.windows, state.arrivedWindowIds);
-
-  if (pingWindows.length === 0) {
-    await stopLocationUpdatesIfNoActivePersistedWindow('no-active-ping-window');
-    return;
-  }
-
-  const selectedWindow = pingWindows[0];
-  const presenceWindows = getActivePersistedPresenceWindows(state.windows, selectedWindow.id);
+  const owner = await getLocationOwner();
+  if (!owner || (state.ownerAppUserId && state.ownerAppUserId !== owner.appUserId)) return;
+  const windows = [...(state.historicalWindows ?? []), ...state.windows].map(window => ({ ...window }));
 
   const now = Date.now();
   // Carried forward in memory across the walk so the batch downsamples against
   // its own emissions; persisted once at the end via the serialized writer.
-  const lastLocationPingAtByWindowId = { ...state.lastLocationPingAtByWindowId };
+  const lastLocationPingAtByWindowId = await readThrottle(owner.appUserId);
+  const capturedBuckets = await readCapturedBuckets(owner.appUserId);
   const pings: ReconstructedPing[] = [];
   let skippedNonFiniteCoords = 0;
   let skippedStaleFix = 0;
@@ -145,14 +145,34 @@ export async function processLocationUpdate(
     }
 
     const recordedAtMs = Date.parse(recordedAt);
+    const sampleWindows = windowsAtSampleTime(windows, recordedAtMs);
+    const selectedWindow = getActivePersistedPingWindows(sampleWindows, [], new Date(recordedAtMs))[0];
+    if (!selectedWindow) continue;
+    const presenceWindows = getActivePersistedPresenceWindows(sampleWindows, selectedWindow.id, new Date(recordedAtMs));
+    // Only a fresh, accurate inside fix can extend local capture. This is not
+    // an arrival decision; the backend still confirms all visit transitions.
+    for (const window of presenceWindows) {
+      const distance = getJobSiteDistanceMeters(window, location);
+      const accuracy = location.coords.accuracy;
+      if (!state.closedScheduleIds.includes(window.scheduleId) && distance !== null &&
+        accuracy != null && accuracy >= 0 && accuracy <= 150 &&
+        distance + accuracy <= (window.jobSiteRadiusMeters ?? 0)) {
+        window.endsAtUtc = new Date(Math.max(Date.parse(window.endsAtUtc), Math.min(
+          recordedAtMs + 30 * 60000, Date.parse(window.scheduledStartAtUtc) + 14 * 3600000))).toISOString();
+      }
+    }
+    const throttle = Object.fromEntries(presenceWindows.map(window => {
+      const last = lastLocationPingAtByWindowId[locationThrottleKey(window.id, window.definitionVersion)];
+      return [window.id, last && Date.parse(last) <= recordedAtMs ? last : ''];
+    }));
     const dueWindows = selectDueWindows({
       presenceWindows,
       selectedWindow,
-      arrivedWindowIds: state.arrivedWindowIds,
-      exitedWindowIds: state.exitedWindowIds,
-      lastLocationPingAtByWindowId,
+      arrivedWindowIds: [],
+      exitedWindowIds: [],
+      lastLocationPingAtByWindowId: throttle,
       recordedAtMs
-    });
+    }).filter(window => !capturedBuckets.has(`${locationThrottleKey(window.id, window.definitionVersion)}:${Math.floor(recordedAtMs / 60000)}`));
 
     if (dueWindows.length === 0) {
       throttled += 1;
@@ -160,38 +180,35 @@ export async function processLocationUpdate(
     }
 
     for (const window of dueWindows) {
-      lastLocationPingAtByWindowId[window.id] = recordedAt;
+      const key = locationThrottleKey(window.id, window.definitionVersion);
+      lastLocationPingAtByWindowId[key] = recordedAt;
+      capturedBuckets.add(`${key}:${Math.floor(recordedAtMs / 60000)}`);
     }
     pings.push({ location, recordedAt, windows: dueWindows });
   }
 
   if (pings.length === 0) {
     debugLogger.debug('LOCATION', 'Skipped location batch with no emittable fix', {
-      trackingWindowId: selectedWindow.id,
-      scheduleId: selectedWindow.scheduleId,
       batchSize: locations.length,
       throttled,
       skippedNonFiniteCoords,
       skippedStaleFix
     });
+    await stopLocationUpdatesIfNoActivePersistedWindow('no-emittable-fix');
     return;
   }
 
-  // Over the cap, keep the newest pings: current position matters more than the
-  // oldest tail of an unusually long trail.
-  const droppedOverCap = Math.max(0, pings.length - MAX_RECONSTRUCTED_PINGS_PER_INVOCATION);
-  const retained = droppedOverCap > 0 ? pings.slice(droppedOverCap) : pings;
-
-  await flushLocationEventQueue();
+  const retained = pings;
 
   const events: MobileLocationEvent[] = retained.flatMap((ping) =>
     ping.windows.map((window) => ({
       trackingWindowId: window.id,
+      windowDefinitionVersion: window.definitionVersion,
       scheduleId: window.scheduleId,
       eventType: 'location_ping' as const,
       lat: ping.location.coords.latitude,
       lng: ping.location.coords.longitude,
-      accuracyMeters: ping.location.coords.accuracy ?? undefined,
+      accuracyMeters: ping.location.coords.accuracy != null && ping.location.coords.accuracy >= 0 ? ping.location.coords.accuracy : undefined,
       speedMetersPerSecond: ping.location.coords.speed ?? undefined,
       headingDegrees: normalizeLocationHeading(ping.location.coords.heading),
       recordedAt: ping.recordedAt,
@@ -200,9 +217,8 @@ export async function processLocationUpdate(
     }))
   );
 
-  // One request for the whole reconstructed trail: a backfill flush over a weak
-  // connection is exactly where serial round trips lose events.
-  await postOrQueueLocationEvents(events);
+  // Save the entire downsampled trail before the independently chunked upload.
+  await persistLocationEvents(owner.appUserId, events);
 
   // Only the pings we actually posted may advance the throttle marker.
   const persistedLastPingAt: Record<string, string> = {};
@@ -214,6 +230,10 @@ export async function processLocationUpdate(
 
   await updateLocationTrackingState((current) => ({
     ...current,
+    windows: current.windows.map(window => {
+      const extended = windows.find(item => item.id === window.id && item.definitionVersion === window.definitionVersion && Date.parse(item.endsAtUtc) > Date.parse(window.endsAtUtc));
+      return extended && !current.closedScheduleIds.includes(window.scheduleId) ? { ...window, endsAtUtc: extended.endsAtUtc } : window;
+    }),
     lastLocationPingAtByWindowId: {
       ...current.lastLocationPingAtByWindowId,
       ...persistedLastPingAt
@@ -222,16 +242,14 @@ export async function processLocationUpdate(
 
   if (locations.length > 1) {
     debugLogger.info('LOCATION', 'Processed buffered location batch', {
-      trackingWindowId: selectedWindow.id,
-      scheduleId: selectedWindow.scheduleId,
       batchSize: locations.length,
       emittedPings: retained.length,
       throttled,
       skippedNonFiniteCoords,
-      skippedStaleFix,
-      droppedOverCap
+      skippedStaleFix
     });
   }
+  await stopLocationUpdatesIfNoActivePersistedWindow('captured-buffered-trail');
 }
 
 if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {

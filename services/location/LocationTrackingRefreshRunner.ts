@@ -1,122 +1,86 @@
 import type { TechnicianTrackingWindow } from '@/types';
 import { getBackgroundToken } from '@/services/background/BackgroundAuth';
-import { locationTrackingCoordinator } from '@/services/location/LocationTrackingCoordinator';
+import { withTimeout } from '@/services/background/withTimeout';
+import { locationTrackingCoordinator } from './LocationTrackingCoordinator';
 import { debugLogger } from '@/utils/DebugLogger';
-import { system as powerSyncSystem } from '@/services/database/System';
-import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
-import { getMobileStaffIdentity } from '@/utils/staffIdentity';
+import { getLocationOwner } from './LocationAccount';
+import { readLocationTrackingState, type PersistedTrackingWindow } from './LocationTrackingState';
+import { applyDurableLocationClosures, flushLocationEventQueue } from './LocationEventQueue';
+import { migrateLegacyLocationQueue } from './LocationOutbox';
 
-export type LocationRefreshTrigger =
-  | 'foreground'
-  | 'background-task'
-  | 'app-resume'
-  | 'mount'
-  | 'geofence-wake';
-
+export type LocationRefreshTrigger = 'foreground' | 'background-task' | 'app-resume' | 'mount' | 'geofence-wake';
 export const ACTIVE_TRACKING_WINDOWS_SQL = `SELECT * FROM techniciantrackingwindows
-         WHERE technicianId = ?
-           AND status IN ('planned', 'active')
-         ORDER BY startsAtUtc ASC`;
-
+  WHERE technicianId = ? AND status IN ('planned', 'active') ORDER BY startsAtUtc ASC`;
 let inFlight: Promise<void> | null = null;
-let pendingTrigger: LocationRefreshTrigger | null = null;
+let pendingClosure = false;
 
-async function resolveTechnicianId(): Promise<string | null> {
-  try {
-    const { getClerkInstance } = await import('@clerk/clerk-expo');
-    const clerk = getClerkInstance({
-      publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-    });
-    const fieldStaffId = getMobileStaffIdentity(clerk?.user?.publicMetadata)?.fieldStaffId;
-    const isManager = isManagerMetadata(clerk?.user?.publicMetadata);
-    const isFieldTracker = isFieldTrackerMetadata(clerk?.user?.publicMetadata) && !isManager;
-    if (!fieldStaffId || !isFieldTracker) {
-      return null;
-    }
-    return fieldStaffId;
-  } catch {
-    return null;
-  }
+export function restoreTrackingWindows(windows: PersistedTrackingWindow[], technicianId: string): TechnicianTrackingWindow[] {
+  return windows.map(window => ({ ...window, technicianId, status: 'planned',
+    timeZone: 'America/Vancouver', expectedDurationMinutes: 0, locationUpdateMode: 'travel_only',
+    distanceIntervalMeters: 0, updatedAt: window.definitionUpdatedAt ?? window.startsAtUtc,
+    depot: JSON.stringify({ lat: window.depotLat, lng: window.depotLng, radiusMeters: window.depotRadiusMeters }),
+    jobSite: JSON.stringify({ lat: window.jobSiteLat, lng: window.jobSiteLng, radiusMeters: window.jobSiteRadiusMeters }) }));
 }
 
-async function readActiveTrackingWindows(
-  technicianId: string
-): Promise<TechnicianTrackingWindow[] | null> {
-  const db = powerSyncSystem.powersync;
-  if (!db || typeof db.getAll !== 'function') {
-    return null;
-  }
-
+async function refreshInternal(trigger: LocationRefreshTrigger): Promise<void> {
+  const owner = await getLocationOwner();
+  if (!owner) return;
+  await applyDurableLocationClosures(owner.appUserId);
+  const state = await readLocationTrackingState();
+  if (state.ownerAppUserId && state.ownerAppUserId !== owner.appUserId) return;
+  // Restore native registration before auth, network, or photo work. This path
+  // runs without a mounted ClerkProvider or PowerSyncProvider.
+  await locationTrackingCoordinator.sync(restoreTrackingWindows(state.windows, owner.fieldStaffId));
   try {
-    return await db.getAll<TechnicianTrackingWindow>(ACTIVE_TRACKING_WINDOWS_SQL, [technicianId]);
+    const { system, getScheduleMonthBuckets } = require('@/services/database/System') as typeof import('@/services/database/System');
+    const db = system.powersync;
+    await withTimeout(db.init(), 3000);
+    let windows = await withTimeout(db.getAll<TechnicianTrackingWindow>(ACTIVE_TRACKING_WINDOWS_SQL, [owner.fieldStaffId]), 3000);
+    const owned = await withTimeout(db.getAll<{ id: string; scheduleId: string }>('SELECT id,scheduleId FROM techniciantrackingwindows WHERE technicianId = ?', [owner.fieldStaffId]), 3000);
+    await migrateLegacyLocationQueue(owner.appUserId, new Map(owned.map(window => [window.id, window.scheduleId])));
+    if ((await getLocationOwner())?.appUserId !== owner.appUserId) return;
+    if (windows.length || db.currentStatus.hasSynced) await locationTrackingCoordinator.sync(windows);
+    if (trigger === 'geofence-wake' || trigger === 'background-task' || trigger === 'app-resume' || trigger === 'mount') {
+      const token = await getBackgroundToken();
+      if (token && !db.currentStatus.connected) {
+        const { BackendConnector } = require('@/services/database/BackendConnector') as typeof import('@/services/database/BackendConnector');
+        const { getPowerSyncUrl } = require('@/services/ApiClient') as typeof import('@/services/ApiClient');
+        const connector = new BackendConnector(null, { tokenProvider: async () =>
+          (await getLocationOwner())?.appUserId === owner.appUserId ? getBackgroundToken() : null });
+        connector.setEndpoint(getPowerSyncUrl());
+        await withTimeout(db.connect(connector, { params: { schedule_months: getScheduleMonthBuckets() } }), 4000);
+      }
+      if (token) {
+        await withTimeout(db.waitForFirstSync(), 4000);
+        windows = await withTimeout(db.getAll<TechnicianTrackingWindow>(ACTIVE_TRACKING_WINDOWS_SQL, [owner.fieldStaffId]), 3000);
+        if ((await getLocationOwner())?.appUserId === owner.appUserId) await locationTrackingCoordinator.sync(windows);
+      }
+    }
   } catch (error) {
-    debugLogger.warn('LOCATION', 'Failed to read tracking windows for refresh', {
-      error: error instanceof Error ? error.message : String(error)
+    debugLogger.warn('LOCATION', 'Using persisted tracking windows; refresh unavailable', {
+      trigger, error: error instanceof Error ? error.message : String(error)
     });
-    return null;
   }
+  await flushLocationEventQueue();
+  const { reportTrackingHealth } = require('./TrackingHealth') as typeof import('./TrackingHealth');
+  await reportTrackingHealth();
 }
 
 export async function refreshLocationTracking(trigger: LocationRefreshTrigger): Promise<void> {
-  if (inFlight) {
-    return inFlight;
-  }
-
-  inFlight = (async () => {
-    try {
-      const technicianId = await resolveTechnicianId();
-      if (!technicianId) {
-        debugLogger.debug('LOCATION', 'Skipping location tracking refresh; no technician', {
-          trigger
-        });
-        return;
-      }
-
-      await getBackgroundToken();
-
-      const windows = await readActiveTrackingWindows(technicianId);
-      if (windows === null) {
-        debugLogger.debug('LOCATION', 'Skipping location tracking refresh; PowerSync not ready', {
-          trigger
-        });
-        return;
-      }
-
-      await locationTrackingCoordinator.sync(windows);
-
-      debugLogger.info('LOCATION', 'Location tracking refresh completed', {
-        trigger,
-        windowCount: windows.length
-      });
-    } catch (error) {
-      debugLogger.error('LOCATION', 'Location tracking refresh failed', {
-        trigger,
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-  })();
-
-  try {
-    await inFlight;
-  } finally {
-    inFlight = null;
-  }
-
-  const nextTrigger = pendingTrigger;
-  pendingTrigger = null;
-  if (nextTrigger) {
-    await refreshLocationTracking(nextTrigger);
+  if (inFlight) return inFlight;
+  inFlight = refreshInternal(trigger).catch(error => {
+    debugLogger.error('LOCATION', 'Location tracking refresh failed', {
+      trigger, error: error instanceof Error ? error.message : String(error)
+    });
+  }).finally(() => { inFlight = null; });
+  await inFlight;
+  if (pendingClosure) {
+    pendingClosure = false;
+    await refreshLocationTracking('foreground');
   }
 }
 
 export async function refreshLocationTrackingAfterClosure(): Promise<void> {
-  if (inFlight) {
-    // A location upload can confirm closure while this refresh is inside the
-    // coordinator. Awaiting the same promise from that call stack deadlocks;
-    // queue one follow-up pass and let the active refresh finish first.
-    pendingTrigger = 'background-task';
-    return;
-  }
-
-  await refreshLocationTracking('background-task');
+  if (inFlight) { pendingClosure = true; return; }
+  await refreshLocationTracking('foreground');
 }

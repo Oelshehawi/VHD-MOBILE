@@ -12,7 +12,7 @@ import {
 } from '@/utils/scheduleTime';
 import { generateObjectId } from '@/utils/objectId';
 import { debugLogger } from '@/utils/DebugLogger';
-import { getClerkInstance } from '@clerk/clerk-expo';
+import { getPersistentClerk } from '@/services/background/clerkBootstrap';
 import type { FetchLike, TokenProvider } from '../network/types';
 import type { PhotoCategoryKind } from '@/types';
 
@@ -1045,9 +1045,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     }
 
     try {
-      const clerk = getClerkInstance({
-        publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-      });
+      const clerk = getPersistentClerk();
       const token = await clerk?.session?.getToken({
         template: 'Powersync',
         skipCache: false

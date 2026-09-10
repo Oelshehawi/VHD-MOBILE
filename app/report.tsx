@@ -22,11 +22,14 @@ import type {
   InspectionItems,
   ReportDeficiencies,
   ReportSavePayload,
-  ReportStatus,
   TriState
 } from '@/types/report';
 import { calculateActualServiceDurationMinutes } from '@/utils/scheduleTime';
 import { resolveReportDateCompleted } from '@/utils/reportCompletion';
+import {
+  resolveReportStatusForSave,
+  type ReportSaveIntent
+} from '@/utils/reportStatus';
 import { invoiceLinksToSchedule } from '@/utils/invoices';
 import { getMobileStaffIdentity } from '@/utils/staffIdentity';
 
@@ -262,7 +265,7 @@ export function ReportCloseoutContent({
   }, [watchedValues?.deficiencyTags?.length, watchedValues?.inspectionItems]);
 
   const buildPayload = (
-    status: Exclude<ReportStatus, 'completed'>,
+    intent: ReportSaveIntent,
     dateCompleted: string
   ): ReportSavePayload => {
     const values = getValues();
@@ -280,7 +283,7 @@ export function ReportCloseoutContent({
       invoiceId: invoiceId || undefined,
       technicianId,
       dateCompleted,
-      reportStatus: status === 'draft' ? 'draft' : 'in_progress',
+      reportStatus: resolveReportStatusForSave(intent),
       jobTitle,
       location,
       inspectionItems: normalizeInspectionItems(values.inspectionItems),
@@ -314,9 +317,9 @@ export function ReportCloseoutContent({
     return valid;
   };
 
-  const handleSave = async (status: Exclude<ReportStatus, 'completed'>) => {
-    if (status === 'in_progress' && !validateForSubmit()) return;
-    if (status === 'draft') {
+  const handleSave = async (intent: ReportSaveIntent) => {
+    if (intent === 'submit' && !validateForSubmit()) return;
+    if (intent === 'draft') {
       setSubmitError(null);
     }
 
@@ -331,7 +334,7 @@ export function ReportCloseoutContent({
       // not the physical next-day calendar date. Normal jobs keep the
       // submission-day behavior.
       const payload = buildPayload(
-        status,
+        intent,
         resolveReportDateCompleted(scheduleSource, completedAt)
       );
       // Duration is measured from the true scheduled start instant (no
@@ -374,7 +377,7 @@ export function ReportCloseoutContent({
           ]
         );
 
-        if (status === 'in_progress' && actualServiceDurationMinutes !== null) {
+        if (intent === 'submit' && actualServiceDurationMinutes !== null) {
           await tx.execute(
             `UPDATE schedules
              SET actualServiceDurationMinutes = ?
@@ -494,7 +497,7 @@ export function ReportCloseoutContent({
           </Button>
           <Button
             className='flex-1'
-            onPress={handleSubmit(() => handleSave('in_progress'))}
+            onPress={handleSubmit(() => handleSave('submit'))}
             disabled={isSaving}
           >
             <Text>Submit</Text>

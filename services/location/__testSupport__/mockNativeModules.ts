@@ -1,4 +1,22 @@
 import { jest } from '@jest/globals';
+import './mockSqlite';
+
+jest.mock('@/services/location/LocationAccount', () => ({
+  getLocationOwner: jest.fn(async () => ({ appUserId: 'app-user-1', fieldStaffId: 'tech-1' }))
+}));
+jest.mock('@/services/location/TrackingHealth', () => ({ reportTrackingHealth: jest.fn() }));
+jest.mock('@/services/location/TrackingReadiness', () => ({ readTrackingReadiness: async () => {
+  const Location = require('expo-location') as typeof import('expo-location');
+  if (!await Location.hasServicesEnabledAsync()) return { permission: { kind: 'services-disabled' } };
+  const foreground = await Location.getForegroundPermissionsAsync();
+  if (!foreground.granted) return { permission: { kind: 'foreground-denied', canAskAgain: foreground.canAskAgain } };
+  const background = await Location.getBackgroundPermissionsAsync();
+  return { permission: background.granted ? { kind: 'granted' } : { kind: 'background-denied', canAskAgain: background.canAskAgain } };
+} }));
+jest.mock('@/services/location/LocationOutbox', () => {
+  const actual = jest.requireActual('@/services/location/LocationOutbox') as typeof import('../LocationOutbox');
+  return { ...actual, persistLocationEvents: jest.fn(actual.persistLocationEvents) };
+});
 
 jest.mock('expo-location', () => ({
   Accuracy: { Balanced: 3, High: 4 },
@@ -39,11 +57,14 @@ jest.mock('expo-task-manager', () => ({
   defineTask: jest.fn()
 }));
 
-jest.mock('@/services/location/LocationEventQueue', () => ({
-  postOrQueueLocationEvent: jest.fn(),
+jest.mock('@/services/location/LocationEventQueue', () => {
+  const enqueue = jest.fn();
+  return {
+  enqueueLocationEvent: enqueue,
+  postOrQueueLocationEvent: enqueue,
   postOrQueueLocationEvents: jest.fn(),
   flushLocationEventQueue: jest.fn()
-}));
+}; });
 
 jest.mock('@/utils/DebugLogger', () => ({
   debugLogger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() }

@@ -79,13 +79,13 @@ describe('hasRelevantLocationPermissionWindow', () => {
     ).toBe(true);
   });
 
-  it('excludes locally completed schedules', () => {
+  it('keeps reminders after saving a service duration', () => {
     expect(
       hasRelevantLocationPermissionWindow({
         windows: [trackingWindow({ id: 'done', scheduleId: 'schedule-done' })],
         completedScheduleIds: new Set(['schedule-done']),
         now
       })
-    ).toBe(false);
+    ).toBe(true);
   });
 });

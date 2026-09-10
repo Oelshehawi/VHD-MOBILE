@@ -9,8 +9,7 @@ import { useUpcomingTrackingWindow } from '@/components/location/useUpcomingTrac
 import { batteryHintCopy } from '@/components/location/batteryHintCopy';
 import { shouldShowBatteryHint } from '@/components/location/batteryHintEligibility';
 import {
-  getBatteryHintAcknowledged,
-  setBatteryHintAcknowledged
+  getBatteryHintAcknowledged
 } from '@/services/location/batteryHint';
 import { debugLogger } from '@/utils/DebugLogger';
 
@@ -73,10 +72,8 @@ export function BatteryOptimizationGate() {
     setIsWorking(true);
     try {
       await Linking.openSettings();
-      // We cannot verify the OEM battery setting, so assume the user completed it
-      // once they've been deep-linked to app settings, and don't nudge again.
-      await setBatteryHintAcknowledged();
-      setAcknowledged(true);
+      // Opening Settings is not evidence that a restriction was changed.
+      sessionDismissedRef.current = true;
     } catch (error) {
       debugLogger.warn('LOCATION', 'Failed to open settings from battery hint gate', {
         error: error instanceof Error ? error.message : String(error)

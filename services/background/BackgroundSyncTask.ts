@@ -37,11 +37,7 @@ if (!TaskManager.isTaskDefined(BACKGROUND_SYNC_TASK_NAME)) {
         minimumIntervalMinutes: BACKGROUND_SYNC_MINIMUM_INTERVAL_MINUTES
       });
 
-      const result = await runBoundedBackgroundSync({
-        reason: 'expo-background-task',
-        maxMs: 25000
-      });
-
+      const startedAt = Date.now();
       try {
         await refreshLocationTracking('background-task');
       } catch (refreshError) {
@@ -49,6 +45,11 @@ if (!TaskManager.isTaskDefined(BACKGROUND_SYNC_TASK_NAME)) {
           error: refreshError instanceof Error ? refreshError.message : String(refreshError)
         });
       }
+
+      const result = await runBoundedBackgroundSync({
+        reason: 'expo-background-task',
+        maxMs: Math.max(0, 25000 - (Date.now() - startedAt))
+      });
 
       if (result.success) {
         void debugLogger.info('SYNC', 'Expo background sync task completed', result);

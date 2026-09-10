@@ -93,7 +93,7 @@ describe('LocationTrackingCoordinator', () => {
     await coordinator.sync([window]);
 
     const state = await readLocationTrackingState();
-    expect(state.windows).toEqual([]);
+    expect(state.windows.map(window => window.id)).toEqual(['tomorrow-window']);
     expect(state.activeLocationWindowIds).toEqual([]);
     expect(state.closedScheduleIds).toEqual([window.scheduleId]);
   });
