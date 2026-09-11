@@ -93,7 +93,7 @@ describe('LocationTrackingCoordinator', () => {
     await coordinator.sync([window]);
 
     const state = await readLocationTrackingState();
-    expect(state.windows).toEqual([]);
+    expect(state.windows.map(window => window.id)).toEqual([]);
     expect(state.activeLocationWindowIds).toEqual([]);
     expect(state.closedScheduleIds).toEqual([window.scheduleId]);
   });
@@ -150,7 +150,6 @@ describe('LocationTrackingCoordinator', () => {
       arrivedWindowIds: [],
       exitedWindowIds: [],
       activeLocationWindowIds: [],
-      lastLocationPingAtByWindowId: {},
       initialDepotCheckedWindowIds: []
     });
 
@@ -197,7 +196,8 @@ describe('LocationTrackingCoordinator', () => {
     ]);
 
     const state = await readLocationTrackingState();
-    expect(state.windows).toEqual([]);
+    // The upcoming window is saved (not active) so a wake crossing can find it.
+    expect(state.windows.map((window) => window.id)).toEqual(['tomorrow-window']);
     expect(state.activeLocationWindowIds).toEqual([]);
     expect(state.geofenceRegions.map((region) => region.identifier).sort()).toEqual([
       STANDING_DEPOT_REGION_IDENTIFIER,

@@ -19,6 +19,8 @@ export interface GeofenceTarget {
 }
 
 export interface TechnicianTrackingWindow {
+  definitionVersion?: number | null;
+  definitionUpdatedAt?: string | null;
   id: string;
   technicianId: string;
   scheduleId: string;
@@ -45,6 +47,10 @@ export interface ParsedTrackingWindow extends TechnicianTrackingWindow {
 }
 
 export interface MobileLocationEvent {
+  eventId?: string;
+  installationId?: string;
+  windowDefinitionVersion?: number;
+  deviceRecordedAt?: string;
   trackingWindowId?: string;
   scheduleId?: string;
   eventType: LocationEventType;

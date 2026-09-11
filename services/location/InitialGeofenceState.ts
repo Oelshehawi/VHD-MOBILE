@@ -1,7 +1,9 @@
 import * as Location from 'expo-location';
 import type { LocationEventPlatform, MobileLocationEvent, ParsedTrackingWindow } from '@/types';
 import { debugLogger } from '@/utils/DebugLogger';
-import { postOrQueueLocationEvent } from '@/services/location/LocationEventQueue';
+import { enqueueLocationEvent } from '@/services/location/LocationEventQueue';
+import { serializeLocationCapture } from './LocationOutbox';
+import { withTimeout } from '@/services/background/withTimeout';
 import {
   readLocationTrackingState,
   recordGeofenceTransition,
@@ -18,6 +20,10 @@ export async function emitInitialDepotEnterEvents(args: {
   activeWindows: ParsedTrackingWindow[];
   platform: LocationEventPlatform;
 }): Promise<void> {
+  return serializeLocationCapture(() => captureInitialDepotEnterEvents(args));
+}
+
+async function captureInitialDepotEnterEvents(args: { activeWindows: ParsedTrackingWindow[]; platform: LocationEventPlatform }): Promise<void> {
   if (args.activeWindows.length === 0) {
     return;
   }
@@ -44,9 +50,9 @@ export async function emitInitialDepotEnterEvents(args: {
 
   let latestLocation: Location.LocationObject;
   try {
-    latestLocation = await Location.getCurrentPositionAsync({
+    latestLocation = await withTimeout(Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Balanced
-    });
+    }), 4000);
   } catch (error) {
     debugLogger.warn('LOCATION', 'Initial depot state check failed', {
       error: error instanceof Error ? error.message : String(error)
@@ -83,14 +89,7 @@ export async function emitInitialDepotEnterEvents(args: {
       continue;
     }
 
-    const transition = await recordGeofenceTransition({
-      trackingWindowId: window.id,
-      regionType: 'depot',
-      eventType: 'geofence_enter',
-      recordedAt
-    });
-
-    if (!transition.shouldEmit) {
+    if (state.geofenceTransitions.some(item => item.trackingWindowId === window.id && item.regionType === 'depot' && item.eventType === 'geofence_enter')) {
       debugLogger.debug('LOCATION', 'Suppressed duplicate initial depot enter', {
         trackingWindowId: window.id,
         scheduleId: window.scheduleId
@@ -100,18 +99,25 @@ export async function emitInitialDepotEnterEvents(args: {
 
     const event: MobileLocationEvent = {
       trackingWindowId: window.id,
+      windowDefinitionVersion: window.definitionVersion,
       scheduleId: window.scheduleId,
       eventType: 'geofence_enter',
       regionType: 'depot',
       lat: window.depotLat,
       lng: window.depotLng,
+      deviceLat: latestLocation.coords.latitude,
+      deviceLng: latestLocation.coords.longitude,
+      deviceAccuracyMeters: latestLocation.coords.accuracy != null && latestLocation.coords.accuracy >= 0 ? latestLocation.coords.accuracy : undefined,
+      deviceRecordedAt: recordedAt,
+      initialState: true,
       accuracyMeters: latestLocation.coords.accuracy ?? undefined,
       recordedAt,
       source: 'geofence',
       platform: args.platform
     };
 
-    await postOrQueueLocationEvent(event);
+    await enqueueLocationEvent(event);
+    await recordGeofenceTransition({ trackingWindowId: window.id, regionType: 'depot', eventType: 'geofence_enter', recordedAt });
     debugLogger.info('LOCATION', 'Posted initial depot enter state', {
       trackingWindowId: window.id,
       scheduleId: window.scheduleId,

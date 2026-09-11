@@ -37,7 +37,7 @@ export interface ReportSavePayload {
   invoiceId?: string;
   technicianId: string;
   dateCompleted: string;
-  reportStatus: Extract<ReportStatus, 'draft' | 'in_progress'>;
+  reportStatus: Extract<ReportStatus, 'draft' | 'completed'>;
   jobTitle: string;
   location: string;
   inspectionItems: InspectionItems;

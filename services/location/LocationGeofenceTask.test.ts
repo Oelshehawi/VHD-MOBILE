@@ -9,7 +9,7 @@ import {
 } from '@/services/location/LocationGeofenceTask';
 import {
   flushLocationEventQueue,
-  postOrQueueLocationEvent
+  enqueueLocationEvent
 } from '@/services/location/LocationEventQueue';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 
@@ -183,7 +183,6 @@ async function seedStateForGeofenceEvent(overrides?: {
     arrivedWindowIds: overrides?.arrivedWindowIds ?? [],
     exitedWindowIds: overrides?.exitedWindowIds ?? [],
     activeLocationWindowIds: ['w1'],
-    lastLocationPingAtByWindowId: {},
     initialDepotCheckedWindowIds: [],
     geofenceRegionsRegisteredAt: overrides?.geofenceRegionsRegisteredAt
   });
@@ -206,7 +205,7 @@ describe('processGeofenceEvent', () => {
 
     await processGeofenceEvent(jobRegionEvent(1));
 
-    expect(postOrQueueLocationEvent).toHaveBeenCalledWith(
+    expect(enqueueLocationEvent).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: 'geofence_enter',
         regionType: 'job',
@@ -229,7 +228,7 @@ describe('processGeofenceEvent', () => {
 
     await processGeofenceEvent(jobRegionEvent(1));
 
-    expect(postOrQueueLocationEvent).toHaveBeenCalledWith(
+    expect(enqueueLocationEvent).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'geofence_enter', initialState: true })
     );
   });
@@ -241,7 +240,7 @@ describe('processGeofenceEvent', () => {
 
     await processGeofenceEvent(jobRegionEvent(1));
 
-    const emitted = jest.mocked(postOrQueueLocationEvent).mock.calls.at(-1)?.[0];
+    const emitted = jest.mocked(enqueueLocationEvent).mock.calls.at(-1)?.[0];
     expect(emitted).toMatchObject({ eventType: 'geofence_enter' });
     expect(emitted).not.toHaveProperty('initialState');
   });
@@ -254,7 +253,7 @@ describe('processGeofenceEvent', () => {
 
     await processGeofenceEvent(jobRegionEvent(2));
 
-    const emitted = jest.mocked(postOrQueueLocationEvent).mock.calls.at(-1)?.[0];
+    const emitted = jest.mocked(enqueueLocationEvent).mock.calls.at(-1)?.[0];
     expect(emitted).toMatchObject({ eventType: 'geofence_exit' });
     expect(emitted).not.toHaveProperty('initialState');
   });
@@ -265,7 +264,7 @@ describe('processGeofenceEvent', () => {
 
     await processGeofenceEvent(jobRegionEvent(1));
 
-    const emitted = jest.mocked(postOrQueueLocationEvent).mock.calls.at(-1)?.[0];
+    const emitted = jest.mocked(enqueueLocationEvent).mock.calls.at(-1)?.[0];
     expect(emitted).toMatchObject({ eventType: 'geofence_enter', lat: 49.2, lng: -123.2 });
     expect(emitted).not.toHaveProperty('deviceLat');
   });
@@ -338,7 +337,6 @@ describe('processGeofenceEvent', () => {
       arrivedWindowIds: [],
       exitedWindowIds: [],
       activeLocationWindowIds: [],
-      lastLocationPingAtByWindowId: {},
       initialDepotCheckedWindowIds: []
     });
 
@@ -352,9 +350,12 @@ describe('processGeofenceEvent', () => {
       }
     });
 
-    expect(postOrQueueLocationEvent).not.toHaveBeenCalled();
-    expect(flushLocationEventQueue).toHaveBeenCalled();
+    expect(enqueueLocationEvent).not.toHaveBeenCalled();
     expect(refreshLocationTracking).toHaveBeenCalledWith('geofence-wake');
+    // The backlog is uploaded before the refresh, which may outlast the wake.
+    expect(jest.mocked(flushLocationEventQueue).mock.invocationCallOrder[0]).toBeLessThan(
+      jest.mocked(refreshLocationTracking).mock.invocationCallOrder[0]
+    );
 
     const state = await readLocationTrackingState();
     expect(state.geofenceTransitions).toEqual([]);

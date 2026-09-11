@@ -5,7 +5,7 @@ import {
   UpdateType
 } from '@powersync/react-native';
 import { ApiClient, SyncOperationResult } from '../ApiClient';
-import { getClerkInstance } from '@clerk/clerk-expo';
+import { getPersistentClerk } from '@/services/background/clerkBootstrap';
 import { CloudinaryStorageAdapter } from '../storage/CloudinaryStorageAdapter';
 import type { System } from './System';
 import { debugLogger } from '@/utils/DebugLogger';
@@ -28,6 +28,18 @@ type PendingCrudTransaction = NonNullable<
 interface BackendConnectorOptions {
   apiClient?: ApiClient;
   tokenProvider?: TokenProvider;
+}
+
+type QueuedOp = Pick<CrudEntry, 'table' | 'id' | 'op' | 'opData'>;
+
+const QUARANTINE_RETENTION_MS = 14 * 24 * 60 * 60 * 1000;
+
+interface QuarantinedWrite {
+  id: string;
+  tableName: string;
+  rowId: string;
+  op: string;
+  data: string | null;
 }
 
 export class BackendConnector implements PowerSyncBackendConnector {
@@ -87,9 +99,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
         };
       }
 
-      const clerk = getClerkInstance({
-        publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-      });
+      const clerk = getPersistentClerk();
 
       if (!clerk?.session) {
         debugLogger.warn('AUTH', 'No Clerk session available');
@@ -247,7 +257,12 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
   private async handleSyncResult(
     result: SyncOperationResult,
-    context: { table: string; id?: string },
+    context: {
+      table: string;
+      id?: string;
+      ops: QueuedOp[];
+      database: AbstractPowerSyncDatabase;
+    },
     opCount = 1
   ) {
     const table = context.table;
@@ -261,15 +276,26 @@ export class BackendConnector implements PowerSyncBackendConnector {
     if (result.outcome === 'business_reject') {
       this.incrementSyncMetric('sync_ack_business_reject', opCount, { table, id });
       const serverMessage = result.message || result.error || 'Server rejected the change';
-      debugLogger.warn('SYNC', 'Sync business rejection (dropping op)', {
+      if (table === 'expopushtokens') {
+        // A stale device token belongs to another account; dropping it is intended.
+        debugLogger.warn('SYNC', 'Sync business rejection (dropping push token op)', {
+          id,
+          error: result.error,
+          message: result.message
+        });
+        return;
+      }
+
+      // Saved before the transaction completes. If the insert fails it throws,
+      // the transaction stays queued, and PowerSync retries it.
+      await this.quarantineOps(context.database, context.ops, result);
+      debugLogger.warn('SYNC', 'Sync business rejection (quarantined op)', {
         table,
         id,
+        opCount: context.ops.length,
         error: result.error,
         message: result.message
       });
-      if (table === 'expopushtokens') {
-        return;
-      }
 
       SyncEventBus.emit({
         type: 'business_reject',
@@ -302,7 +328,137 @@ export class BackendConnector implements PowerSyncBackendConnector {
     );
   }
 
-  private async processCrudTransaction(transaction: PendingCrudTransaction): Promise<number> {
+  private async quarantineOps(
+    database: AbstractPowerSyncDatabase,
+    ops: QueuedOp[],
+    result: SyncOperationResult
+  ) {
+    const quarantinedAt = new Date().toISOString();
+    for (const op of ops) {
+      await database.execute(
+        'INSERT INTO sync_quarantine (id, tableName, rowId, op, data, httpStatus, error, quarantinedAt) VALUES (uuid(), ?, ?, ?, ?, ?, ?, ?)',
+        [
+          op.table,
+          op.id,
+          op.op,
+          JSON.stringify(op.opData ?? {}),
+          result.httpStatus,
+          result.message || result.error || null,
+          quarantinedAt
+        ]
+      );
+    }
+  }
+
+  private toPhotoRecord(op: QueuedOp): Record<string, unknown> {
+    return { ...op.opData, id: op.id };
+  }
+
+  /**
+   * Sends one queued op to the backend. Returns null for ops the mobile app
+   * intentionally never uploads (schedule fields it does not own).
+   */
+  private async sendOp(op: QueuedOp): Promise<SyncOperationResult | null> {
+    if (op.table === 'photos' && op.op !== UpdateType.DELETE) {
+      const records = [this.toPhotoRecord(op)];
+      return op.op === UpdateType.PUT
+        ? this.apiClient.batchUpsert('photos', records)
+        : this.apiClient.batchPatch('photos', records);
+    }
+
+    if (op.table === 'schedules' && op.op !== UpdateType.PATCH) {
+      debugLogger.warn('SYNC', 'Dropped unsupported mobile schedule mutation', {
+        id: op.id,
+        operation: op.op
+      });
+      return null;
+    }
+
+    // Parse JSON fields for reports table before sending to backend
+    let data: Record<string, unknown> = { ...op.opData, id: op.id };
+    if (op.table === 'reports') {
+      data = this.parseReportJsonFields(data);
+    }
+    if (op.table === 'schedules') {
+      const scheduleData = getMobileScheduleUploadData(op.opData);
+      if (Object.keys(scheduleData).length === 0) {
+        debugLogger.warn('SYNC', 'Dropped schedule write with no mobile-owned fields', {
+          id: op.id,
+          fields: Object.keys(op.opData || {})
+        });
+        return null;
+      }
+      data = { ...scheduleData, id: op.id };
+    }
+
+    const record = { table: op.table, data };
+    switch (op.op) {
+      case UpdateType.PUT:
+        return this.apiClient.upsert(record);
+      case UpdateType.PATCH:
+        return this.apiClient.update(record);
+      case UpdateType.DELETE:
+        return this.apiClient.delete({ table: op.table, data: { id: op.id } });
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Re-sends writes the server rejected earlier; runs silently at app start.
+   * A write leaves quarantine once the server accepts it; a repeat rejection
+   * keeps it with the new reason. Writes older than the retention window are
+   * dropped first: those target records the office deleted and can never
+   * succeed. Stops at the first offline/auth failure.
+   */
+  async retryQuarantinedWrites(
+    database: AbstractPowerSyncDatabase
+  ): Promise<{ resolved: number; remaining: number }> {
+    const cutoff = new Date(Date.now() - QUARANTINE_RETENTION_MS).toISOString();
+    await database.execute('DELETE FROM sync_quarantine WHERE quarantinedAt < ?', [cutoff]);
+    const rows = await database.getAll<QuarantinedWrite>(
+      'SELECT id, tableName, rowId, op, data FROM sync_quarantine ORDER BY quarantinedAt'
+    );
+    let resolved = 0;
+    for (const row of rows) {
+      let opData: Record<string, unknown> | undefined;
+      try {
+        opData = row.data ? (JSON.parse(row.data) as Record<string, unknown>) : undefined;
+      } catch {
+        opData = undefined;
+      }
+      const result = await this.sendOp({
+        table: row.tableName,
+        id: row.rowId,
+        op: row.op as UpdateType,
+        opData
+      });
+      if (!result || result.outcome === 'success') {
+        await database.execute('DELETE FROM sync_quarantine WHERE id = ?', [row.id]);
+        resolved += 1;
+        continue;
+      }
+      if (result.outcome === 'business_reject') {
+        await database.execute('UPDATE sync_quarantine SET httpStatus = ?, error = ? WHERE id = ?', [
+          result.httpStatus,
+          result.message || result.error || null,
+          row.id
+        ]);
+        continue;
+      }
+      break;
+    }
+    debugLogger.info('SYNC', 'Retried quarantined writes', {
+      total: rows.length,
+      resolved
+    });
+    return { resolved, remaining: rows.length - resolved };
+  }
+
+  private async processCrudTransaction(
+    transaction: PendingCrudTransaction,
+    database: AbstractPowerSyncDatabase
+  ): Promise<number> {
     let lastOp: CrudEntry | null = null;
     const photoPutOps: CrudEntry[] = [];
     const photoPatchOps: CrudEntry[] = [];
@@ -320,54 +476,13 @@ export class BackendConnector implements PowerSyncBackendConnector {
           continue;
         }
 
-        if (op.table === 'schedules' && op.op !== UpdateType.PATCH) {
-          debugLogger.warn('SYNC', 'Dropped unsupported mobile schedule mutation', {
-            id: op.id,
-            operation: op.op
-          });
+        const result = await this.sendOp(op);
+        if (!result) {
           continue;
         }
 
-        // Parse JSON fields for reports table before sending to backend
-        let data = { ...op.opData, id: op.id };
-        if (op.table === 'reports') {
-          data = this.parseReportJsonFields(data);
-        }
-        if (op.table === 'schedules') {
-          const scheduleData = getMobileScheduleUploadData(op.opData);
-          if (Object.keys(scheduleData).length === 0) {
-            debugLogger.warn('SYNC', 'Dropped schedule write with no mobile-owned fields', {
-              id: op.id,
-              fields: Object.keys(op.opData || {})
-            });
-            continue;
-          }
-          data = { ...scheduleData, id: op.id };
-        }
-
-        const record = {
-          table: op.table,
-          data
-        };
-
-        let result: SyncOperationResult;
-        switch (op.op) {
-          case UpdateType.PUT:
-            result = await this.apiClient.upsert(record);
-            break;
-          case UpdateType.PATCH:
-            result = await this.apiClient.update(record);
-            break;
-          case UpdateType.DELETE:
-            result = await this.apiClient.delete({
-              table: op.table,
-              data: { id: op.id }
-            });
-            break;
-        }
-
-        await this.handleSyncResult(result!, { table: op.table, id: op.id });
-        if (result!.outcome === 'success') {
+        await this.handleSyncResult(result, { table: op.table, id: op.id, ops: [op], database });
+        if (result.outcome === 'success') {
           debugLogger.info('SYNC', `Synced ${op.table} record`, {
             id: op.id
           });
@@ -376,16 +491,18 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
       if (photoPutOps.length > 0) {
         lastOp = photoPutOps[photoPutOps.length - 1] ?? lastOp;
-        const records = photoPutOps.map((op) => ({
-          ...op.opData,
-          id: op.id
-        }));
 
-        for (let i = 0; i < records.length; i += this.PHOTO_BATCH_SIZE) {
-          const chunk = records.slice(i, i + this.PHOTO_BATCH_SIZE);
-          const result = await this.apiClient.batchUpsert('photos', chunk);
-          const firstId = typeof chunk[0]?.id === 'string' ? chunk[0].id : undefined;
-          await this.handleSyncResult(result, { table: 'photos', id: firstId }, chunk.length);
+        for (let i = 0; i < photoPutOps.length; i += this.PHOTO_BATCH_SIZE) {
+          const chunk = photoPutOps.slice(i, i + this.PHOTO_BATCH_SIZE);
+          const result = await this.apiClient.batchUpsert(
+            'photos',
+            chunk.map((op) => this.toPhotoRecord(op))
+          );
+          await this.handleSyncResult(
+            result,
+            { table: 'photos', id: chunk[0]?.id, ops: chunk, database },
+            chunk.length
+          );
           if (result.outcome === 'success') {
             debugLogger.info('SYNC', 'Batch synced photo records', {
               count: chunk.length
@@ -396,16 +513,18 @@ export class BackendConnector implements PowerSyncBackendConnector {
 
       if (photoPatchOps.length > 0) {
         lastOp = photoPatchOps[photoPatchOps.length - 1] ?? lastOp;
-        const records = photoPatchOps.map((op) => ({
-          ...op.opData,
-          id: op.id
-        }));
 
-        for (let i = 0; i < records.length; i += this.PHOTO_BATCH_SIZE) {
-          const chunk = records.slice(i, i + this.PHOTO_BATCH_SIZE);
-          const result = await this.apiClient.batchPatch('photos', chunk);
-          const firstId = typeof chunk[0]?.id === 'string' ? chunk[0].id : undefined;
-          await this.handleSyncResult(result, { table: 'photos', id: firstId }, chunk.length);
+        for (let i = 0; i < photoPatchOps.length; i += this.PHOTO_BATCH_SIZE) {
+          const chunk = photoPatchOps.slice(i, i + this.PHOTO_BATCH_SIZE);
+          const result = await this.apiClient.batchPatch(
+            'photos',
+            chunk.map((op) => this.toPhotoRecord(op))
+          );
+          await this.handleSyncResult(
+            result,
+            { table: 'photos', id: chunk[0]?.id, ops: chunk, database },
+            chunk.length
+          );
           if (result.outcome === 'success') {
             debugLogger.info('SYNC', 'Batch patched photo records', {
               count: chunk.length
@@ -431,7 +550,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
     const transaction = await database.getNextCrudTransaction();
     if (!transaction) return;
 
-    await this.processCrudTransaction(transaction);
+    await this.processCrudTransaction(transaction, database);
   }
 
   async uploadPendingTransactions(
@@ -452,7 +571,7 @@ export class BackendConnector implements PowerSyncBackendConnector {
         return uploadedOps;
       }
 
-      const transactionOpCount = await this.processCrudTransaction(transaction);
+      const transactionOpCount = await this.processCrudTransaction(transaction, database);
       drainedTransactions += 1;
       uploadedOps += transactionOpCount;
 

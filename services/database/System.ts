@@ -23,7 +23,7 @@ const CONNECTION_TIMEOUT_MS = 30000;
 // substring(scheduledStartAtUtc,1,7) IN this array (range ops can't compare a
 // column to a parameter, so we bucket by month and use IN). No server-side
 // now(), so the client computes the months. Advances on each launch.
-function getScheduleMonthBuckets(): string[] {
+export function getScheduleMonthBuckets(): string[] {
   const start = new Date();
   start.setDate(start.getDate() - 30);
   const end = new Date();

@@ -3,18 +3,15 @@ import '@/services/location/__testSupport__/mockNativeModules';
 
 import type * as Location from 'expo-location';
 import {
-  MAX_RECONSTRUCTED_PINGS_PER_INVOCATION,
   processLocationUpdate
 } from '@/services/location/LocationUpdatesTask';
-import { postOrQueueLocationEvents } from '@/services/location/LocationEventQueue';
-import {
-  readLocationTrackingState,
-  writeLocationTrackingState
-} from '@/services/location/LocationTrackingState';
+import { persistLocationEvents, readThrottle } from '@/services/location/LocationOutbox';
+import { resetLocationTestDatabase } from './__testSupport__/mockSqlite';
+import { writeLocationTrackingState } from '@/services/location/LocationTrackingState';
 import type { PersistedTrackingWindow } from '@/services/location/LocationTrackingState';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 
-const postMock = postOrQueueLocationEvents as unknown as jest.Mock;
+const postMock = persistLocationEvents as unknown as jest.Mock;
 
 const JOB_SITE = { lat: 49.05, lng: -122.335 };
 // Anchored to the real clock: the task compares window times against
@@ -56,7 +53,7 @@ function fix(offsetSeconds: number, overrides: Partial<Location.LocationObject['
 }
 
 function postedEvents(): MobileLocationEvent[] {
-  return postMock.mock.calls.flatMap((call) => call[0] as MobileLocationEvent[]);
+  return postMock.mock.calls.flatMap((call) => call[1] as MobileLocationEvent[]);
 }
 
 async function seedState(windows: PersistedTrackingWindow[]): Promise<void> {
@@ -68,7 +65,6 @@ async function seedState(windows: PersistedTrackingWindow[]): Promise<void> {
     arrivedWindowIds: [],
     exitedWindowIds: [],
     activeLocationWindowIds: windows.map((window) => window.id),
-    lastLocationPingAtByWindowId: {},
     initialDepotCheckedWindowIds: []
   });
 }
@@ -76,9 +72,7 @@ async function seedState(windows: PersistedTrackingWindow[]): Promise<void> {
 describe('processLocationUpdate', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
-    postMock.mockImplementation(async (...args: unknown[]) =>
-      (args[0] as MobileLocationEvent[]).map(() => true)
-    );
+    await resetLocationTestDatabase();
     await seedState([persistedWindow({ id: 'w1' })]);
   });
 
@@ -136,24 +130,24 @@ describe('processLocationUpdate', () => {
   it('persists only the last emitted ping timestamp per window', async () => {
     await processLocationUpdate({ locations: [fix(-600), fix(-480), fix(-360)] });
 
-    const state = await readLocationTrackingState();
-    expect(state.lastLocationPingAtByWindowId.w1).toBe(new Date(T0 - 360_000).toISOString());
+    const throttle = await readThrottle('app-user-1');
+    expect(throttle['w1:1']).toBe(new Date(T0 - 360_000).toISOString());
   });
 
-  it('caps a pathological batch and keeps the newest fixes', async () => {
-    const count = MAX_RECONSTRUCTED_PINGS_PER_INVOCATION + 15;
+  it('retains more than the former 60-fix cap for chunked delivery', async () => {
+    const count = 75;
     const locations = Array.from({ length: count }, (_, index) => fix(-(count - index) * 130));
 
     await processLocationUpdate({ locations });
 
     const events = postedEvents();
-    expect(events).toHaveLength(MAX_RECONSTRUCTED_PINGS_PER_INVOCATION);
+    expect(events).toHaveLength(count);
     expect(events[events.length - 1].recordedAt).toBe(
       new Date(locations[locations.length - 1].timestamp).toISOString()
     );
-    // The dropped tail must not advance the throttle past what was posted.
-    const state = await readLocationTrackingState();
-    expect(state.lastLocationPingAtByWindowId.w1).toBe(events[events.length - 1].recordedAt);
+    expect(events[0].recordedAt).toBe(new Date(locations[0].timestamp).toISOString());
+    const throttle = await readThrottle('app-user-1');
+    expect(throttle['w1:1']).toBe(events[events.length - 1].recordedAt);
   });
 
   it('skips fixes with non-finite coords without advancing the throttle', async () => {

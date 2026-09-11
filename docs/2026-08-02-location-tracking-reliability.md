@@ -1,5 +1,10 @@
 # Location Tracking Reliability
 
+Last updated: 2026-09-10
+
+For the runtime 2.0.0 OTA release boundary and device acceptance checks, see
+[the 2.0.0 rollout notes](2026-09-10-location-tracking-2.0.0-ota.md).
+
 ## Current Contract
 
 - A completed report or saved service duration does not prove that the technician left the job.
@@ -12,8 +17,8 @@
 
 - Location queue and tracking-state read/modify/write operations are serialized so simultaneous geofence and background-location callbacks cannot overwrite each other.
 - HTTP 401 is retryable for location events. A headless task with an expired cached Clerk token queues the event until foreground authentication is available again.
-- Routine telemetry is retained for 24 hours and up to 10 failed retries.
-- Job/depot geofence enter and exit events are prioritized in the bounded queue, retained for up to 13 days, and are not discarded only because they reached the routine retry limit.
+- Location events are persisted in an account-scoped SQLite outbox for up to 13 days, with a 100,000-event bound. Overflow and expiration are counted in tracking health.
+- Transient upload failures back off without deleting queued evidence. Permanently invalid events and events that repeatedly crash the server are retained separately for diagnostics so later events can proceed.
 - The backend accepts events up to 14 days old, so the critical-event retention remains inside the server timestamp boundary.
 
 ## Capture Guarantees
@@ -28,8 +33,8 @@ the samples were being discarded on the device, not lost in transit.
   the newest fix threw away the samples that prove when the technician arrived (one measured
   case: a 99.5-minute gap, arrival recorded 98 minutes late, as the technician drove away).
 - Each buffered fix runs the normal per-window throttle against its **own** timestamp, so a
-  dense trail is downsampled back to the configured cadence rather than dropped. At most 60
-  reconstructed pings are posted per invocation, newest kept.
+  dense trail is downsampled back to the configured cadence rather than dropped. All eligible
+  reconstructed pings are persisted; upload requests are chunked to the backend batch limit.
 - Buffered trail fixes are retained on-device for up to 13 days (inside the backend's 14-day
   bound). The 1-hour staleness bound still applies to any path that cannot vouch for a fix's
   provenance, such as a cached last-known position.

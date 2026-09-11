@@ -7,7 +7,10 @@ import type {
   ParsedTrackingWindow
 } from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
-import { flushLocationEventQueue, postOrQueueLocationEvent } from './LocationEventQueue';
+import { enqueueLocationEvent, flushLocationEventQueue } from './LocationEventQueue';
+import { serializeLocationCapture } from './LocationOutbox';
+import { getLocationOwner } from './LocationAccount';
+import { withTimeout } from '@/services/background/withTimeout';
 import {
   markWindowArrived,
   markWindowExited,
@@ -21,6 +24,7 @@ import {
   getActivePersistedPingWindows,
   getEventPlatform,
   isWindowOnSite,
+  isPersistedWindowPingActive,
   startLocationUpdatesForWindows
 } from './locationTaskShared';
 
@@ -319,9 +323,10 @@ async function getDeviceCoords(): Promise<{
   deviceLat: number;
   deviceLng: number;
   deviceAccuracyMeters?: number;
+  deviceRecordedAt: string;
 } | null> {
   try {
-    const lastKnown = await Location.getLastKnownPositionAsync({ maxAge: 60_000 });
+    const lastKnown = await withTimeout(Location.getLastKnownPositionAsync({ maxAge: 60_000 }), 2000);
     if (!lastKnown) {
       return null;
     }
@@ -329,7 +334,8 @@ async function getDeviceCoords(): Promise<{
     return {
       deviceLat: lastKnown.coords.latitude,
       deviceLng: lastKnown.coords.longitude,
-      deviceAccuracyMeters: lastKnown.coords.accuracy ?? undefined
+      deviceAccuracyMeters: lastKnown.coords.accuracy != null && lastKnown.coords.accuracy >= 0 ? lastKnown.coords.accuracy : undefined,
+      deviceRecordedAt: new Date(lastKnown.timestamp).toISOString()
     };
   } catch {
     return null;
@@ -338,19 +344,37 @@ async function getDeviceCoords(): Promise<{
 
 // Exported for tests: the body of the OS geofence task.
 export async function processGeofenceEvent(taskData: GeofenceTaskData | undefined): Promise<void> {
+  const recordedAtMs = Date.now();
+  const wake = await serializeLocationCapture(() => captureGeofenceEvent(taskData, recordedAtMs));
+  if (wake) {
+    // Upload a job wake crossing first: the refresh (PowerSync connect) can
+    // outlast iOS's short background budget.
+    await flushLocationEventQueue();
+    const { refreshLocationTracking } = require('./LocationTrackingRefreshRunner') as typeof import('./LocationTrackingRefreshRunner');
+    await refreshLocationTracking('geofence-wake');
+  } else {
+    await flushLocationEventQueue();
+    const { reportTrackingHealth } = require('./TrackingHealth') as typeof import('./TrackingHealth');
+    await reportTrackingHealth();
+  }
+}
+
+async function captureGeofenceEvent(taskData: GeofenceTaskData | undefined, recordedAtMs: number): Promise<boolean> {
 const region = taskData?.region;
 if (!region?.identifier || taskData?.eventType === undefined) {
   debugLogger.warn('LOCATION', 'Geofence task invoked without region data');
-  return;
+  return false;
 }
 
   const state = await readLocationTrackingState();
+  const owner = await getLocationOwner();
+  if (!owner || (state.ownerAppUserId && state.ownerAppUserId !== owner.appUserId)) return false;
   const metadata = state.geofenceRegions.find((item) => item.identifier === region.identifier);
   if (!metadata) {
     debugLogger.warn('LOCATION', 'Geofence task received stale region', {
       identifier: region.identifier
     });
-    return;
+    return false;
   }
 
   const eventType =
@@ -358,50 +382,23 @@ if (!region?.identifier || taskData?.eventType === undefined) {
       ? 'geofence_enter'
       : 'geofence_exit';
 
-  if (metadata.purpose === 'wake') {
-    // Wake regions never report presence (privacy outside work hours); they
-    // exist so a force-quit app gets relaunched by OS region monitoring.
-    // Flush anything queued, then run the refresh path: PowerSync windows
-    // sync and real tracking (re)starts if a window is live or near, and its
-    // region set replaces this one. Lazy require breaks the static cycle
-    // geofence task -> refresh runner -> coordinator -> geofence task.
-    debugLogger.info('LOCATION', 'Wake geofence region fired; refreshing tracking', {
-      identifier: region.identifier,
-      eventType
-    });
-    await flushLocationEventQueue();
-    try {
-      const { refreshLocationTracking } =
-        require('./LocationTrackingRefreshRunner') as typeof import('./LocationTrackingRefreshRunner');
-      await refreshLocationTracking('geofence-wake');
-    } catch (error) {
-      debugLogger.warn('LOCATION', 'Failed to refresh tracking from wake geofence', {
-        error: error instanceof Error ? error.message : String(error)
-      });
-    }
-    return;
-  }
+  const window = state.windows.find(item => item.id === metadata.trackingWindowId);
+  // A job wake crossing is real evidence once its saved work window is active.
+  // Outside that range (including the standing depot), no coordinates are sent.
+  if (!window || state.closedScheduleIds.includes(window.scheduleId) || !isPersistedWindowPingActive(window, new Date(recordedAtMs))) return true;
 
   const platform = getEventPlatform();
   if (!platform) {
-    return;
+    return false;
   }
 
-  const recordedAtMs = Date.now();
   const recordedAt = new Date(recordedAtMs).toISOString();
   const initialState = isInitialStateGeofenceEnter({
     eventType,
     geofenceRegionsRegisteredAt: state.geofenceRegionsRegisteredAt,
     nowMs: recordedAtMs
   });
-  const transition = await recordGeofenceTransition({
-    trackingWindowId: metadata.trackingWindowId,
-    regionType: metadata.regionType,
-    eventType,
-    recordedAt
-  });
-
-  if (!transition.shouldEmit) {
+  if (state.geofenceTransitions.some(item => item.trackingWindowId === metadata.trackingWindowId && item.regionType === metadata.regionType && item.eventType === eventType)) {
     debugLogger.info('LOCATION', 'Suppressed duplicate geofence transition', {
       trackingWindowId: metadata.trackingWindowId,
       scheduleId: metadata.scheduleId,
@@ -410,7 +407,7 @@ if (!region?.identifier || taskData?.eventType === undefined) {
     });
     await handleJobGeofenceSideEffects(eventType, metadata.regionType, metadata.trackingWindowId);
     await ensureLocationUpdatesRunning(`duplicate-${eventType}`);
-    return;
+    return metadata.purpose === 'wake';
   }
 
   // lat/lng stay the region center for backward compatibility; the actual
@@ -419,6 +416,7 @@ if (!region?.identifier || taskData?.eventType === undefined) {
   const deviceCoords = await getDeviceCoords();
   const event: MobileLocationEvent = {
     trackingWindowId: metadata.trackingWindowId,
+    windowDefinitionVersion: window.definitionVersion,
     scheduleId: metadata.scheduleId,
     eventType,
     regionType: metadata.regionType,
@@ -431,10 +429,11 @@ if (!region?.identifier || taskData?.eventType === undefined) {
     ...(initialState ? { initialState: true } : {})
   };
 
-  await flushLocationEventQueue();
-  await postOrQueueLocationEvent(event);
+  await enqueueLocationEvent(event);
+  await recordGeofenceTransition({ trackingWindowId: metadata.trackingWindowId, regionType: metadata.regionType, eventType, recordedAt });
   await handleJobGeofenceSideEffects(eventType, metadata.regionType, metadata.trackingWindowId);
   await ensureLocationUpdatesRunning(eventType);
+  return metadata.purpose === 'wake';
 }
 
 if (!TaskManager.isTaskDefined(LOCATION_GEOFENCE_TASK_NAME)) {

@@ -24,6 +24,7 @@ export type PermissionState =
   | { kind: 'services-disabled' }
   | { kind: 'foreground-denied'; canAskAgain: boolean }
   | { kind: 'background-denied'; canAskAgain: boolean }
+  | { kind: 'precision-reduced' }
   | { kind: 'unavailable' };
 
 type PermissionStateListener = (state: PermissionState | null) => void;
@@ -49,6 +50,9 @@ function notifyPermissionStateListeners(state: PermissionState | null): void {
 }
 
 export interface PersistedTrackingWindow {
+  definitionEndsAt?: string;
+  definitionVersion?: number;
+  definitionUpdatedAt?: string;
   id: string;
   scheduleId: string;
   serviceJobId: string;
@@ -74,8 +78,8 @@ export interface PersistedGeofenceRegion {
   lat: number;
   lng: number;
   radiusMeters?: number;
-  // 'wake' regions exist only to relaunch a force-quit app via OS region
-  // monitoring; they never emit presence events. Absent means 'tracking'.
+  // Wake regions request an OS-controlled recovery opportunity. They only
+  // emit presence after the associated scheduled window becomes active.
   purpose?: 'tracking' | 'wake';
 }
 
@@ -88,6 +92,8 @@ export interface PersistedGeofenceTransition {
 }
 
 export interface LocationTrackingState {
+  ownerAppUserId?: string;
+  historicalWindows?: PersistedTrackingWindow[];
   windows: PersistedTrackingWindow[];
   // Server-confirmed schedule closures suppress stale PowerSync window rows
   // until their expired status arrives locally.
@@ -103,7 +109,6 @@ export interface LocationTrackingState {
   arrivedWindowIds: string[];
   exitedWindowIds: string[];
   activeLocationWindowIds: string[];
-  lastLocationPingAtByWindowId: Record<string, string>;
   initialDepotCheckedWindowIds: string[];
   permissionDeniedSentAt?: string;
   locationUpdatesStartedAt?: string;
@@ -121,6 +126,7 @@ function normalizePermissionState(value: unknown): PermissionState | null {
     case 'granted':
     case 'services-disabled':
     case 'unavailable':
+    case 'precision-reduced':
       return { kind } as PermissionState;
     case 'foreground-denied':
     case 'background-denied': {
@@ -136,6 +142,7 @@ function normalizePermissionState(value: unknown): PermissionState | null {
 }
 
 const EMPTY_STATE: LocationTrackingState = {
+  historicalWindows: [],
   windows: [],
   closedScheduleIds: [],
   geofenceRegions: [],
@@ -143,7 +150,6 @@ const EMPTY_STATE: LocationTrackingState = {
   arrivedWindowIds: [],
   exitedWindowIds: [],
   activeLocationWindowIds: [],
-  lastLocationPingAtByWindowId: {},
   initialDepotCheckedWindowIds: []
 };
 
@@ -172,25 +178,14 @@ function normalizeGeofenceTransitions(value: unknown): PersistedGeofenceTransiti
   });
 }
 
-function normalizeLastLocationPingAt(value: unknown): Record<string, string> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return {};
-  }
-
-  return Object.entries(value).reduce<Record<string, string>>((acc, [key, timestamp]) => {
-    if (key && typeof timestamp === 'string') {
-      acc[key] = timestamp;
-    }
-    return acc;
-  }, {});
-}
-
 function normalizeState(value: Partial<LocationTrackingState> | null): LocationTrackingState {
   if (!value) {
     return { ...EMPTY_STATE };
   }
 
   return {
+    ownerAppUserId: value.ownerAppUserId,
+    historicalWindows: Array.isArray(value.historicalWindows) ? value.historicalWindows.filter(window => Date.parse(window.endsAtUtc) > Date.now() - 13 * 86400000) : [],
     windows: Array.isArray(value.windows) ? value.windows : [],
     closedScheduleIds: uniqueStrings(
       Array.isArray(value.closedScheduleIds) ? value.closedScheduleIds : []
@@ -212,7 +207,6 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
     activeLocationWindowIds: uniqueStrings(
       Array.isArray(value.activeLocationWindowIds) ? value.activeLocationWindowIds : []
     ),
-    lastLocationPingAtByWindowId: normalizeLastLocationPingAt(value.lastLocationPingAtByWindowId),
     initialDepotCheckedWindowIds: uniqueStrings(
       Array.isArray(value.initialDepotCheckedWindowIds) ? value.initialDepotCheckedWindowIds : []
     ),
@@ -250,15 +244,6 @@ export async function readLocationTrackingState(): Promise<LocationTrackingState
 
 function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
   const windowIds = new Set(state.windows.map((window) => window.id));
-  const filterRecord = (record: Record<string, string>): Record<string, string> => {
-    const next: Record<string, string> = {};
-    for (const [key, value] of Object.entries(record)) {
-      if (windowIds.has(key)) {
-        next[key] = value;
-      }
-    }
-    return next;
-  };
   return {
     ...state,
     arrivedWindowIds: state.arrivedWindowIds.filter((id) => windowIds.has(id)),
@@ -267,8 +252,7 @@ function pruneOrphanKeys(state: LocationTrackingState): LocationTrackingState {
     initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter((id) =>
       windowIds.has(id)
     ),
-    geofenceTransitions: state.geofenceTransitions.filter((t) => windowIds.has(t.trackingWindowId)),
-    lastLocationPingAtByWindowId: filterRecord(state.lastLocationPingAtByWindowId)
+    geofenceTransitions: state.geofenceTransitions.filter((t) => windowIds.has(t.trackingWindowId))
   };
 }
 
@@ -282,6 +266,7 @@ async function writeLocationTrackingStateUnsafe(state: LocationTrackingState): P
     debugLogger.warn('LOCATION', 'Failed to write location tracking state', {
       error: error instanceof Error ? error.message : String(error)
     });
+    throw error;
   }
 }
 
@@ -313,6 +298,8 @@ export async function clearLocationTrackingState(): Promise<void> {
 
 export function toPersistedWindows(windows: ParsedTrackingWindow[]): PersistedTrackingWindow[] {
   return windows.slice(0, MAX_PERSISTED_WINDOWS).map((window) => ({
+    definitionVersion: window.definitionVersion ?? undefined,
+    definitionUpdatedAt: window.definitionUpdatedAt ?? undefined,
     id: window.id,
     scheduleId: window.scheduleId,
     serviceJobId: window.serviceJobId,
@@ -350,7 +337,8 @@ export async function markWindowExited(windowId: string): Promise<LocationTracki
 }
 
 export async function markScheduleTrackingClosed(
-  scheduleId: string
+  scheduleId: string,
+  closedAt = Date.now()
 ): Promise<LocationTrackingState> {
   return updateLocationTrackingState((state) => {
     const closedWindowIds = new Set(
@@ -361,6 +349,9 @@ export async function markScheduleTrackingClosed(
 
     return {
       ...state,
+      historicalWindows: [...(state.historicalWindows ?? []), ...state.windows.filter(window => window.scheduleId === scheduleId)]
+        .map(window => window.scheduleId === scheduleId ? { ...window,
+          definitionEndsAt: new Date(Math.min(Date.parse(window.definitionEndsAt ?? window.endsAtUtc), closedAt)).toISOString() } : window),
       windows: state.windows.filter(keepWindow),
       closedScheduleIds: uniqueStrings([...state.closedScheduleIds, scheduleId]),
       geofenceRegions: state.geofenceRegions.filter((region) => region.scheduleId !== scheduleId),
@@ -371,12 +362,7 @@ export async function markScheduleTrackingClosed(
       arrivedWindowIds: state.arrivedWindowIds.filter(keepWindowId),
       exitedWindowIds: state.exitedWindowIds.filter(keepWindowId),
       activeLocationWindowIds: state.activeLocationWindowIds.filter(keepWindowId),
-      initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter(keepWindowId),
-      lastLocationPingAtByWindowId: Object.fromEntries(
-        Object.entries(state.lastLocationPingAtByWindowId).filter(([windowId]) =>
-          keepWindowId(windowId)
-        )
-      )
+      initialDepotCheckedWindowIds: state.initialDepotCheckedWindowIds.filter(keepWindowId)
     };
   });
 }

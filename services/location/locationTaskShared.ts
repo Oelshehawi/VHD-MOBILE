@@ -5,7 +5,7 @@ import type {
   MobileLocationEvent
 } from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
-import { postOrQueueLocationEvent } from './LocationEventQueue';
+import { enqueueLocationEvent } from './LocationEventQueue';
 import {
   readLocationTrackingState,
   updateLocationTrackingState
@@ -308,6 +308,7 @@ export async function stopLocationUpdatesIfNoActivePersistedWindow(reason: strin
   await updateLocationTrackingState((current) => ({
     ...current,
     activeLocationWindowIds: [],
+    locationUpdatesStartedAt: undefined,
     locationUpdatesSignature: undefined
   }));
 
@@ -319,7 +320,7 @@ export async function stopLocationUpdatesIfNoActivePersistedWindow(reason: strin
 
     const event = buildBaseEvent(window, 'tracking_stopped', 'system');
     if (event) {
-      await postOrQueueLocationEvent(event);
+      await enqueueLocationEvent(event);
     }
   }
 

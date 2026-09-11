@@ -1,5 +1,6 @@
 import { debugLogger } from '@/utils/DebugLogger';
-import { getClerkInstance } from '@clerk/clerk-expo';
+import { getPersistentClerk } from './background/clerkBootstrap';
+import { refreshBackgroundToken } from './background/BackgroundAuth';
 import type { FetchLike, TokenProvider } from './network/types';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 
@@ -33,6 +34,9 @@ export interface SyncOperationResult {
 }
 
 export interface LocationEventPostResult {
+  eventId?: string;
+  code?: string;
+  retryAfterMs?: number;
   success: boolean;
   error?: string;
   statusCode?: number;
@@ -94,12 +98,12 @@ export class ApiClient {
       } catch {
         debugLogger.warn('AUTH', 'ApiClient token provider failed');
       }
+      delete this.headers.Authorization;
+      return { ...this.headers };
     }
 
     try {
-      const clerk = getClerkInstance({
-        publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-      });
+      const clerk = getPersistentClerk();
       const token = await clerk?.session?.getToken({
         template: 'Powersync',
         skipCache: false
@@ -302,120 +306,88 @@ export class ApiClient {
     body: unknown,
     events: MobileLocationEvent[]
   ): Promise<LocationEventPostResult[]> {
-    const logContext = {
-      eventCount: events.length,
-      eventTypes: Array.from(new Set(events.map((event) => event.eventType))),
-      trackingWindowId: events[0]?.trackingWindowId,
-      scheduleId: events[0]?.scheduleId
-    };
-
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000);
     try {
-      const headers = await this.ensureAuthHeaders();
-      const response = await this.fetchImpl(`${this.baseUrl}/api/mobile/location-events`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(body)
+      let headers = await this.ensureAuthHeaders();
+      if (!headers.Authorization) {
+        return events.map(event => ({ eventId: event.eventId, success: false, retryable: true,
+          statusCode: 0, code: 'AUTH_UNAVAILABLE', error: 'Waiting for authentication' }));
+      }
+      const send = () => this.fetchImpl(`${this.baseUrl}/api/mobile/location-events`, {
+        method: 'POST', headers, body: JSON.stringify(body), signal: controller.signal
       });
-
-      const rawBody = await response.text();
-      let parsedBody: {
-        error?: string;
-        message?: string;
-        details?: string;
-        scheduleId?: string;
-        jobDepartureConfirmed?: boolean;
-        scheduleTrackingClosed?: boolean;
-        results?: Array<{
-          error?: string;
-          scheduleId?: string;
-          jobDepartureConfirmed?: boolean;
-          scheduleTrackingClosed?: boolean;
-        } | null>;
-      } = {};
+      let response = await send();
+      if (response.status === 401) {
+        const token = await refreshBackgroundToken();
+        if (token) {
+          // Recheck the outbox owner's provider after refreshing. A sign-in
+          // change must never send the previous account's events as a new user.
+          headers = this.tokenProvider ? await this.ensureAuthHeaders() : { ...headers, Authorization: `Bearer ${token}` };
+          if (headers.Authorization) response = await send();
+        }
+      }
+      let parsed: Record<string, unknown> | null = null;
       try {
-        parsedBody = rawBody ? JSON.parse(rawBody) : {};
-      } catch {
-        parsedBody = { error: rawBody || `HTTP ${response.status}` };
-      }
-
-      if (response.ok) {
-        // Per-event rejections ride back in `results` with a 200: the batch as
-        // a whole was accepted, individual events were not. They are the same
-        // class as a single-event 400 — permanent, so never retried.
-        const results = Array.isArray(parsedBody.results) ? parsedBody.results : null;
-        return events.map((event, index) => {
-          const eventResult = results?.[index] ?? (events.length === 1 ? parsedBody : null);
-          const eventError = eventResult?.error;
-          if (!eventError) {
-            return {
-              success: true,
-              statusCode: response.status,
-              scheduleId: eventResult?.scheduleId ?? event.scheduleId,
-              jobDepartureConfirmed: eventResult?.jobDepartureConfirmed === true,
-              scheduleTrackingClosed: eventResult?.scheduleTrackingClosed === true
-            };
-          }
-
-          debugLogger.warn('LOCATION', 'Location event rejected within batch', {
-            eventType: event.eventType,
-            trackingWindowId: event.trackingWindowId,
-            scheduleId: event.scheduleId,
-            error: eventError
-          });
-
-          return {
-            success: false,
-            error: eventError,
-            statusCode: response.status,
-            retryable: false
-          };
-        });
-      }
-
-      // A headless location task can outlive the cached Clerk token. Preserve
-      // the event until the foreground app can refresh auth instead of
-      // permanently dropping exact geofence evidence on a 401.
-      const retryable =
-        response.status === 401 ||
-        response.status === 408 ||
-        response.status === 429 ||
-        response.status >= 500;
-      const error =
-        parsedBody.message ||
-        parsedBody.error ||
-        parsedBody.details ||
-        `Location event POST failed with status ${response.status}`;
-
-      debugLogger.warn('LOCATION', 'Location event POST failed', {
-        ...logContext,
-        statusCode: response.status,
-        retryable,
-        error
+        const value: unknown = JSON.parse(await response.text());
+        if (value && typeof value === 'object' && !Array.isArray(value)) parsed = value as Record<string, unknown>;
+      } catch { /* An incomplete acknowledgement is retryable. */ }
+      const retryHeader = response.headers?.get?.('Retry-After');
+      const retryAfterMs = retryHeader ? (/^\d+$/.test(retryHeader)
+        ? Number(retryHeader) * 1000 : Math.max(0, Date.parse(retryHeader) - Date.now())) : undefined;
+      const batch = Array.isArray(parsed?.results) ? parsed.results : null;
+      return events.map((event, index) => {
+        const item: unknown = batch?.[index] ?? (events.length === 1 ? parsed : null);
+        const result = item && typeof item === 'object' ? item as Record<string, unknown> : null;
+        const matchesId = !event.eventId || result?.eventId === event.eventId;
+        const acknowledged = result && matchesId && !result.error &&
+          (result.stored === true || result.deduped === true || (!event.eventId && result.success === true));
+        if (acknowledged) return {
+          eventId: event.eventId, success: true, statusCode: response.status,
+          scheduleId: typeof result.scheduleId === 'string' ? result.scheduleId : event.scheduleId,
+          jobDepartureConfirmed: result.jobDepartureConfirmed === true,
+          scheduleTrackingClosed: result.scheduleTrackingClosed === true
+        };
+        const status = typeof result?.status === 'number' ? result.status : response.status;
+        const knownRejection = matchesId && typeof result?.error === 'string' && result.retryable === false;
+        const httpPermanent = !response.ok && [400, 403, 404, 413, 422].includes(response.status) && !batch;
+        return {
+          eventId: event.eventId, success: false, statusCode: status,
+          retryable: !(knownRejection || httpPermanent),
+          code: typeof result?.code === 'string' ? result.code : `HTTP_${response.status}`,
+          error: typeof result?.error === 'string' ? result.error : 'Missing or invalid location acknowledgement',
+          retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : undefined
+        };
       });
-
-      return events.map(() => ({
-        success: false,
-        error,
-        statusCode: response.status,
-        retryable
-      }));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Unknown error';
-      debugLogger.warn('LOCATION', 'Location event POST transport failure', {
-        ...logContext,
-        error: message
-      });
-
-      return events.map(() => ({
-        success: false,
-        error: message,
-        statusCode: 0,
-        retryable: true
-      }));
-    }
+      return events.map(event => ({ eventId: event.eventId, success: false, retryable: true,
+        statusCode: 0, code: 'TRANSPORT_ERROR',
+        error: error instanceof Error ? error.message : 'Location upload failed' }));
+    } finally { clearTimeout(timer); }
   }
 
   // ============ CLOUDINARY UPLOAD URL ============
+
+  async postTrackingHealth(snapshot: unknown): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    try {
+      let headers = await this.ensureAuthHeaders();
+      if (!headers.Authorization) return false;
+      const send = () => this.fetchImpl(`${this.baseUrl}/api/mobile/tracking-health`, {
+        method: 'POST', headers, body: JSON.stringify(snapshot), signal: controller.signal
+      });
+      let response = await send();
+      if (response.status === 401) {
+        await refreshBackgroundToken();
+        headers = await this.ensureAuthHeaders();
+        if (!headers.Authorization) return false;
+        response = await send();
+      }
+      return response.ok && (JSON.parse(await response.text()) as { success?: boolean }).success === true;
+    } catch { return false; }
+    finally { clearTimeout(timer); }
+  }
 
   async getUploadUrl<T>(
     _path: string,

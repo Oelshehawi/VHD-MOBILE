@@ -1,4 +1,5 @@
-import { getClerkInstance } from '@clerk/clerk-expo';
+import { loadBackgroundClerk } from './clerkBootstrap';
+import { withTimeout } from './withTimeout';
 import * as SecureStore from 'expo-secure-store';
 import { debugLogger } from '@/utils/DebugLogger';
 import {
@@ -7,8 +8,10 @@ import {
 } from '@/utils/powerSyncToken';
 
 const BACKGROUND_TOKEN_CACHE_KEY = 'vhd_background_powersync_token_cache';
-const BACKGROUND_TOKEN_TTL_MS = 25 * 60 * 1000;
 const JWT_EXP_SAFETY_MARGIN_MS = 60 * 1000;
+const CACHE_OPTIONS = { keychainAccessible: SecureStore.AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY };
+let tokenInFlight: Promise<string | null> | null = null;
+let tokenGeneration = 0;
 
 interface CachedBackgroundToken {
   token: string;
@@ -47,29 +50,22 @@ function isCachedTokenFresh(cached: CachedBackgroundToken): boolean {
     return Date.now() < expMs - JWT_EXP_SAFETY_MARGIN_MS;
   }
 
-  const cachedAtMs = Date.parse(cached.cachedAt);
-  if (Number.isNaN(cachedAtMs)) {
-    return false;
-  }
-
-  return Date.now() - cachedAtMs <= BACKGROUND_TOKEN_TTL_MS;
+  return false;
 }
 
 export async function getForegroundPowerSyncToken(): Promise<string | null> {
   try {
-    const clerk = getClerkInstance({
-      publishableKey: process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY
-    });
+    const clerk = await loadBackgroundClerk();
 
     if (!clerk?.session) {
       debugLogger.warn('AUTH', 'BackgroundAuth: Clerk session unavailable for foreground token');
       return null;
     }
 
-    const token = await clerk.session.getToken({
+    const token = await withTimeout(clerk.session.getToken({
       template: 'Powersync',
       skipCache: true
-    });
+    }), 6000);
 
     if (!token || !hasPowerSyncStaffIdentityClaims(token)) {
       debugLogger.warn(
@@ -100,7 +96,7 @@ export async function cacheBackgroundToken(token: string): Promise<void> {
   };
 
   try {
-    await SecureStore.setItemAsync(BACKGROUND_TOKEN_CACHE_KEY, JSON.stringify(cachePayload));
+    await SecureStore.setItemAsync(BACKGROUND_TOKEN_CACHE_KEY, JSON.stringify(cachePayload), CACHE_OPTIONS);
     debugLogger.debug('AUTH', 'BackgroundAuth: cached background token metadata');
   } catch (error) {
     debugLogger.warn('AUTH', 'BackgroundAuth: failed to cache background token', {
@@ -109,15 +105,9 @@ export async function cacheBackgroundToken(token: string): Promise<void> {
   }
 }
 
-export async function getBackgroundToken(): Promise<string | null> {
-  const foregroundToken = await getForegroundPowerSyncToken();
-  if (foregroundToken) {
-    await cacheBackgroundToken(foregroundToken);
-    return foregroundToken;
-  }
-
+async function readFreshCachedToken(): Promise<string | null> {
   try {
-    const rawCacheValue = await SecureStore.getItemAsync(BACKGROUND_TOKEN_CACHE_KEY);
+    const rawCacheValue = await SecureStore.getItemAsync(BACKGROUND_TOKEN_CACHE_KEY, CACHE_OPTIONS);
     const cachedToken = parseCachedToken(rawCacheValue);
 
     if (!cachedToken) {
@@ -126,13 +116,13 @@ export async function getBackgroundToken(): Promise<string | null> {
 
     if (!isCachedTokenFresh(cachedToken)) {
       debugLogger.warn('AUTH', 'BackgroundAuth: cached background token expired');
-      await clearBackgroundToken();
+      await SecureStore.deleteItemAsync(BACKGROUND_TOKEN_CACHE_KEY, CACHE_OPTIONS);
       return null;
     }
 
     if (!hasPowerSyncStaffIdentityClaims(cachedToken.token)) {
       debugLogger.warn('AUTH', 'BackgroundAuth: cached token lacks staff identity claims');
-      await clearBackgroundToken();
+      await SecureStore.deleteItemAsync(BACKGROUND_TOKEN_CACHE_KEY, CACHE_OPTIONS);
       return null;
     }
 
@@ -145,9 +135,32 @@ export async function getBackgroundToken(): Promise<string | null> {
   }
 }
 
+export async function getBackgroundToken(): Promise<string | null> {
+  if (tokenInFlight) return tokenInFlight;
+  const generation = tokenGeneration;
+  const run = (async () => {
+    const cached = await readFreshCachedToken();
+    if (generation !== tokenGeneration) return null;
+    if (cached) return cached;
+    const token = await getForegroundPowerSyncToken();
+    if (generation !== tokenGeneration) return null;
+    if (token) await cacheBackgroundToken(token);
+    return token;
+  })().finally(() => { if (tokenInFlight === run) tokenInFlight = null; });
+  tokenInFlight = run;
+  return tokenInFlight;
+}
+
+export async function refreshBackgroundToken(): Promise<string | null> {
+  await clearBackgroundToken();
+  return getBackgroundToken();
+}
+
 export async function clearBackgroundToken(): Promise<void> {
+  tokenGeneration += 1;
+  tokenInFlight = null;
   try {
-    await SecureStore.deleteItemAsync(BACKGROUND_TOKEN_CACHE_KEY);
+    await SecureStore.deleteItemAsync(BACKGROUND_TOKEN_CACHE_KEY, CACHE_OPTIONS);
     debugLogger.debug('AUTH', 'BackgroundAuth: cleared cached background token');
   } catch (error) {
     debugLogger.warn('AUTH', 'BackgroundAuth: failed to clear cached background token', {

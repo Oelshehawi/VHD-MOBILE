@@ -6,6 +6,10 @@ import { locationTrackingCoordinator } from '@/services/location/LocationTrackin
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { debugLogger } from '@/utils/DebugLogger';
 import { isFieldTrackerMetadata, isManagerMetadata } from '@/utils/userRoles';
+import { getMobileStaffIdentity } from '@/utils/staffIdentity';
+import { forgetLocationOwner, rememberLocationOwner } from '@/services/location/LocationAccount';
+import { clearBackgroundToken } from '@/services/background/BackgroundAuth';
+import { readLocationTrackingState } from '@/services/location/LocationTrackingState';
 
 const COORDINATOR_TICK_MS = 60 * 1000;
 
@@ -20,7 +24,7 @@ export function LocationTrackingInitializer() {
 
   const isManager = isManagerMetadata(user?.publicMetadata);
   const isFieldTracker = isFieldTrackerMetadata(user?.publicMetadata) && !isManager;
-  const isReady = isLoaded && isUserLoaded && isSignedIn && isInitialized && isFieldTracker;
+  const isReady = isLoaded && isUserLoaded && isSignedIn && isFieldTracker;
 
   useEffect(() => {
     if (!isLoaded) {
@@ -34,7 +38,7 @@ export function LocationTrackingInitializer() {
         return;
       }
       hasStoppedForSignedOutRef.current = true;
-      void locationTrackingCoordinator.stop('signed-out');
+      void forgetLocationOwner().then(() => clearBackgroundToken()).then(() => locationTrackingCoordinator.stop('signed-out'));
       return;
     }
 
@@ -50,7 +54,7 @@ export function LocationTrackingInitializer() {
         return;
       }
       hasStoppedForNonFieldTrackerRef.current = true;
-      void locationTrackingCoordinator.stop('not-field-tracker');
+      void forgetLocationOwner().then(() => clearBackgroundToken()).then(() => locationTrackingCoordinator.stop('not-field-tracker'));
       return;
     }
 
@@ -85,12 +89,22 @@ export function LocationTrackingInitializer() {
       return;
     }
 
-    void refreshLocationTracking(tick === 0 ? 'mount' : 'foreground').catch((error) => {
+    const identity = getMobileStaffIdentity(user?.publicMetadata);
+    if (!identity?.fieldStaffId) return;
+    let cancelled = false;
+    void (async () => {
+      const state = await readLocationTrackingState();
+      if (state.ownerAppUserId && state.ownerAppUserId !== identity.appUserId) await locationTrackingCoordinator.stop('account-changed');
+      if (cancelled) return;
+      await rememberLocationOwner({ appUserId: identity.appUserId, fieldStaffId: identity.fieldStaffId! });
+      await refreshLocationTracking(tick === 0 ? 'mount' : 'foreground');
+    })().catch((error) => {
       debugLogger.error('LOCATION', 'Location tracking refresh failed', {
         error: error instanceof Error ? error.message : String(error)
       });
     });
-  }, [isReady, tick]);
+    return () => { cancelled = true; };
+  }, [isReady, isInitialized, tick, user?.publicMetadata]);
 
   return null;
 }
