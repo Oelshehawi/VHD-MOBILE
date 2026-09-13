@@ -21,6 +21,7 @@ import {
   scheduleMatchesDateKey
 } from '@/utils/scheduleTime';
 import { isScheduleReportRequired } from '@/utils/schedules';
+import { LoadingPlaceholder } from '@/components/common/LoadingPlaceholder';
 
 interface ScheduleWeekAgendaProps {
   selectedDate: string;
@@ -29,6 +30,8 @@ interface ScheduleWeekAgendaProps {
   onSchedulePress: (schedule: Schedule) => void;
   currentUserId: string;
   isManager: boolean;
+  /** First local read of the backing query hasn't returned yet. */
+  isLoading?: boolean;
 }
 
 const SWIPE_THRESHOLD = 50;
@@ -212,12 +215,15 @@ export function ScheduleAgendaList({
   onSchedulePress,
   currentUserId,
   isManager,
+  isLoading = false,
   emptyMessage = 'No visits scheduled for this day'
 }: {
   schedules: ReadonlyArray<Schedule>;
   onSchedulePress: (schedule: Schedule) => void;
   currentUserId: string;
   isManager: boolean;
+  /** First local read of the backing query hasn't returned yet. */
+  isLoading?: boolean;
   emptyMessage?: string;
 }) {
   const colorScheme = useColorScheme();
@@ -287,7 +293,9 @@ export function ScheduleAgendaList({
 
   return (
     <ScrollView className='flex-1 px-4' contentContainerStyle={{ paddingBottom: 28 }}>
-      {sortedSchedules.length === 0 ? (
+      {isLoading ? (
+        <LoadingPlaceholder className='pt-2' rows={3} rowHeight={132} />
+      ) : sortedSchedules.length === 0 ? (
         <View className='mt-6 items-center rounded-2xl border border-dashed border-black/15 bg-white p-8 dark:border-white/15 dark:bg-[#16140F]'>
           <Ionicons name='calendar-clear-outline' size={34} color={mutedIconColor} />
           <Text className='mt-3 text-center text-sm font-medium text-gray-500 dark:text-gray-400'>
@@ -319,7 +327,8 @@ export function ScheduleWeekAgenda({
   onDateChange,
   onSchedulePress,
   currentUserId,
-  isManager
+  isManager,
+  isLoading = false
 }: ScheduleWeekAgendaProps) {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -466,6 +475,7 @@ export function ScheduleWeekAgenda({
           onSchedulePress={onSchedulePress}
           currentUserId={currentUserId}
           isManager={isManager}
+          isLoading={isLoading}
         />
       </Animated.View>
     </GestureDetector>

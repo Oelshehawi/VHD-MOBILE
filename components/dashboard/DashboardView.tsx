@@ -28,6 +28,8 @@ import { ThemeSelectorModal } from '@/components/common/ThemeSelectorModal';
 import { useTheme } from '@/providers/ThemeProvider';
 import { ReviewQRCodeModal } from '@/components/dashboard/ReviewQRCodeModal';
 import { JobDetailModal } from '@/components/schedule/JobDetailModal';
+import { LoadingPlaceholder } from '@/components/common/LoadingPlaceholder';
+import { useReportInitialScreenReady } from '@/providers/StartupGate';
 import type { Schedule } from '@/types';
 
 interface DashboardViewProps {
@@ -46,10 +48,11 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
   const [now, setNow] = useState(() => new Date());
   const googleReviewUrl = 'https://g.page/r/CRLDtlapvtO3EAE/review';
   const { colorScheme } = useTheme();
-  const { data: todaySchedules = [] } = useTodaySchedules();
-  const { data: currentPayroll = [] } = useCurrentPayrollPeriod();
-  const { data: approvedPending = [] } = useMostRecentApprovedPayrollPeriod();
-  const { resolveTechnicianName } = useTechnicianDirectory();
+  const { data: todaySchedules = [], isLoading: todaySchedulesLoading } = useTodaySchedules();
+  const { data: currentPayroll = [], isLoading: currentPayrollLoading } = useCurrentPayrollPeriod();
+  const { data: approvedPending = [], isLoading: approvedPendingLoading } =
+    useMostRecentApprovedPayrollPeriod();
+  const { resolveTechnicianName, isLoading: techniciansLoading } = useTechnicianDirectory();
 
   // Feature the just-approved (awaiting-payday) period when present, otherwise
   // the period containing today. Hours only reveal once the period is approved.
@@ -57,16 +60,27 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
   const hoursVisible =
     canViewHoursRole && (isManager || featuredPeriod?.status === 'approved');
 
-  const { data: payrollSchedules = [] } = usePayrollSchedules(
-    featuredPeriod?.id,
-    isManager,
-    fieldStaffId,
-    hoursVisible
-  );
+  const {
+    data: payrollSchedules = [],
+    isLoading: payrollSchedulesLoading,
+    isFetching: payrollSchedulesFetching
+  } = usePayrollSchedules(featuredPeriod?.id, isManager, fieldStaffId, hoursVisible);
+  const payrollPeriodLoading = currentPayrollLoading || approvedPendingLoading;
   const sortedPayrollSchedules = useMemo(
     () => [...payrollSchedules].sort((a, b) => getScheduleSortTime(a) - getScheduleSortTime(b)),
     [payrollSchedules]
   );
+
+  // Hold the splash until every card on this screen has real local data. The
+  // payroll-schedules query re-runs once `featuredPeriod` resolves, so wait out
+  // that second pass too rather than letting the hours total shift afterwards.
+  const hasInitialData =
+    !todaySchedulesLoading &&
+    !payrollPeriodLoading &&
+    !techniciansLoading &&
+    !payrollSchedulesLoading &&
+    (!featuredPeriod || !hoursVisible || !payrollSchedulesFetching);
+  useReportInitialScreenReady(hasInitialData);
 
   useEffect(() => {
     const intervalId = setInterval(() => setNow(new Date()), 60 * 1000);
@@ -355,11 +369,17 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
                 </Text>
               </View>
               <Text className='text-sm text-gray-500 dark:text-gray-400'>
-                {visibleTodaySchedules.length} {visibleTodaySchedules.length === 1 ? 'job' : 'jobs'}
+                {todaySchedulesLoading
+                  ? ' '
+                  : `${visibleTodaySchedules.length} ${
+                      visibleTodaySchedules.length === 1 ? 'job' : 'jobs'
+                    }`}
               </Text>
             </View>
 
-            {!visibleTodaySchedules?.length ? (
+            {todaySchedulesLoading ? (
+              <LoadingPlaceholder rows={2} rowHeight={72} />
+            ) : !visibleTodaySchedules?.length ? (
               <View className='items-center py-6'>
                 <Ionicons name='calendar-outline' size={48} color='#D1D5DB' />
                 <Text className='text-gray-500 dark:text-gray-400 mt-2'>
@@ -392,7 +412,9 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
               </View>
             </View>
 
-            {featuredPeriod ? (
+            {payrollPeriodLoading ? (
+              <LoadingPlaceholder rows={1} rowHeight={148} />
+            ) : featuredPeriod ? (
               <View className='bg-[#F0EDE6] dark:bg-[#1F1C16] rounded-xl p-4'>
                 <View className='flex-row justify-between mb-3'>
                   <View className='flex-1 pr-3'>

@@ -6,6 +6,7 @@ import { startOfDay } from 'date-fns';
 import { isManagerMetadata } from '@/utils/userRoles';
 import { getServiceDayStartIsoForInstant } from '@/utils/scheduleTime';
 import { getMobileStaffIdentity } from '@/utils/staffIdentity';
+import { useReportInitialScreenReady } from '@/providers/StartupGate';
 
 export default function Page() {
   const { user } = useUser();
@@ -21,6 +22,10 @@ export default function Page() {
     const newDate = startOfDay(new Date(date));
     setCurrentDate(newDate.toISOString());
   }, []);
+
+  // Without an identity there is no data to wait for, so release the splash
+  // rather than holding it until the fail-safe fires.
+  useReportInitialScreenReady(!identity);
 
   if (!identity) return null;
 

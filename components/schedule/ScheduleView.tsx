@@ -14,6 +14,7 @@ import {
   scheduleMatchesDateKey
 } from '@/utils/scheduleTime';
 import { ASSIGNED_TO_USER_CLAUSE } from '@/services/data/sqlFragments';
+import { useReportInitialScreenReady } from '@/providers/StartupGate';
 
 interface ScheduleViewProps {
   fieldStaffId: string;
@@ -70,6 +71,10 @@ export function ScheduleView({
     () => monthQuery.data ?? [],
     [monthQuery.data]
   );
+  // An empty result before the first local read means "not loaded yet", not
+  // "no visits" — hold the splash and render placeholders until it settles.
+  const isLoadingSchedules = monthQuery.isLoading;
+  useReportInitialScreenReady(!isLoadingSchedules);
 
   // Convert schedules to appointments format for MonthView
   const appointments: AppointmentType[] = useMemo(
@@ -173,6 +178,7 @@ export function ScheduleView({
           onSchedulePress={handleSchedulePress}
           currentUserId={fieldStaffId}
           isManager={isManager}
+          isLoading={isLoadingSchedules}
         />
       )}
 
@@ -195,6 +201,7 @@ export function ScheduleView({
               onSchedulePress={handleSchedulePress}
               currentUserId={fieldStaffId}
               isManager={isManager}
+              isLoading={isLoadingSchedules}
             />
           </View>
         </View>

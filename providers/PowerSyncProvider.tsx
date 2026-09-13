@@ -1,8 +1,7 @@
 import '@azure/core-asynciterator-polyfill';
 import { PowerSyncContext } from '@powersync/react-native';
-import React, { ReactNode, useCallback, useEffect, useMemo, useState } from 'react';
+import React, { ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '@clerk/clerk-expo';
-import * as SplashScreen from 'expo-splash-screen';
 import { System, useSystem } from '../services/database/System';
 import { debugLogger } from '@/utils/DebugLogger';
 import { clearBackgroundToken } from '@/services/background/BackgroundAuth';
@@ -10,6 +9,7 @@ import { clearBackgroundToken } from '@/services/background/BackgroundAuth';
 type PowerSyncStatus = {
   isLoaded: boolean;
   isSignedIn: boolean;
+  isDatabaseReady: boolean;
   isInitialized: boolean;
   isRetrying: boolean;
   error: Error | null;
@@ -30,41 +30,61 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
   const { isSignedIn, isLoaded } = useAuth();
   const signedIn = Boolean(isSignedIn);
   const system: System = useSystem();
+  const [isDatabaseReady, setIsDatabaseReady] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
   const [error, setError] = useState<Error | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
+  // Only disconnect something we actually connected. Without this a signed-out
+  // cold start would tear down a sync connection that was never established.
+  const hasConnectedRef = useRef(false);
 
-  // Wait for Clerk to load before initializing PowerSync
   useEffect(() => {
     if (!isLoaded) {
       return;
     }
 
+    let cancelled = false;
+
     const initializePowerSync = async () => {
       debugLogger.debug('SYNC', 'PowerSync init check', {
-        isSignedIn: signedIn,
-        isInitialized
+        isSignedIn: signedIn
       });
 
-      if (signedIn && !isInitialized) {
+      if (signedIn) {
         try {
           setError(null);
-          debugLogger.info('SYNC', 'Starting PowerSync initialization');
-          await system.init();
-          debugLogger.info('SYNC', 'PowerSync initialized successfully');
+          await system.initializeLocalDatabase();
+          if (cancelled) return;
+
+          setIsDatabaseReady(true);
+          debugLogger.info('SYNC', 'Local PowerSync data is available to the UI');
+
+          await system.startOnlineServices();
+          if (cancelled) return;
+
+          debugLogger.info('SYNC', 'PowerSync online services initialized successfully');
+          hasConnectedRef.current = true;
           setIsInitialized(true);
         } catch (err) {
+          if (cancelled) return;
           const error = err instanceof Error ? err : new Error('PowerSync initialization failed');
           debugLogger.error('SYNC', 'PowerSync initialization error', {
             error: error.message
           });
           setError(error);
         }
-      } else if (!signedIn && isInitialized) {
+      } else {
+        setIsDatabaseReady(false);
+        setIsInitialized(false);
+
+        if (!hasConnectedRef.current) {
+          return;
+        }
+
         try {
           debugLogger.info('SYNC', 'Disconnecting PowerSync (user signed out)');
           await system.disconnect();
-          setIsInitialized(false);
+          hasConnectedRef.current = false;
           debugLogger.info('SYNC', 'PowerSync disconnected successfully');
         } catch (err) {
           debugLogger.error('SYNC', 'PowerSync disconnect error', {
@@ -74,8 +94,11 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    initializePowerSync();
-  }, [signedIn, isLoaded, isInitialized, system]);
+    void initializePowerSync();
+    return () => {
+      cancelled = true;
+    };
+  }, [signedIn, isLoaded, system]);
 
   useEffect(() => {
     if (!isLoaded || signedIn) {
@@ -94,16 +117,6 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
   }, [isLoaded, signedIn]);
 
   useEffect(() => {
-    if (!isLoaded) {
-      return;
-    }
-
-    if (!signedIn || isInitialized) {
-      SplashScreen.hideAsync().catch(() => {});
-    }
-  }, [isLoaded, signedIn, isInitialized]);
-
-  useEffect(() => {
     if (error) {
       debugLogger.error('SYNC', 'PowerSync error state active', {
         error: error.message
@@ -112,10 +125,13 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
   }, [error]);
 
   const retryInit = useCallback(async () => {
-    if (!signedIn || isInitialized || isRetrying) return;
+    if (!signedIn || isRetrying) return;
     try {
       setIsRetrying(true);
-      await system.init();
+      await system.initializeLocalDatabase();
+      setIsDatabaseReady(true);
+      await system.startOnlineServices();
+      hasConnectedRef.current = true;
       setIsInitialized(true);
       setError(null);
     } catch (err) {
@@ -124,19 +140,20 @@ export const PowerSyncProvider = ({ children }: { children: ReactNode }) => {
     } finally {
       setIsRetrying(false);
     }
-  }, [signedIn, isInitialized, isRetrying, system]);
+  }, [signedIn, isRetrying, system]);
 
   const db = useMemo(() => system.powersync, [system]);
   const status = useMemo(
     () => ({
       isLoaded,
       isSignedIn: signedIn,
+      isDatabaseReady,
       isInitialized,
       isRetrying,
       error,
       retryInit
     }),
-    [isLoaded, signedIn, isInitialized, isRetrying, error, retryInit]
+    [isLoaded, signedIn, isDatabaseReady, isInitialized, isRetrying, error, retryInit]
   );
 
   return (

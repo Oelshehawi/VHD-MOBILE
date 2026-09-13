@@ -18,6 +18,7 @@ import { ConfirmationModal } from '../common/ConfirmationModal';
 import { validateTimeOffDateRange, formatDateRange } from '../../utils/availabilityValidation';
 import { generateObjectId } from '@/utils/objectId';
 import type { TimeOffRequest } from '../../services/database/schema';
+import { LoadingPlaceholder } from '@/components/common/LoadingPlaceholder';
 
 interface TimeOffFormData {
   startDate: string | null;
@@ -51,7 +52,7 @@ export const TimeOffManager: React.FC<{
   });
 
   // Fetch time-off requests from PowerSync
-  const { data: requestsData } = useQuery(
+  const { data: requestsData, isLoading: requestsLoading } = useQuery(
     `SELECT * FROM timeoffrequests WHERE technicianId = ? ORDER BY startDate DESC`,
     [fieldStaffId]
   );
@@ -332,14 +333,18 @@ export const TimeOffManager: React.FC<{
             </View>
           )}
 
-          {/* Empty state */}
-          {requests.length === 0 && (
-            <View className='items-center rounded-2xl border border-black/10 bg-white p-6 dark:border-white/10 dark:bg-[#16140F]'>
-              <Ionicons name='calendar-outline' size={48} color='#999' />
-              <Text className='mt-4 text-center text-gray-600 dark:text-gray-300'>
-                No time-off requests yet. Submit your first request above.
-              </Text>
-            </View>
+          {/* Empty state — only once the first local read has actually returned */}
+          {requestsLoading ? (
+            <LoadingPlaceholder rows={2} rowHeight={96} />
+          ) : (
+            requests.length === 0 && (
+              <View className='items-center rounded-2xl border border-black/10 bg-white p-6 dark:border-white/10 dark:bg-[#16140F]'>
+                <Ionicons name='calendar-outline' size={48} color='#999' />
+                <Text className='mt-4 text-center text-gray-600 dark:text-gray-300'>
+                  No time-off requests yet. Submit your first request above.
+                </Text>
+              </View>
+            )
           )}
           {/* Confirmation Modal */}
           <ConfirmationModal

@@ -12,6 +12,7 @@ import { KVStorage } from '../storage/KVStorage';
 import { OPSqliteOpenFactory } from '@powersync/op-sqlite';
 import { debugLogger } from '@/utils/DebugLogger';
 import type { FetchLike } from '../network/types';
+import { withTimeout } from '@/services/background/withTimeout';
 
 // eslint-disable-next-line react-hooks/rules-of-hooks -- js-logger API, not a React Hook.
 Logger.useDefaults();
@@ -50,6 +51,8 @@ export class System {
   backendConnector: BackendConnector;
   powersync: PowerSyncDatabase;
   attachmentQueue: PhotoAttachmentQueue | undefined = undefined;
+  private databaseInitPromise: Promise<void> | null = null;
+  private onlineInitPromise: Promise<void> | null = null;
 
   constructor() {
     this.KVstorage = new KVStorage();
@@ -76,9 +79,44 @@ export class System {
     });
   }
 
-  async init() {
-    debugLogger.info('SYNC', 'Initializing PowerSync system');
-    await this.powersync.init();
+  async initializeLocalDatabase() {
+    if (!this.databaseInitPromise) {
+      const startedAt = Date.now();
+      debugLogger.info('SYNC', 'Opening local PowerSync database');
+      this.databaseInitPromise = this.powersync
+        .init()
+        .then(() => {
+          debugLogger.info('SYNC', 'Local PowerSync database ready', {
+            elapsedMs: Date.now() - startedAt,
+            hasSynced: this.powersync.currentStatus.hasSynced,
+            lastSyncedAt: this.powersync.currentStatus.lastSyncedAt?.toISOString() ?? null
+          });
+        })
+        .catch((error) => {
+          this.databaseInitPromise = null;
+          throw error;
+        });
+    }
+
+    return this.databaseInitPromise;
+  }
+
+  async startOnlineServices() {
+    await this.initializeLocalDatabase();
+
+    if (!this.onlineInitPromise) {
+      this.onlineInitPromise = this.initializeOnlineServices().catch((error) => {
+        this.onlineInitPromise = null;
+        throw error;
+      });
+    }
+
+    return this.onlineInitPromise;
+  }
+
+  private async initializeOnlineServices() {
+    const startedAt = Date.now();
+    debugLogger.info('SYNC', 'Starting PowerSync online services');
 
     const powerSyncUrl = getPowerSyncUrl();
     debugLogger.debug('SYNC', 'PowerSync URL configured', {
@@ -89,16 +127,17 @@ export class System {
 
     // Connect with timeout to prevent hanging
     debugLogger.debug('SYNC', 'Connecting to PowerSync...');
-    const connectPromise = this.powersync.connect(this.backendConnector, {
-      params: { schedule_months: getScheduleMonthBuckets() }
-    });
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('PowerSync connection timeout')), CONNECTION_TIMEOUT_MS)
-    );
-
     try {
-      await Promise.race([connectPromise, timeoutPromise]);
-      debugLogger.info('SYNC', 'PowerSync connected successfully');
+      await withTimeout(
+        this.powersync.connect(this.backendConnector, {
+          params: { schedule_months: getScheduleMonthBuckets() }
+        }),
+        CONNECTION_TIMEOUT_MS
+      );
+      debugLogger.info('SYNC', 'PowerSync connection started', {
+        elapsedMs: Date.now() - startedAt,
+        connected: this.powersync.currentStatus.connected
+      });
     } catch (error) {
       debugLogger.error('SYNC', 'PowerSync connection failed', {
         error: error instanceof Error ? error.message : String(error)
@@ -115,6 +154,7 @@ export class System {
   async disconnect() {
     debugLogger.info('SYNC', 'Disconnecting PowerSync');
     await this.powersync.disconnect();
+    this.onlineInitPromise = null;
     debugLogger.debug('SYNC', 'PowerSync disconnected');
   }
 }

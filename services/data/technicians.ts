@@ -3,7 +3,7 @@ import { DEFAULT_ROW_COMPARATOR, useQuery } from '@powersync/react-native';
 import type { FieldStaff } from '@/services/database/schema';
 
 export function useTechnicianDirectory() {
-  const { data: technicians = [] } = useQuery<FieldStaff>(
+  const { data: technicians = [], isLoading } = useQuery<FieldStaff>(
     `SELECT id, name, fieldRole, isActive FROM fieldstaff`,
     [],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
@@ -31,6 +31,7 @@ export function useTechnicianDirectory() {
 
   return {
     technicians,
-    resolveTechnicianName
+    resolveTechnicianName,
+    isLoading
   };
 }

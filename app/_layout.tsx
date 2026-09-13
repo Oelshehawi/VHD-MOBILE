@@ -31,6 +31,7 @@ import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
 import { debugLogger } from '@/utils/DebugLogger';
 import { ForceUpdateGate } from '@/components/app/ForceUpdateGate';
+import { StartupGateProvider, useStartupGateReporter } from '@/providers/StartupGate';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -247,17 +248,23 @@ function PowerSyncStatusBanner() {
 
 function InitialLayout({ children }: { children: React.ReactNode }) {
   const { isLoaded } = useUser();
+  const { reportFontsLoaded } = useStartupGateReporter();
 
-  const [fontsLoaded] = useFonts({
+  const [fontsLoaded, fontError] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
     ...FontAwesome.font
   });
 
+  // A font that fails to load must not pin the splash until the fail-safe —
+  // the app renders fine with system fallbacks.
+  useEffect(() => {
+    if (fontsLoaded || fontError) {
+      reportFontsLoaded();
+    }
+  }, [fontsLoaded, fontError, reportFontsLoaded]);
+
   useEffect(() => {
     if (isLoaded && fontsLoaded) {
-      // Hide splash screen once fonts and auth are ready
-      SplashScreen.hideAsync();
-
       // Initialize image cache management
       initImageCache().catch((err) => {
         console.warn('Failed to initialize image cache:', err);
@@ -271,6 +278,26 @@ function InitialLayout({ children }: { children: React.ReactNode }) {
   }, [isLoaded, fontsLoaded]);
 
   return <>{children}</>;
+}
+
+/**
+ * Feeds PowerSync's startup phases into the splash gate. Lives here (rather than
+ * in the gate itself) so `StartupGateProvider` can sit above `PowerSyncProvider`
+ * and stay independent of it.
+ */
+function StartupGateSync() {
+  const { isLoaded, isSignedIn, isDatabaseReady } = usePowerSyncStatus();
+  const { reportAuthStatus, reportDatabaseReady } = useStartupGateReporter();
+
+  useEffect(() => {
+    reportAuthStatus(isLoaded, isSignedIn);
+  }, [isLoaded, isSignedIn, reportAuthStatus]);
+
+  useEffect(() => {
+    reportDatabaseReady(isDatabaseReady);
+  }, [isDatabaseReady, reportDatabaseReady]);
+
+  return null;
 }
 
 function BackgroundSyncLifecycle() {
@@ -374,57 +401,60 @@ export default function RootLayout() {
             tokenCache={tokenCache}
             __experimental_resourceCache={resourceCache} // Disabled to debug href error
           >
-            <InitialLayout>
-              <ThemeProvider>
-                <PowerSyncProvider>
-                  <BackgroundSyncLifecycle />
-                  <ForceUpdateGate />
-                  <LocationTrackingInitializer />
-                  <PushNotificationInitializer />
-                  <PowerSyncStatusBanner />
-                  <SyncToastListener />
-                  <BottomSheetModalProvider>
-                    <LocationPermissionGate />
-                    <Stack screenOptions={{ headerShown: false }}>
-                      <Stack.Screen name='(tabs)' options={{ headerShown: false }} />
-                      <Stack.Screen
-                        name='course/[slug]'
-                        options={{ headerShown: true, presentation: 'card' }}
-                      />
-                      <Stack.Screen
-                        name='course/[slug]/[sectionId]'
-                        options={{ headerShown: true, presentation: 'card' }}
-                      />
-                      <Stack.Screen
-                        name='report'
-                        options={{
-                          headerShown: true,
-                          presentation: 'card',
-                          title: 'Report Essentials'
-                        }}
-                      />
-                      <Stack.Screen
-                        name='debug-logs'
-                        options={{
-                          headerShown: true,
-                          presentation: 'card',
-                          title: 'Debug Logs'
-                        }}
-                      />
-                      <Stack.Screen
-                        name='debug-env'
-                        options={{
-                          headerShown: true,
-                          presentation: 'card',
-                          title: 'Environment Tools'
-                        }}
-                      />
-                    </Stack>
-                    <PortalHost />
-                  </BottomSheetModalProvider>
-                </PowerSyncProvider>
-              </ThemeProvider>
-            </InitialLayout>
+            <StartupGateProvider>
+              <InitialLayout>
+                <ThemeProvider>
+                  <PowerSyncProvider>
+                    <StartupGateSync />
+                    <BackgroundSyncLifecycle />
+                    <ForceUpdateGate />
+                    <LocationTrackingInitializer />
+                    <PushNotificationInitializer />
+                    <PowerSyncStatusBanner />
+                    <SyncToastListener />
+                    <BottomSheetModalProvider>
+                      <LocationPermissionGate />
+                      <Stack screenOptions={{ headerShown: false }}>
+                        <Stack.Screen name='(tabs)' options={{ headerShown: false }} />
+                        <Stack.Screen
+                          name='course/[slug]'
+                          options={{ headerShown: true, presentation: 'card' }}
+                        />
+                        <Stack.Screen
+                          name='course/[slug]/[sectionId]'
+                          options={{ headerShown: true, presentation: 'card' }}
+                        />
+                        <Stack.Screen
+                          name='report'
+                          options={{
+                            headerShown: true,
+                            presentation: 'card',
+                            title: 'Report Essentials'
+                          }}
+                        />
+                        <Stack.Screen
+                          name='debug-logs'
+                          options={{
+                            headerShown: true,
+                            presentation: 'card',
+                            title: 'Debug Logs'
+                          }}
+                        />
+                        <Stack.Screen
+                          name='debug-env'
+                          options={{
+                            headerShown: true,
+                            presentation: 'card',
+                            title: 'Environment Tools'
+                          }}
+                        />
+                      </Stack>
+                      <PortalHost />
+                    </BottomSheetModalProvider>
+                  </PowerSyncProvider>
+                </ThemeProvider>
+              </InitialLayout>
+            </StartupGateProvider>
           </ClerkProvider>
         </UpdateChecker>
       </SafeAreaProvider>

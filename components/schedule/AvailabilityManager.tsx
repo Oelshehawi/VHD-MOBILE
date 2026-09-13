@@ -16,6 +16,7 @@ import { TimePickerInput } from './TimePickerInput';
 import { DatePickerInput } from './DatePickerInput';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { ConfirmationModal } from '../common/ConfirmationModal';
+import { LoadingPlaceholder } from '@/components/common/LoadingPlaceholder';
 import { generateObjectId } from '@/utils/objectId';
 import {
   validateTimeRange,
@@ -66,7 +67,7 @@ export const AvailabilityManager: React.FC<{
   const primaryIconColor = colorScheme === 'dark' ? '#14110F' : '#FFFFFF';
 
   // Fetch unavailable blocks from PowerSync
-  const { data: availabilityData } = useQuery(
+  const { data: availabilityData, isLoading: availabilityLoading } = useQuery(
     `SELECT * FROM availabilities WHERE technicianId = ? ORDER BY createdAt DESC`,
     [fieldStaffId]
   );
@@ -398,11 +399,23 @@ export const AvailabilityManager: React.FC<{
             <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
               Blocked Time
             </Text>
-            <AvailabilityCalendar availability={availability} />
+            {availabilityLoading ? (
+              <LoadingPlaceholder rowHeight={320} />
+            ) : (
+              <AvailabilityCalendar availability={availability} />
+            )}
           </View>
 
           {/* Unavailable block list */}
-          {availability.length > 0 && (
+          {availabilityLoading ? (
+            <View className='mb-6'>
+              <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
+                Unavailability Blocks
+              </Text>
+              <LoadingPlaceholder rows={2} rowHeight={68} />
+            </View>
+          ) : (
+            availability.length > 0 && (
             <View className='mb-6'>
               <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
                 Unavailability Blocks
@@ -429,6 +442,7 @@ export const AvailabilityManager: React.FC<{
                 </View>
               ))}
             </View>
+            )
           )}
         </View>
 
