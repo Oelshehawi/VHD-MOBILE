@@ -9,7 +9,9 @@ export function trackingAttention(health: TrackingHealthSnapshot | null, now = D
     case 'precision-reduced': return 'Precise Location is off.';
     case 'unavailable': return 'Location settings could not be checked.';
   }
-  if (health.accuracyAuthorization === 'unknown') return 'Precise Location could not be verified. A current app build is required.';
+  // Runtime 2.0.0 has no native iOS precision diagnostic. An unknown value is
+  // informational and must not create a permanent warning for otherwise-granted
+  // location permissions.
   if (health.backgroundRefresh === 'denied' || health.backgroundRefresh === 'restricted') return 'Background App Refresh is restricted.';
   if (health.batteryRestricted) return 'Battery settings restrict background activity.';
   if (health.lastErrorCode === 'AUTH_UNAVAILABLE' || health.lastErrorCode === 'HTTP_401') return 'Location uploads are waiting for sign-in recovery.';
