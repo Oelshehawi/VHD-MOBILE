@@ -143,6 +143,31 @@ export async function pruneLocationOutbox(db: SQLite.SQLiteDatabase, owner: stri
   await db.runAsync('DELETE FROM location_samples WHERE bucket < ?', Math.floor(cutoff / 60000));
 }
 
+// Ship only after the backend cursor hotfix. The marker and restored records
+// commit together, so an interrupted recovery can safely run again.
+export async function recoverLocationCursorFailures(db: SQLite.SQLiteDatabase, owner: string): Promise<void> {
+  const key = `${owner}:locationCursorRecoveryV1`;
+  if (await db.getFirstAsync('SELECT value FROM location_meta WHERE key = ?', key)) return;
+  const cutoff = Date.now() - LOCATION_RETENTION_MS;
+  await db.runAsync(`INSERT OR IGNORE INTO location_outbox(owner,id,payload,recorded_at,queued_at,attempts,next_attempt,last_error)
+    SELECT owner,id,payload,recorded_at,?,0,0,NULL FROM location_dead_letter
+    WHERE owner = ? AND code = 'INTERNAL_ERROR' AND recorded_at >= ?
+    ORDER BY recorded_at,id LIMIT MAX(0, ? - (SELECT COUNT(*) FROM location_outbox WHERE owner = ?))`,
+  Date.now(), owner, cutoff, LOCATION_OUTBOX_LIMIT, owner);
+  const recovered = await db.runAsync(`DELETE FROM location_dead_letter
+    WHERE owner = ? AND code = 'INTERNAL_ERROR' AND recorded_at >= ?
+    AND EXISTS (SELECT 1 FROM location_outbox WHERE owner = location_dead_letter.owner AND id = location_dead_letter.id)`, owner, cutoff);
+  if (recovered.changes) {
+    const dropped = await db.getFirstAsync<{ value: string }>('SELECT value FROM location_meta WHERE key = ?', `${owner}:dropped`);
+    await db.runAsync('INSERT OR REPLACE INTO location_meta(key,value) VALUES (?,?)',
+      `${owner}:dropped`, JSON.stringify(Math.max(0, Number(dropped?.value ?? 0) - recovered.changes)));
+  }
+  const remaining = await db.getFirstAsync(`SELECT 1 FROM location_dead_letter
+    WHERE owner = ? AND code = 'INTERNAL_ERROR' AND recorded_at >= ? LIMIT 1`, owner, cutoff);
+  // A full outbox defers the remaining recovery until uploads make room.
+  if (!remaining) await db.runAsync('INSERT OR REPLACE INTO location_meta(key,value) VALUES (?,?)', key, 'true');
+}
+
 export async function migrateLegacyLocationQueue(owner: string, ownedWindows: ReadonlyMap<string, string>): Promise<void> {
   if (await getLocationMeta<boolean>('legacyQueueMigrated')) return;
   const raw = await AsyncStorage.getItem('vhd_location_event_queue_v1');

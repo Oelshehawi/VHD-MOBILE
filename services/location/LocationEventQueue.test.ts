@@ -41,6 +41,7 @@ import {
   writeLocationTrackingState
 } from '@/services/location/LocationTrackingState';
 import { refreshLocationTrackingAfterClosure } from '@/services/location/LocationTrackingRefreshRunner';
+import { getLocationOwner } from './LocationAccount';
 const QUEUE_KEY = 'vhd_location_event_queue_v1';
 const OWNER = 'app-user-1';
 
@@ -113,6 +114,7 @@ async function seedClosableWindow(exitedWindowIds: string[]) {
 describe('LocationEventQueue', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
+    jest.mocked(getLocationOwner).mockResolvedValue({ appUserId: OWNER, fieldStaffId: 'tech-1' });
     jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-08-03T00:00:00Z'));
     await resetLocationTestDatabase();
     await AsyncStorage.removeItem(QUEUE_KEY);
@@ -266,5 +268,51 @@ describe('LocationEventQueue', () => {
     expect(state.windows).toEqual([]);
     expect(state.closedScheduleIds).toEqual(['s1']);
     expect(refreshLocationTrackingAfterClosure).toHaveBeenCalledTimes(1);
+  });
+
+  it('persists a full-batch cooldown that fresh captures and subsequent flushes cannot bypass', async () => {
+    await enqueueLocationEvent(event());
+    mockPostLocationEvents.mockResolvedValue([{ ...internalError, retryAfterMs: 60000 }]);
+    await flushLocationEventQueue();
+    const cooldown = await getLocationMeta<{ attempts: number; nextAttempt: number }>(`${OWNER}:uploadCooldown`);
+    expect(cooldown).toEqual({ attempts: 1, nextAttempt: Date.now() + 60000 });
+    await enqueueLocationEvent(event({ recordedAt: '2026-08-02T15:02:00.000Z' }));
+    await flushLocationEventQueue();
+    expect(mockPostLocationEvents).toHaveBeenCalledTimes(1);
+    expect(await getLocationMeta(`${OWNER}:error`)).toBe('INTERNAL_ERROR');
+    jest.spyOn(Date, 'now').mockReturnValue(cooldown!.nextAttempt);
+    allSucceed();
+    await flushLocationEventQueue();
+    expect(await readQueue()).toEqual([]);
+    expect(await getLocationMeta(`${OWNER}:uploadCooldown`)).toBeNull();
+    expect(await getLocationMeta(`${OWNER}:error`)).toBeNull();
+  });
+
+  it('stops after one wholly failing batch and grows the account cooldown across attempts', async () => {
+    for (let index = 0; index < 30; index++) await enqueueLocationEvent(event({ eventId: `batch-${index}` }));
+    mockPostLocationEvents.mockImplementation(async events => events.map(() => internalError));
+    jest.spyOn(Math, 'random').mockReturnValue(1);
+    try {
+      await flushLocationEventQueue();
+      expect(mockPostLocationEvents).toHaveBeenCalledTimes(1);
+      const first = await getLocationMeta<{ attempts: number; nextAttempt: number }>(`${OWNER}:uploadCooldown`);
+      expect(first).toEqual({ attempts: 1, nextAttempt: Date.now() + 5000 });
+      jest.spyOn(Date, 'now').mockReturnValue(first!.nextAttempt);
+      await flushLocationEventQueue();
+      expect(mockPostLocationEvents).toHaveBeenCalledTimes(2);
+      expect(await getLocationMeta(`${OWNER}:uploadCooldown`)).toEqual({ attempts: 2, nextAttempt: Date.now() + 10000 });
+      expect(await readQueue()).toHaveLength(30);
+    } finally { jest.spyOn(Math, 'random').mockRestore(); }
+  });
+
+  it('does not let one account cooldown block a different signed-in account', async () => {
+    await enqueueLocationEvent(event());
+    await setLocationMeta(`${OWNER}:uploadCooldown`, { attempts: 4, nextAttempt: Date.now() + 300000 });
+    jest.mocked(getLocationOwner).mockResolvedValue({ appUserId: 'owner-2', fieldStaffId: 'tech-2' });
+    await enqueueLocationEvent(event({ eventId: 'other-account' }));
+    await flushLocationEventQueue();
+    expect(mockPostLocationEvents.mock.calls[0][0].map(item => item.eventId)).toEqual(['other-account']);
+    expect(await readQueue()).toHaveLength(1);
+    expect(await getLocationMeta(`${OWNER}:uploadCooldown`)).not.toBeNull();
   });
 });

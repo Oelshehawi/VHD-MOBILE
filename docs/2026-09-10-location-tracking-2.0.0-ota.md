@@ -1,6 +1,27 @@
 # Location Tracking OTA For 2.0.0
 
-Last updated: 2026-09-10
+Last updated: 2026-09-13
+
+## September 13 Cursor Failure Recovery
+
+- Deploy and verify the backend location-history paging hotfix before publishing
+  this follow-up OTA. The previous backend failed on `getMore` inside a timed
+  transaction once replay history reached the initial cursor batch boundary.
+- This OTA remains JavaScript-only on runtime 2.0.0. It restores retained
+  `INTERNAL_ERROR` dead letters captured within 13 days, using the original
+  payload and event ID. Permanent rejections and expired captures stay excluded.
+- Recovery and its per-account `locationCursorRecoveryV1` marker commit in one
+  SQLite transaction. Full outboxes defer completion until uploads make room.
+  Restored records reduce the dropped count, without resetting unrelated losses.
+- Wholly retryable failed batches persist an account cooldown using exponential
+  backoff and `Retry-After`. New captures, refreshes, and app restarts cannot
+  bypass it. Partial success still acknowledges individual events and permits
+  later evidence to proceed.
+- Verify the affected installation resumes uploads after the backend deploy,
+  then apply the OTA and verify queue depth drains and the dropped count falls
+  by the number of retained events recovered. The incident snapshot had 67
+  queued and 44 dropped events; actual recovery depends on phone retention.
+  Do not uninstall or clear app storage. No schema migration in MongoDB is needed.
 
 ## Compatibility Boundary
 

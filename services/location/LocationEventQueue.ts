@@ -7,7 +7,7 @@ import type { FetchLike } from '@/services/network/types';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 import { markScheduleTrackingClosed } from './LocationTrackingState';
 import { getLocationOwner } from './LocationAccount';
-import { getLocationDatabase, LOCATION_DEAD_LETTER_ATTEMPTS, mutateLocationOutbox, persistLocationEvents, pruneLocationOutbox, type OutboxRow } from './LocationOutbox';
+import { getLocationDatabase, getLocationMeta, LOCATION_DEAD_LETTER_ATTEMPTS, mutateLocationOutbox, persistLocationEvents, pruneLocationOutbox, recoverLocationCursorFailures, type OutboxRow } from './LocationOutbox';
 
 let flushInFlight: Promise<void> | null = null;
 
@@ -39,8 +39,14 @@ async function flushInternal(): Promise<void> {
   const owner = await getLocationOwner();
   if (!owner) return;
   const db = await getLocationDatabase();
-  await mutateLocationOutbox(tx => pruneLocationOutbox(tx, owner.appUserId));
+  await mutateLocationOutbox(async tx => {
+    await pruneLocationOutbox(tx, owner.appUserId);
+    await recoverLocationCursorFailures(tx, owner.appUserId);
+  });
   await applyDurableLocationClosures(owner.appUserId);
+  const metaKey = (name: string) => `${owner.appUserId}:${name}`;
+  let cooldown = await getLocationMeta<{ attempts: number; nextAttempt: number }>(metaKey('uploadCooldown'));
+  if (cooldown && Date.now() < cooldown.nextAttempt) return;
   const tokenProvider = async () => {
     const current = await getLocationOwner();
     if (current?.appUserId !== owner.appUserId) return null;
@@ -50,14 +56,15 @@ async function flushInternal(): Promise<void> {
   const client = new ApiClient('', { fetchImpl: expoFetch as unknown as FetchLike, tokenProvider });
   const deadline = Date.now() + 20000;
   const closed = new Set<string>();
-  const metaKey = (name: string) => `${owner.appUserId}:${name}`;
   for (let pass = 0; pass < 4 && Date.now() < deadline; pass += 1) {
+    if ((await getLocationOwner())?.appUserId !== owner.appUserId) break;
     // Rows waiting on their own backoff do not hold back newer evidence; the
     // server replays each window's full history in capture-time order.
     const rows = await db.getAllAsync<OutboxRow>('SELECT * FROM location_outbox WHERE owner = ? AND next_attempt <= ? ORDER BY recorded_at, id LIMIT 25', owner.appUserId, Date.now());
     if (!rows.length) break;
     const events = rows.map(row => JSON.parse(row.payload) as MobileLocationEvent);
     const results = await client.postLocationEvents(events);
+    const batchFailed = rows.every((_, index) => !results[index]?.success && results[index]?.retryable !== false);
     let blockedBy: string | null = null;
     await mutateLocationOutbox(async tx => {
       const setMeta = (name: string, value: unknown) =>
@@ -101,10 +108,20 @@ async function flushInternal(): Promise<void> {
       if (blockedBy) await setMeta('error', blockedBy);
       else await tx.runAsync('DELETE FROM location_meta WHERE key = ?', metaKey('error'));
       if (delivered && !rejected) await tx.runAsync('DELETE FROM location_meta WHERE key = ?', metaKey('rejection'));
+      if (batchFailed) {
+        const attempts = (cooldown?.attempts ?? 0) + 1;
+        const retryAfterMs = Math.max(0, ...results.map(result => result.retryAfterMs ?? 0));
+        cooldown = { attempts, nextAttempt: Date.now() + locationRetryDelay(attempts - 1, retryAfterMs) };
+        await setMeta('uploadCooldown', cooldown);
+        await setMeta('error', blockedBy ?? POISON_CODE);
+      } else {
+        cooldown = null;
+        await tx.runAsync('DELETE FROM location_meta WHERE key = ?', metaKey('uploadCooldown'));
+      }
     });
     // An outage, auth, or transport failure affects every event; stop until
     // the backoff expires instead of spending the wake on doomed requests.
-    if (blockedBy) break;
+    if (blockedBy || batchFailed) break;
   }
   if ((await getLocationOwner())?.appUserId !== owner.appUserId) return;
   for (const scheduleId of closed) await markScheduleTrackingClosed(scheduleId);
