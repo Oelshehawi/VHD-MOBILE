@@ -19,6 +19,7 @@ import { validateTimeOffDateRange, formatDateRange } from '../../utils/availabil
 import { generateObjectId } from '@/utils/objectId';
 import type { TimeOffRequest } from '../../services/database/schema';
 import { LoadingPlaceholder } from '@/components/common/LoadingPlaceholder';
+import { useDelayedLoading } from '@/utils/useDelayedLoading';
 
 interface TimeOffFormData {
   startDate: string | null;
@@ -57,6 +58,7 @@ export const TimeOffManager: React.FC<{
     [fieldStaffId]
   );
   const requests = (requestsData as TimeOffRequest[]) || [];
+  const showRequestsPlaceholder = useDelayedLoading(requestsLoading);
   const iconColor = colorScheme === 'dark' ? '#F2EFEA' : '#4B5563';
   const primaryIconColor = colorScheme === 'dark' ? '#14110F' : '#FFFFFF';
 
@@ -334,7 +336,7 @@ export const TimeOffManager: React.FC<{
           )}
 
           {/* Empty state — only once the first local read has actually returned */}
-          {requestsLoading ? (
+          {showRequestsPlaceholder ? (
             <LoadingPlaceholder rows={2} rowHeight={96} />
           ) : (
             requests.length === 0 && (

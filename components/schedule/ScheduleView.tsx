@@ -13,8 +13,13 @@ import {
   getScheduleServiceDayKey,
   scheduleMatchesDateKey
 } from '@/utils/scheduleTime';
-import { ASSIGNED_TO_USER_CLAUSE } from '@/services/data/sqlFragments';
+import {
+  ASSIGNED_TO_USER_CLAUSE,
+  INDEXED_RANGE_PAD_DAYS,
+  getUtcDayBoundIso
+} from '@/services/data/sqlFragments';
 import { useReportInitialScreenReady } from '@/providers/StartupGate';
+import { useDelayedLoading } from '@/utils/useDelayedLoading';
 
 interface ScheduleViewProps {
   fieldStaffId: string;
@@ -48,23 +53,41 @@ export function ScheduleView({
 
   const selectedDateParam = useMemo(() => getLocalDateKey(selectedDate), [selectedDate]);
 
+  // Padded bounds on the bare (indexed) column. `datetime(...)` below still
+  // decides membership exactly; these only stop SQLite scanning every schedule.
+  const [indexedLowerBound, indexedUpperBound] = useMemo(() => {
+    const monthStart = `${selectedDateParam.slice(0, 7)}-01`;
+    return [
+      getUtcDayBoundIso(monthStart, -67 - INDEXED_RANGE_PAD_DAYS),
+      getUtcDayBoundIso(monthStart, 67 + INDEXED_RANGE_PAD_DAYS)
+    ];
+  }, [selectedDateParam]);
+
   // Get all schedules for the month view
   const monthQuery = useQuery<Schedule>(
     isManager
       ? `SELECT * FROM schedules
-         WHERE datetime(scheduledStartAtUtc)
-         BETWEEN datetime(?, 'start of month', '-67 days')
-           AND datetime(?, 'start of month', '+67 days')
+         WHERE scheduledStartAtUtc >= ? AND scheduledStartAtUtc <= ?
+           AND datetime(scheduledStartAtUtc)
+           BETWEEN datetime(?, 'start of month', '-67 days')
+             AND datetime(?, 'start of month', '+67 days')
          ORDER BY scheduledStartAtUtc`
       : `SELECT * FROM schedules
-         WHERE datetime(scheduledStartAtUtc)
-         BETWEEN datetime(?, 'start of month', '-67 days')
-           AND datetime(?, 'start of month', '+67 days')
+         WHERE scheduledStartAtUtc >= ? AND scheduledStartAtUtc <= ?
+           AND datetime(scheduledStartAtUtc)
+           BETWEEN datetime(?, 'start of month', '-67 days')
+             AND datetime(?, 'start of month', '+67 days')
            AND (${ASSIGNED_TO_USER_CLAUSE})
          ORDER BY scheduledStartAtUtc`,
     isManager
-      ? [selectedDateParam, selectedDateParam]
-      : [selectedDateParam, selectedDateParam, fieldStaffId],
+      ? [indexedLowerBound, indexedUpperBound, selectedDateParam, selectedDateParam]
+      : [
+          indexedLowerBound,
+          indexedUpperBound,
+          selectedDateParam,
+          selectedDateParam,
+          fieldStaffId
+        ],
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
   const monthSchedules = useMemo<ReadonlyArray<Schedule>>(
@@ -75,6 +98,9 @@ export function ScheduleView({
   // "no visits" — hold the splash and render placeholders until it settles.
   const isLoadingSchedules = monthQuery.isLoading;
   useReportInitialScreenReady(!isLoadingSchedules);
+  // Readiness uses the raw flag above; the placeholder waits, so a fast local
+  // read renders straight to content instead of flashing and then reflowing.
+  const showSchedulesPlaceholder = useDelayedLoading(isLoadingSchedules);
 
   // Convert schedules to appointments format for MonthView
   const appointments: AppointmentType[] = useMemo(
@@ -178,7 +204,7 @@ export function ScheduleView({
           onSchedulePress={handleSchedulePress}
           currentUserId={fieldStaffId}
           isManager={isManager}
-          isLoading={isLoadingSchedules}
+          isLoading={showSchedulesPlaceholder}
         />
       )}
 
@@ -201,7 +227,7 @@ export function ScheduleView({
               onSchedulePress={handleSchedulePress}
               currentUserId={fieldStaffId}
               isManager={isManager}
-              isLoading={isLoadingSchedules}
+              isLoading={showSchedulesPlaceholder}
             />
           </View>
         </View>

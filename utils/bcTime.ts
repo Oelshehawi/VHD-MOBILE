@@ -6,13 +6,28 @@ export const BC_PERMANENT_TIME_START_UTC = '2026-03-08T10:00:00.000Z';
 
 const BC_PERMANENT_TIME_START_UTC_MS = Date.parse(BC_PERMANENT_TIME_START_UTC);
 
+// `new Intl.DateTimeFormat` is expensive on Hermes and this probe sits on the
+// hot path for every schedule row. IANA validity is constant for the lifetime
+// of the process, so the answer is memoized. Purely a speed cache: it never
+// changes which timezone a given string resolves to.
+const timeZoneValidityCache = new Map<string, boolean>();
+
 export function isValidTimeZone(timeZone: string): boolean {
+  const cached = timeZoneValidityCache.get(timeZone);
+  if (cached !== undefined) {
+    return cached;
+  }
+
+  let valid: boolean;
   try {
     new Intl.DateTimeFormat('en-US', { timeZone }).format(new Date(0));
-    return true;
+    valid = true;
   } catch {
-    return false;
+    valid = false;
   }
+
+  timeZoneValidityCache.set(timeZone, valid);
+  return valid;
 }
 
 export function normalizeScheduleTimeZone(timeZone?: string | null): string {

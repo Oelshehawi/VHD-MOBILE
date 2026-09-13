@@ -65,16 +65,56 @@ function addDaysToDateKey(dateKey: string, days: number): string {
   return formatInTimeZone(date, 'UTC', 'yyyy-MM-dd');
 }
 
+/**
+ * Memoization for the two hot derivations below. Deriving a schedule's local
+ * clock costs several `Intl.DateTimeFormat` constructions, and the Schedule tab
+ * re-derives every row's key on each render pass and each day/week navigation.
+ *
+ * The key is the raw `(scheduledStartAtUtc, timeZone)` pair — the complete set
+ * of inputs these functions read. The true instant is part of the key, so the
+ * B.C. permanent-time cutover in `getEffectiveTimeZoneForInstant` is captured
+ * exactly: two schedules either side of the transition hash to different keys
+ * and keep resolving to their own timezone rules. This is a speed cache only;
+ * it cannot change a displayed time.
+ */
+const MAX_SCHEDULE_TIME_CACHE_ENTRIES = 5000;
+const clockPartsCache = new Map<string, ScheduleClockParts | null>();
+const serviceDayKeyCache = new Map<string, string>();
+
+function getScheduleTimeCacheKey(schedule: ScheduleTimeSource): string {
+  return `${schedule.scheduledStartAtUtc ?? ''}|${schedule.timeZone ?? ''}`;
+}
+
+// Values are pure functions of the key, so dropping the cache on overflow can
+// only cost a recompute — it can never produce a stale or wrong answer.
+function cacheScheduleTimeValue<V>(cache: Map<string, V>, key: string, value: V): V {
+  if (cache.size >= MAX_SCHEDULE_TIME_CACHE_ENTRIES) {
+    cache.clear();
+  }
+  cache.set(key, value);
+  return value;
+}
+
 function getScheduleClockParts(schedule: ScheduleTimeSource): ScheduleClockParts | null {
   const startAtUtc = getScheduleStartAtUtc(schedule);
   if (!startAtUtc) return null;
 
-  const startDate = getScheduleStartDate(schedule);
-  if (!startDate) return null;
+  const cacheKey = getScheduleTimeCacheKey(schedule);
+  const cached = clockPartsCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
 
-  return parseZonedClockParts(
-    startDate,
-    getEffectiveTimeZoneForInstant(getScheduleTimeZone(schedule), startDate)
+  const startDate = getScheduleStartDate(schedule);
+  if (!startDate) return cacheScheduleTimeValue(clockPartsCache, cacheKey, null);
+
+  return cacheScheduleTimeValue(
+    clockPartsCache,
+    cacheKey,
+    parseZonedClockParts(
+      startDate,
+      getEffectiveTimeZoneForInstant(getScheduleTimeZone(schedule), startDate)
+    )
   );
 }
 
@@ -144,11 +184,20 @@ export function getScheduleLocalDateKey(schedule: ScheduleTimeSource): string {
  * returns `2026-06-25`. Mirrors web `getScheduleServiceDayKeyForSchedule`.
  */
 export function getScheduleServiceDayKey(schedule: ScheduleTimeSource): string {
+  const cacheKey = getScheduleTimeCacheKey(schedule);
+  const cached = serviceDayKeyCache.get(cacheKey);
+  if (cached !== undefined) {
+    return cached;
+  }
+
   const parts = getScheduleClockParts(schedule);
   if (!parts) return '';
-  return parts.hour < SERVICE_DAY_START_HOUR
-    ? addDaysToDateKey(parts.dateKey, -1)
-    : parts.dateKey;
+
+  return cacheScheduleTimeValue(
+    serviceDayKeyCache,
+    cacheKey,
+    parts.hour < SERVICE_DAY_START_HOUR ? addDaysToDateKey(parts.dateKey, -1) : parts.dateKey
+  );
 }
 
 export function getServiceDayKeyForInstant(

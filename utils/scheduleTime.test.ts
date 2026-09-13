@@ -249,3 +249,90 @@ describe('schedule service-day time helpers (true-instant storage)', () => {
     expect(getScheduleSortTime(ranged)).toBe(getScheduleSortTime(exact));
   });
 });
+
+/**
+ * These lock down the memoization added for Schedule-tab performance. The cache
+ * key is `(scheduledStartAtUtc, timeZone)`; anything that would collapse two
+ * distinct inputs onto one entry shows up here as a wrong time, most importantly
+ * across B.C.'s permanent-time cutover where the same wall clock maps to two
+ * different UTC instants.
+ */
+describe('schedule time memoization stays transparent', () => {
+  it('keeps historical and permanent B.C. rules distinct across the cutover', () => {
+    // Both are 09:00 local, but the first is still on the historical DST rules
+    // (UTC-8) and the second is on permanent UTC-7.
+    const beforeCutover = {
+      scheduledStartAtUtc: '2026-01-10T17:00:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+    const afterCutover = {
+      scheduledStartAtUtc: '2026-12-10T16:00:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+
+    expect(formatScheduleTime(beforeCutover)).toBe('9:00 AM');
+    expect(formatScheduleTime(afterCutover)).toBe('9:00 AM');
+
+    // Re-read both, in both orders, to prove neither poisoned the other's entry.
+    expect(formatScheduleTime(afterCutover)).toBe('9:00 AM');
+    expect(formatScheduleTime(beforeCutover)).toBe('9:00 AM');
+    expect(getScheduleLocalDateKey(beforeCutover)).toBe('2026-01-10');
+    expect(getScheduleLocalDateKey(afterCutover)).toBe('2026-12-10');
+  });
+
+  it('resolves the same instant differently per timezone', () => {
+    const instant = '2026-12-10T16:00:00.000Z';
+
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant, timeZone: 'America/Vancouver' }))
+      .toBe('9:00 AM');
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant, timeZone: 'America/Toronto' }))
+      .toBe('11:00 AM');
+    // Repeat reads must not return the other zone's cached answer.
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant, timeZone: 'America/Vancouver' }))
+      .toBe('9:00 AM');
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant, timeZone: 'America/Toronto' }))
+      .toBe('11:00 AM');
+  });
+
+  it('returns identical results on repeated calls, cold and warm', () => {
+    const schedule = {
+      scheduledStartAtUtc: '2026-12-10T09:59:00.000Z',
+      timeZone: 'America/Vancouver'
+    };
+
+    const first = {
+      serviceDay: getScheduleServiceDayKey(schedule),
+      localDate: getScheduleLocalDateKey(schedule),
+      hour: getScheduleHour(schedule),
+      sort: getScheduleSortTime(schedule),
+      postMidnight: isPostMidnightServiceTime(schedule)
+    };
+
+    expect({
+      serviceDay: getScheduleServiceDayKey(schedule),
+      localDate: getScheduleLocalDateKey(schedule),
+      hour: getScheduleHour(schedule),
+      sort: getScheduleSortTime(schedule),
+      postMidnight: isPostMidnightServiceTime(schedule)
+    }).toEqual(first);
+    expect(first.serviceDay).toBe('2026-12-09');
+    expect(first.postMidnight).toBe(true);
+  });
+
+  it('treats a missing or blank timezone as the default, not as another zone', () => {
+    const instant = '2026-12-10T16:00:00.000Z';
+
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant })).toBe('9:00 AM');
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant, timeZone: null })).toBe('9:00 AM');
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant, timeZone: '' })).toBe('9:00 AM');
+    expect(formatScheduleTime({ scheduledStartAtUtc: instant, timeZone: 'Not/AZone' })).toBe(
+      '9:00 AM'
+    );
+  });
+
+  it('still returns nothing for a schedule with no start instant', () => {
+    expect(getScheduleServiceDayKey({ scheduledStartAtUtc: '' })).toBe('');
+    expect(getScheduleServiceDayKey({ scheduledStartAtUtc: null })).toBe('');
+    expect(getScheduleServiceDayKey({ scheduledStartAtUtc: 'not-a-date' })).toBe('');
+  });
+});

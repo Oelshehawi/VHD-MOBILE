@@ -30,6 +30,7 @@ import { ReviewQRCodeModal } from '@/components/dashboard/ReviewQRCodeModal';
 import { JobDetailModal } from '@/components/schedule/JobDetailModal';
 import { LoadingPlaceholder } from '@/components/common/LoadingPlaceholder';
 import { useReportInitialScreenReady } from '@/providers/StartupGate';
+import { useDelayedLoading } from '@/utils/useDelayedLoading';
 import type { Schedule } from '@/types';
 
 interface DashboardViewProps {
@@ -81,6 +82,10 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
     !payrollSchedulesLoading &&
     (!featuredPeriod || !hoursVisible || !payrollSchedulesFetching);
   useReportInitialScreenReady(hasInitialData);
+  // Readiness uses the raw flags above; placeholders wait, so a fast local read
+  // renders straight to content instead of flashing and then reflowing.
+  const showTodayPlaceholder = useDelayedLoading(todaySchedulesLoading);
+  const showPayrollPlaceholder = useDelayedLoading(payrollPeriodLoading);
 
   useEffect(() => {
     const intervalId = setInterval(() => setNow(new Date()), 60 * 1000);
@@ -377,7 +382,7 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
               </Text>
             </View>
 
-            {todaySchedulesLoading ? (
+            {showTodayPlaceholder ? (
               <LoadingPlaceholder rows={2} rowHeight={72} />
             ) : !visibleTodaySchedules?.length ? (
               <View className='items-center py-6'>
@@ -412,7 +417,7 @@ export function DashboardView({ fieldStaffId, isManager, canViewHoursRole }: Das
               </View>
             </View>
 
-            {payrollPeriodLoading ? (
+            {showPayrollPlaceholder ? (
               <LoadingPlaceholder rows={1} rowHeight={148} />
             ) : featuredPeriod ? (
               <View className='bg-[#F0EDE6] dark:bg-[#1F1C16] rounded-xl p-4'>

@@ -1,6 +1,6 @@
 import { useQuery } from '@powersync/react-native';
 import { Schedule, PayrollPeriod, PayrollSchedule } from '@/types';
-import { ASSIGNED_TO_USER_CLAUSE } from './sqlFragments';
+import { ASSIGNED_TO_USER_CLAUSE, INDEXED_RANGE_PAD_DAYS, getUtcDayBoundIso } from './sqlFragments';
 import { getBcBusinessDateKey } from '@/utils/date';
 
 /**
@@ -100,12 +100,19 @@ export function useTodaySchedules() {
   const startOfDayLocal = getBcBusinessDateTimeString('start', -1);
   const endOfDayLocal = getBcBusinessDateTimeString('end', 1);
 
+  // Padded bounds on the bare (indexed) column, so this startup-path query stops
+  // scanning every synced schedule. The `datetime(...)` predicates still decide
+  // membership exactly — see `getUtcDayBoundIso`.
+  const indexedLowerBound = getUtcDayBoundIso(startOfDayLocal, -INDEXED_RANGE_PAD_DAYS);
+  const indexedUpperBound = getUtcDayBoundIso(endOfDayLocal, INDEXED_RANGE_PAD_DAYS);
+
   const query = useQuery<Schedule>(
     `SELECT * FROM schedules
-     WHERE datetime(scheduledStartAtUtc) >= datetime(?)
+     WHERE scheduledStartAtUtc >= ? AND scheduledStartAtUtc <= ?
+     AND datetime(scheduledStartAtUtc) >= datetime(?)
      AND datetime(scheduledStartAtUtc) <= datetime(?)
      ORDER BY scheduledStartAtUtc ASC`,
-    [startOfDayLocal, endOfDayLocal]
+    [indexedLowerBound, indexedUpperBound, startOfDayLocal, endOfDayLocal]
   );
 
   return query;

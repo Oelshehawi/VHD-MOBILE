@@ -17,6 +17,7 @@ import { DatePickerInput } from './DatePickerInput';
 import { AvailabilityCalendar } from './AvailabilityCalendar';
 import { ConfirmationModal } from '../common/ConfirmationModal';
 import { LoadingPlaceholder } from '@/components/common/LoadingPlaceholder';
+import { useDelayedLoading } from '@/utils/useDelayedLoading';
 import { generateObjectId } from '@/utils/objectId';
 import {
   validateTimeRange,
@@ -72,6 +73,7 @@ export const AvailabilityManager: React.FC<{
     [fieldStaffId]
   );
   const availability = (availabilityData as Availability[]) || [];
+  const showAvailabilityPlaceholder = useDelayedLoading(availabilityLoading);
 
   // Handle form changes
   const handleFieldChange = (field: keyof AvailabilityFormData, value: any) => {
@@ -399,7 +401,7 @@ export const AvailabilityManager: React.FC<{
             <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
               Blocked Time
             </Text>
-            {availabilityLoading ? (
+            {showAvailabilityPlaceholder ? (
               <LoadingPlaceholder rowHeight={320} />
             ) : (
               <AvailabilityCalendar availability={availability} />
@@ -407,7 +409,7 @@ export const AvailabilityManager: React.FC<{
           </View>
 
           {/* Unavailable block list */}
-          {availabilityLoading ? (
+          {showAvailabilityPlaceholder ? (
             <View className='mb-6'>
               <Text className='mb-4 text-lg font-bold text-[#14110F] dark:text-white'>
                 Unavailability Blocks
