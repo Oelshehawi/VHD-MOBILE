@@ -73,8 +73,8 @@ export function isInitialStateGeofenceEnter(args: {
 }
 
 // Standing depot wake region: stays registered after a shift winds down so
-// iOS region monitoring can relaunch a force-quit app the next time the
-// technician passes the depot. Belongs to no tracking window.
+// iOS may offer a background wake when the technician passes the depot.
+// Relaunch after user force-quit is not guaranteed. Belongs to no window.
 export const STANDING_DEPOT_REGION_IDENTIFIER = 'vhd:standing:depot';
 
 export interface WakeGeofenceOptions {
@@ -97,6 +97,8 @@ function selectGeofenceWindows(
 ): ParsedTrackingWindow[] {
   const activeDepotWindows = windows.filter((window) => activeDepotWindowIds.has(window.id));
   const otherWindows = windows.filter((window) => !activeDepotWindowIds.has(window.id));
+  if (windows.some(w => w.captureProtocolVersion === 2)) otherWindows.sort((a, b) =>
+    Math.abs(Date.parse(a.scheduledStartAtUtc) - Date.now()) - Math.abs(Date.parse(b.scheduledStartAtUtc) - Date.now()));
   return [...activeDepotWindows, ...otherWindows].slice(0, MAX_GEOFENCE_WINDOWS);
 }
 
@@ -116,7 +118,7 @@ export function buildGeofenceRegions(
     const targets: { regionType: 'depot' | 'job'; target: ParsedTrackingWindow['depotTarget'] }[] = [
       { regionType: 'job', target: window.jobSiteTarget }
     ];
-    if (activeDepotWindowIds.has(window.id)) {
+    if (activeDepotWindowIds.has(window.id) && window.captureProtocolVersion !== 2) {
       targets.unshift({ regionType: 'depot', target: window.depotTarget });
     }
 
@@ -133,6 +135,7 @@ export function buildGeofenceRegions(
       metadata.push({
         identifier,
         trackingWindowId: window.id,
+        definitionVersion: window.definitionVersion ?? undefined,
         scheduleId: window.scheduleId,
         regionType,
         lat: target.lat,
@@ -142,7 +145,7 @@ export function buildGeofenceRegions(
     }
   }
 
-  const standingDepotTarget = wakeOptions?.standingDepotTarget;
+  const standingDepotTarget = wakeOptions?.standingDepotTarget ?? selectedWindows.find(w => w.captureProtocolVersion === 2)?.depotTarget;
   if (standingDepotTarget && regions.length < MAX_TOTAL_GEOFENCE_REGIONS) {
     regions.push({
       identifier: STANDING_DEPOT_REGION_IDENTIFIER,
@@ -296,8 +299,8 @@ async function handleJobGeofenceSideEffects(
   }
 }
 
-// iOS relaunches a force-quit app headless for registered geofence regions;
-// timed pings died with the process, so restart them from persisted state.
+// When iOS delivers a region callback, restart eligible capture from durable
+// state. Delivery after user force-quit is not guaranteed.
 // Also applies the cadence switch (travel <-> on-site) right at the geofence
 // boundary instead of waiting for the next coordinator run.
 async function ensureLocationUpdatesRunning(reason: string): Promise<void> {
@@ -382,10 +385,12 @@ if (!region?.identifier || taskData?.eventType === undefined) {
       ? 'geofence_enter'
       : 'geofence_exit';
 
-  const window = state.windows.find(item => item.id === metadata.trackingWindowId);
+  const window = state.windows.find(item => item.id === metadata.trackingWindowId) ??
+    (metadata.identifier === STANDING_DEPOT_REGION_IDENTIFIER ? state.windows.filter(item => item.captureProtocolVersion === 2 &&
+      isPersistedWindowPingActive(item, new Date(recordedAtMs))).sort((a, b) => Date.parse(b.scheduledStartAtUtc) - Date.parse(a.scheduledStartAtUtc))[0] : undefined);
   // A job wake crossing is real evidence once its saved work window is active.
   // Outside that range (including the standing depot), no coordinates are sent.
-  if (!window || state.closedScheduleIds.includes(window.scheduleId) || !isPersistedWindowPingActive(window, new Date(recordedAtMs))) return true;
+  if (!window || (window.captureProtocolVersion !== 2 && state.closedScheduleIds.includes(window.scheduleId)) || !isPersistedWindowPingActive(window, new Date(recordedAtMs))) return true;
 
   const platform = getEventPlatform();
   if (!platform) {
@@ -398,7 +403,7 @@ if (!region?.identifier || taskData?.eventType === undefined) {
     geofenceRegionsRegisteredAt: state.geofenceRegionsRegisteredAt,
     nowMs: recordedAtMs
   });
-  if (state.geofenceTransitions.some(item => item.trackingWindowId === metadata.trackingWindowId && item.regionType === metadata.regionType && item.eventType === eventType)) {
+  if (window.captureProtocolVersion !== 2 && state.geofenceTransitions.some(item => item.trackingWindowId === metadata.trackingWindowId && item.regionType === metadata.regionType && item.eventType === eventType)) {
     debugLogger.info('LOCATION', 'Suppressed duplicate geofence transition', {
       trackingWindowId: metadata.trackingWindowId,
       scheduleId: metadata.scheduleId,
@@ -413,11 +418,13 @@ if (!region?.identifier || taskData?.eventType === undefined) {
   // lat/lng stay the region center for backward compatibility; the actual
   // device fix rides along so the server can map and feed its presence
   // engine real coordinates.
-  const deviceCoords = await getDeviceCoords();
+  // Protocol 2 saves the callback immediately; optional GPS is a separate fix.
+  const deviceCoords = window.captureProtocolVersion === 2 ? null : await getDeviceCoords();
   const event: MobileLocationEvent = {
-    trackingWindowId: metadata.trackingWindowId,
-    windowDefinitionVersion: window.definitionVersion,
-    scheduleId: metadata.scheduleId,
+    captureProtocolVersion: window.captureProtocolVersion,
+    trackingWindowId: window.id,
+    windowDefinitionVersion: metadata.definitionVersion ?? window.definitionVersion,
+    scheduleId: window.scheduleId,
     eventType,
     regionType: metadata.regionType,
     lat: metadata.lat,
@@ -430,6 +437,16 @@ if (!region?.identifier || taskData?.eventType === undefined) {
   };
 
   await enqueueLocationEvent(event);
+  if (window.captureProtocolVersion === 2) {
+    await updateLocationTrackingState(current => ({ ...current, windows: current.windows.map(w => w.id === window.id ? {
+      ...w, captureUntilUtc: new Date(Math.min(Date.parse(w.endsAtUtc), recordedAtMs + Math.max(90, (w.travelTimeMinutes ?? 60) + 30) * 60000)).toISOString()
+    } : w) }));
+    const fix = await getDeviceCoords();
+    if (fix) await enqueueLocationEvent({ captureProtocolVersion: 2, trackingWindowId: window.id,
+      windowDefinitionVersion: window.definitionVersion, scheduleId: window.scheduleId, eventType: 'location_ping',
+      lat: fix.deviceLat, lng: fix.deviceLng, accuracyMeters: fix.deviceAccuracyMeters,
+      recordedAt: fix.deviceRecordedAt, source: 'background_location', platform });
+  }
   await recordGeofenceTransition({ trackingWindowId: metadata.trackingWindowId, regionType: metadata.regionType, eventType, recordedAt });
   await handleJobGeofenceSideEffects(eventType, metadata.regionType, metadata.trackingWindowId);
   await ensureLocationUpdatesRunning(eventType);

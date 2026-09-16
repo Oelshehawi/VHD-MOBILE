@@ -19,6 +19,10 @@ export interface GeofenceTarget {
 }
 
 export interface TechnicianTrackingWindow {
+  captureProtocolVersion?: number | null;
+  recoveryEndsAtUtc?: string | null;
+  expectedCaptureEndsAtUtc?: string | null;
+  captureUntilUtc?: string;
   definitionVersion?: number | null;
   definitionUpdatedAt?: string | null;
   id: string;
@@ -47,6 +51,8 @@ export interface ParsedTrackingWindow extends TechnicianTrackingWindow {
 }
 
 export interface MobileLocationEvent {
+  captureProtocolVersion?: number;
+  physicalSampleId?: string;
   eventId?: string;
   installationId?: string;
   windowDefinitionVersion?: number;

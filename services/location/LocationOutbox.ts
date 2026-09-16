@@ -3,7 +3,7 @@ import * as Crypto from 'expo-crypto';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { MobileLocationEvent } from '@/types/locationTracking';
 
-export const LOCATION_RETENTION_MS = 13 * 86400000;
+export const LOCATION_RETENTION_MS = 30 * 86400000;
 export const LOCATION_OUTBOX_LIMIT = 100000;
 // Consecutive per-event server crashes (INTERNAL_ERROR) before an event is set
 // aside in location_dead_letter so it cannot hold back later evidence.
@@ -37,6 +37,10 @@ export async function getLocationDatabase() {
         attempts INTEGER NOT NULL DEFAULT 0, next_attempt INTEGER NOT NULL DEFAULT 0,
         last_error TEXT, PRIMARY KEY(owner, id));
       CREATE INDEX IF NOT EXISTS location_outbox_order ON location_outbox(owner, recorded_at, id);
+      CREATE TABLE IF NOT EXISTS location_evidence (
+        owner TEXT NOT NULL, id TEXT NOT NULL, payload TEXT NOT NULL, recorded_at INTEGER NOT NULL,
+        PRIMARY KEY(owner,id));
+      CREATE INDEX IF NOT EXISTS location_evidence_order ON location_evidence(owner,recorded_at);
       CREATE TABLE IF NOT EXISTS location_meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
       DROP TABLE IF EXISTS location_receipts;
       CREATE TABLE IF NOT EXISTS location_dead_letter (
@@ -87,6 +91,9 @@ export async function persistLocationEvents(owner: string, events: MobileLocatio
   await mutateLocationOutbox(async tx => {
     await pruneLocationOutbox(tx, owner);
     for (const event of prepared) {
+      if (event.captureProtocolVersion === 2) await tx.runAsync(
+        'INSERT OR IGNORE INTO location_evidence(owner,id,payload,recorded_at) VALUES (?,?,?,?)',
+        owner, event.eventId, JSON.stringify(event), Date.parse(event.recordedAt));
       await tx.runAsync('INSERT OR IGNORE INTO location_outbox(owner,id,payload,recorded_at,queued_at) VALUES (?,?,?,?,?)',
         owner, event.eventId, JSON.stringify(event), Date.parse(event.recordedAt), Date.now());
       if (event.eventType === 'location_ping' && event.trackingWindowId) {
@@ -132,6 +139,7 @@ export function locationThrottleKey(windowId: string, version?: number): string 
 
 export async function pruneLocationOutbox(db: SQLite.SQLiteDatabase, owner: string): Promise<void> {
   const cutoff = Date.now() - LOCATION_RETENTION_MS;
+  await db.runAsync('DELETE FROM location_evidence WHERE owner = ? AND recorded_at < ?', owner, cutoff);
   const expired = await db.runAsync('DELETE FROM location_outbox WHERE owner = ? AND recorded_at < ?', owner, cutoff);
   if (expired.changes) {
     const row = await db.getFirstAsync<{ value: string }>('SELECT value FROM location_meta WHERE key = ?', `${owner}:dropped`);

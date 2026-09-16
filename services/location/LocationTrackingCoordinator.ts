@@ -59,7 +59,7 @@ function locationTrackingPlatform(): MobileLocationEvent['platform'] | null {
 }
 
 function createSystemEvent(
-  window: Pick<ParsedTrackingWindow, 'id' | 'scheduleId'> | null,
+  window: Pick<ParsedTrackingWindow, 'id' | 'scheduleId' | 'captureProtocolVersion' | 'definitionVersion'> | null,
   eventType: MobileLocationEvent['eventType']
 ): MobileLocationEvent | null {
   const platform = locationTrackingPlatform();
@@ -68,6 +68,8 @@ function createSystemEvent(
   }
 
   return {
+    captureProtocolVersion: window?.captureProtocolVersion ?? undefined,
+    windowDefinitionVersion: window?.definitionVersion ?? undefined,
     trackingWindowId: window?.id,
     scheduleId: window?.scheduleId,
     eventType,
@@ -78,7 +80,7 @@ function createSystemEvent(
 }
 
 function createSystemEventFromPersistedWindow(
-  window: Pick<PersistedTrackingWindow, 'id' | 'scheduleId'> | null,
+  window: Pick<PersistedTrackingWindow, 'id' | 'scheduleId' | 'captureProtocolVersion' | 'definitionVersion'> | null,
   eventType: MobileLocationEvent['eventType']
 ): MobileLocationEvent | null {
   return createSystemEvent(window, eventType);
@@ -222,20 +224,24 @@ export class LocationTrackingCoordinator {
     const closedScheduleIdSet = new Set(pendingClosedScheduleIds);
     // A local closure acknowledgement suppresses stale PowerSync rows until
     // the backend's expired status reaches the device.
-    const liveWindows = windows.filter((window) => !closedScheduleIdSet.has(window.scheduleId));
+    const decisions = windows.some(w => w.captureProtocolVersion === 2)
+      ? await (require('./TrackingEvidence') as typeof import('./TrackingEvidence')).getTrackingDecisions() : null;
+    const liveWindows = windows.filter((window) => window.captureProtocolVersion === 2
+      ? !decisions?.retiredWindowIds.includes(window.id) : !closedScheduleIdSet.has(window.scheduleId));
     const relevantWindows = getRelevantTrackingWindows(liveWindows.map(window => {
       const saved = existingState.windows.find(item => item.id === window.id && (item.definitionVersion ?? 1) === (window.definitionVersion ?? 1));
-      return saved && Date.parse(saved.endsAtUtc) > Date.parse(window.endsAtUtc) ? { ...window, endsAtUtc: saved.endsAtUtc } : window;
+      const restored = saved && Date.parse(saved.endsAtUtc) > Date.parse(window.endsAtUtc) ? { ...window, endsAtUtc: saved.endsAtUtc } : window;
+      return { ...restored, captureUntilUtc: saved?.captureUntilUtc ?? window.expectedCaptureEndsAtUtc ?? undefined };
     }), now);
     // Field Status tracking acts on today's service-date windows, plus
     // next-day pre-cutoff windows whose tracking may begin before midnight.
     // Later future windows from PowerSync must not start tracking today.
     const currentDayWindows = relevantWindows.filter((window) =>
-      isWindowInCurrentTrackingGenerationRange(window, now)
+      window.captureProtocolVersion === 2 ? Date.parse(window.startsAtUtc) <= now.getTime() : isWindowInCurrentTrackingGenerationRange(window, now)
     );
     // Upcoming (next business day) windows within the 48h sync lookahead.
     // They never start tracking today, but their job sites are registered as
-    // wake regions so iOS can relaunch a force-quit app on first arrival.
+    // wake regions for OS-controlled background recovery opportunities.
     const currentDayWindowIds = new Set(currentDayWindows.map((window) => window.id));
     const upcomingWindows = relevantWindows.filter((window) => !currentDayWindowIds.has(window.id));
     const standingDepotTarget = resolveStandingDepotTarget({
@@ -262,7 +268,7 @@ export class LocationTrackingCoordinator {
     // Depot events (geofence region + synthetic initial enter) only make
     // sense while the selected window is still in its travel phase.
     const travelPhaseWindows =
-      selectedPingWindow && !existingState.arrivedWindowIds.includes(selectedPingWindow.id)
+      selectedPingWindow && (selectedPingWindow.captureProtocolVersion === 2 || !existingState.arrivedWindowIds.includes(selectedPingWindow.id))
         ? [selectedPingWindow]
         : [];
 
@@ -273,8 +279,8 @@ export class LocationTrackingCoordinator {
         hasPersistedLocationUpdates(existingState)
       );
       // Wind-down keeps wake regions registered (standing depot + upcoming
-      // job sites) instead of clearing all geofences: iOS region monitoring
-      // relaunches a force-quit app, which BackgroundFetch cannot do. Wake
+      // job sites) instead of clearing all geofences. Region monitoring offers
+      // OS-controlled recovery opportunities, not guaranteed relaunch. Wake
       // regions never emit presence events outside a window.
       const { regions, metadata } = buildGeofenceRegions([], new Set(), {
         upcomingWindows,
@@ -347,10 +353,9 @@ export class LocationTrackingCoordinator {
 
     // Depot geofence only for the selected window's travel phase; job
     // geofence for every current-day window so a direct-to-next-job arrival
-    // is recorded (and so iOS can relaunch a force-quit app on enter/exit).
+    // can be recorded when iOS delivers an enter/exit callback.
     // Wake regions (standing depot + upcoming job sites) stay registered even
-    // while tracking is active: a mid-shift force-quit leaves the next shift's
-    // relaunch triggers armed without waiting for a wind-down run.
+    // while tracking is active, without waiting for a wind-down run.
     const selectedDepotWindowIds = new Set(travelPhaseWindows.map((w) => w.id));
     const { regions, metadata } = buildGeofenceRegions(currentDayWindows, selectedDepotWindowIds, {
       upcomingWindows,

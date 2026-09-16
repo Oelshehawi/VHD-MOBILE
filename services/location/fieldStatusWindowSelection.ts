@@ -8,6 +8,9 @@
 // eligible windows.
 
 export interface SelectableTravelWindow {
+  captureProtocolVersion?: number | null;
+  expectedCaptureEndsAtUtc?: string | null;
+  captureUntilUtc?: string;
   id: string;
   scheduledStartAtUtc: string;
   startsAtUtc: string;
@@ -121,6 +124,7 @@ export function selectActivePingWindow<T extends SelectableTravelWindow>(
   const candidates = windows.filter(
     (window) =>
       isTravelActive(window, nowMs) &&
+      (window.captureProtocolVersion !== 2 || nowMs <= Date.parse(window.captureUntilUtc ?? window.expectedCaptureEndsAtUtc ?? window.endsAtUtc)) &&
       scheduledStartValue(window) >= latestArrivedStart
   );
 

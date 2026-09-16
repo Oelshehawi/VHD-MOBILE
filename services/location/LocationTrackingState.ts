@@ -7,7 +7,7 @@ import type {
 import { debugLogger } from '@/utils/DebugLogger';
 
 const LOCATION_TRACKING_STATE_KEY = 'vhd_location_tracking_state_v1';
-const MAX_PERSISTED_WINDOWS = 12;
+const MAX_PERSISTED_WINDOWS = 64;
 let stateMutationTail: Promise<void> = Promise.resolve();
 
 function runStateMutation<T>(mutation: () => Promise<T>): Promise<T> {
@@ -50,6 +50,11 @@ function notifyPermissionStateListeners(state: PermissionState | null): void {
 }
 
 export interface PersistedTrackingWindow {
+  captureProtocolVersion?: number;
+  expectedCaptureEndsAtUtc?: string;
+  recoveryEndsAtUtc?: string;
+  captureUntilUtc?: string;
+  travelTimeMinutes?: number;
   definitionEndsAt?: string;
   definitionVersion?: number;
   definitionUpdatedAt?: string;
@@ -70,6 +75,7 @@ export interface PersistedTrackingWindow {
 }
 
 export interface PersistedGeofenceRegion {
+  definitionVersion?: number;
   identifier: string;
   // Empty for the standing depot wake region, which belongs to no window.
   trackingWindowId: string;
@@ -185,7 +191,7 @@ function normalizeState(value: Partial<LocationTrackingState> | null): LocationT
 
   return {
     ownerAppUserId: value.ownerAppUserId,
-    historicalWindows: Array.isArray(value.historicalWindows) ? value.historicalWindows.filter(window => Date.parse(window.endsAtUtc) > Date.now() - 13 * 86400000) : [],
+    historicalWindows: Array.isArray(value.historicalWindows) ? value.historicalWindows.filter(window => Date.parse(window.endsAtUtc) > Date.now() - 30 * 86400000) : [],
     windows: Array.isArray(value.windows) ? value.windows : [],
     closedScheduleIds: uniqueStrings(
       Array.isArray(value.closedScheduleIds) ? value.closedScheduleIds : []
@@ -298,6 +304,11 @@ export async function clearLocationTrackingState(): Promise<void> {
 
 export function toPersistedWindows(windows: ParsedTrackingWindow[]): PersistedTrackingWindow[] {
   return windows.slice(0, MAX_PERSISTED_WINDOWS).map((window) => ({
+    captureProtocolVersion: window.captureProtocolVersion ?? undefined,
+    recoveryEndsAtUtc: window.recoveryEndsAtUtc ?? undefined,
+    expectedCaptureEndsAtUtc: window.expectedCaptureEndsAtUtc ?? undefined,
+    captureUntilUtc: window.captureUntilUtc,
+    travelTimeMinutes: window.travelTimeMinutes ?? undefined,
     definitionVersion: window.definitionVersion ?? undefined,
     definitionUpdatedAt: window.definitionUpdatedAt ?? undefined,
     id: window.id,

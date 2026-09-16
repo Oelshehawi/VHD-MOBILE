@@ -229,6 +229,9 @@ const fieldstaff = new Table(
 
 const techniciantrackingwindows = new Table(
   {
+    captureProtocolVersion: column.integer,
+    recoveryEndsAtUtc: column.text,
+    expectedCaptureEndsAtUtc: column.text,
     definitionVersion: column.integer,
     definitionUpdatedAt: column.text,
     // id column (text) is automatically included

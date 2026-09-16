@@ -6,7 +6,7 @@ export function mergeWindowHistory(history: PersistedTrackingWindow[], previous:
     const replacement = current.find(item => item.id === window.id && (item.definitionVersion ?? 1) > (window.definitionVersion ?? 1));
     if (replacement?.definitionUpdatedAt) window.definitionEndsAt = replacement.definitionUpdatedAt;
   }
-  return [...byVersion.values()].filter(window => Date.parse(window.endsAtUtc) > Date.now() - 13 * 86400000);
+  return [...byVersion.values()].filter(window => Date.parse(window.endsAtUtc) > Date.now() - 30 * 86400000);
 }
 
 export function windowsAtSampleTime(windows: PersistedTrackingWindow[], at: number): PersistedTrackingWindow[] {

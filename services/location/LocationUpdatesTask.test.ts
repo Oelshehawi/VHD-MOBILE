@@ -70,6 +70,24 @@ async function seedState(windows: PersistedTrackingWindow[]): Promise<void> {
 }
 
 describe('processLocationUpdate', () => {
+  it('retains delivered v2 recovery fixes after continuous capture grace expires', async () => {
+    await seedState([persistedWindow({ id: 'recovery', captureProtocolVersion: 2,
+      captureUntilUtc: new Date(Date.now() - 60000).toISOString() })]);
+    await processLocationUpdate({ locations: [fix(0)] });
+    expect(postedEvents()).toEqual([expect.objectContaining({
+      trackingWindowId: 'recovery', captureProtocolVersion: 2, eventType: 'location_ping'
+    })]);
+  });
+  it('stores one physical protocol-2 fix for overlapping jobs', async () => {
+    jest.clearAllMocks();
+    await resetLocationTestDatabase();
+    await seedState([persistedWindow({ id: 'v2-a', captureProtocolVersion: 2 }), persistedWindow({ id: 'v2-b', captureProtocolVersion: 2 })]);
+    await processLocationUpdate({ locations: [fix(0)] });
+    const events = postedEvents();
+    expect(events).toHaveLength(1);
+    expect(events[0].captureProtocolVersion).toBe(2);
+    expect(events[0].physicalSampleId).toBeTruthy();
+  });
   beforeEach(async () => {
     jest.clearAllMocks();
     await resetLocationTestDatabase();

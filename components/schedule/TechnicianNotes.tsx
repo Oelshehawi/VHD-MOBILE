@@ -31,6 +31,7 @@ export function TechnicianNotes({ schedule, scheduleId }: TechnicianNotesProps) 
 
     try {
       setIsSaving(true);
+      await (await import('@/services/location/WorkTrackingGate')).assertTrackingReadyForWork();
 
       // Update local PowerSync database
       await powerSync.execute(`UPDATE schedules SET technicianNotes = ? WHERE id = ?`, [

@@ -55,7 +55,7 @@ export const MAX_RECORDED_AT_STALENESS_MS = 60 * 60 * 1000; // 1 hour
 // being deleted on-device. The 1-hour bound above still guards any path that
 // cannot vouch for a fix's provenance (e.g. getLastKnownPositionAsync). Stay
 // just inside the backend's 14-day MAX_PAST_EVENT_AGE_MS.
-export const MAX_TRAIL_RECORDED_AT_STALENESS_MS = 13 * 24 * 60 * 60 * 1000;
+export const MAX_TRAIL_RECORDED_AT_STALENESS_MS = 30 * 24 * 60 * 60 * 1000;
 
 // Returns an ISO recordedAt guaranteed inside the backend bounds, or null when
 // the fix is too stale to attribute to the current moment (caller should skip
@@ -107,7 +107,7 @@ export function normalizeLocationHeading(
 }
 
 export function buildBaseEvent(
-  window: Pick<PersistedTrackingWindow, 'id' | 'scheduleId'>,
+  window: Pick<PersistedTrackingWindow, 'id' | 'scheduleId' | 'captureProtocolVersion' | 'definitionVersion'>,
   eventType: MobileLocationEvent['eventType'],
   source: MobileLocationEvent['source']
 ): MobileLocationEvent | null {
@@ -117,6 +117,8 @@ export function buildBaseEvent(
   }
 
   return {
+    captureProtocolVersion: window.captureProtocolVersion,
+    windowDefinitionVersion: window.definitionVersion,
     trackingWindowId: window.id,
     scheduleId: window.scheduleId,
     eventType,
@@ -332,7 +334,7 @@ export async function stopLocationUpdatesIfNoActivePersistedWindow(reason: strin
 
 export async function startLocationUpdatesForWindows(
   windows: Array<
-    Pick<PersistedTrackingWindow, 'id' | 'pingIntervalSeconds' | 'onSitePingIntervalSeconds'>
+    Pick<PersistedTrackingWindow, 'id' | 'pingIntervalSeconds' | 'onSitePingIntervalSeconds'> & { captureProtocolVersion?: number | null }
   >,
   mode: LocationUpdatesMode = 'travel'
 ): Promise<void> {
@@ -355,7 +357,8 @@ export async function startLocationUpdatesForWindows(
   // battery win while parked on site, where liveness matters least. During
   // travel it only delays the live map — exactly when the truck's position is
   // most useful — so deliver those fixes as they arrive.
-  const deferredUpdatesInterval = mode === 'on-site' ? intervalSeconds * 1000 : 0;
+  const protocol2 = windows.some(w => w.captureProtocolVersion === 2);
+  const deferredUpdatesInterval = mode === 'on-site' && !protocol2 ? intervalSeconds * 1000 : 0;
   const locationUpdatesSignature = `${mode}:${intervalSeconds}:0:${deferredUpdatesInterval}`;
   const state = await readLocationTrackingState();
   const started = await Location.hasStartedLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME);
@@ -369,7 +372,7 @@ export async function startLocationUpdatesForWindows(
   }
 
   await Location.startLocationUpdatesAsync(LOCATION_UPDATES_TASK_NAME, {
-    accuracy: mode === 'on-site' ? Location.Accuracy.Balanced : Location.Accuracy.High,
+    accuracy: protocol2 || mode !== 'on-site' ? Location.Accuracy.High : Location.Accuracy.Balanced,
     timeInterval: intervalSeconds * 1000,
     distanceInterval: 0,
     deferredUpdatesInterval,

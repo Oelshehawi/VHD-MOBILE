@@ -98,6 +98,7 @@ async function captureInitialDepotEnterEvents(args: { activeWindows: ParsedTrack
     }
 
     const event: MobileLocationEvent = {
+      captureProtocolVersion: window.captureProtocolVersion,
       trackingWindowId: window.id,
       windowDefinitionVersion: window.definitionVersion,
       scheduleId: window.scheduleId,

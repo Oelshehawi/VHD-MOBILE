@@ -21,6 +21,7 @@ import {
   getPingIntervalSecondsForState,
   hasFiniteFixCoords,
   isWindowOnSite,
+  isPersistedWindowPingActive,
   normalizeLocationHeading,
   normalizeRecordedAt,
   shouldEmitLocationPing,
@@ -146,7 +147,10 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
 
     const recordedAtMs = Date.parse(recordedAt);
     const sampleWindows = windowsAtSampleTime(windows, recordedAtMs);
-    const selectedWindow = getActivePersistedPingWindows(sampleWindows, [], new Date(recordedAtMs))[0];
+    // Retain delivered recovery fixes even after continuous capture grace.
+    // An accurate on-site recovery fix can then extend capture below.
+    const selectedWindow = getActivePersistedPingWindows(sampleWindows, [], new Date(recordedAtMs))[0]
+      ?? sampleWindows.find(window => window.captureProtocolVersion === 2 && isPersistedWindowPingActive(window, new Date(recordedAtMs)));
     if (!selectedWindow) continue;
     const presenceWindows = getActivePersistedPresenceWindows(sampleWindows, selectedWindow.id, new Date(recordedAtMs));
     // Only a fresh, accurate inside fix can extend local capture. This is not
@@ -159,6 +163,8 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
         distance + accuracy <= (window.jobSiteRadiusMeters ?? 0)) {
         window.endsAtUtc = new Date(Math.max(Date.parse(window.endsAtUtc), Math.min(
           recordedAtMs + 30 * 60000, Date.parse(window.scheduledStartAtUtc) + 14 * 3600000))).toISOString();
+        if (window.captureProtocolVersion === 2) window.captureUntilUtc = new Date(Math.min(
+          recordedAtMs + 90 * 60000, Date.parse(window.endsAtUtc))).toISOString();
       }
     }
     const throttle = Object.fromEntries(presenceWindows.map(window => {
@@ -201,7 +207,9 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
   const retained = pings;
 
   const events: MobileLocationEvent[] = retained.flatMap((ping) =>
-    ping.windows.map((window) => ({
+    ping.windows.filter((window, index, all) => window.captureProtocolVersion !== 2 || index === all.findIndex(w => w.captureProtocolVersion === 2)).map((window) => ({
+      captureProtocolVersion: window.captureProtocolVersion,
+      physicalSampleId: `${ping.recordedAt}:${ping.location.coords.latitude}:${ping.location.coords.longitude}`,
       trackingWindowId: window.id,
       windowDefinitionVersion: window.definitionVersion,
       scheduleId: window.scheduleId,
@@ -225,6 +233,8 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
     ...current,
     windows: current.windows.map(window => {
       const extended = windows.find(item => item.id === window.id && item.definitionVersion === window.definitionVersion && Date.parse(item.endsAtUtc) > Date.parse(window.endsAtUtc));
+      const captured = windows.find(item => item.id === window.id && item.definitionVersion === window.definitionVersion);
+      if (window.captureProtocolVersion === 2 && captured) return { ...window, captureUntilUtc: captured.captureUntilUtc };
       return extended && !current.closedScheduleIds.includes(window.scheduleId) ? { ...window, endsAtUtc: extended.endsAtUtc } : window;
     })
   }));

@@ -196,6 +196,17 @@ function jobRegionEvent(eventType: number) {
 }
 
 describe('processGeofenceEvent', () => {
+  it('persists protocol-2 crossings before asking for GPS, including re-entry', async () => {
+    await seedStateForGeofenceEvent();
+    const initial = await readLocationTrackingState();
+    await writeLocationTrackingState({ ...initial, windows: initial.windows.map(w => ({ ...w, captureProtocolVersion: 2 })) });
+    await processGeofenceEvent(jobRegionEvent(1));
+    await processGeofenceEvent(jobRegionEvent(2));
+    await processGeofenceEvent(jobRegionEvent(1));
+    const calls = jest.mocked(enqueueLocationEvent).mock.calls.map(call => call[0]);
+    expect(calls.filter(e => e.source === 'geofence').map(e => e.eventType)).toEqual(['geofence_enter', 'geofence_exit', 'geofence_enter']);
+    expect(jest.mocked(enqueueLocationEvent).mock.invocationCallOrder[0]).toBeLessThan(jest.mocked(Location.getLastKnownPositionAsync).mock.invocationCallOrder[0]);
+  });
   beforeEach(() => {
     jest.clearAllMocks();
   });
