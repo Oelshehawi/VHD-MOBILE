@@ -6,6 +6,7 @@ import { flushLocationEventQueue } from './LocationEventQueue';
 import { getLocationOwner } from './LocationAccount';
 import { locationThrottleKey, persistLocationEvents, readCapturedBuckets, readThrottle, serializeLocationCapture } from './LocationOutbox';
 import { windowsAtSampleTime } from './locationWindowHistory';
+import { applyJobCaptureDecisions, filterJobCaptureEvents } from './TrackingEvidence';
 import {
   readLocationTrackingState,
   updateLocationTrackingState
@@ -89,6 +90,7 @@ export async function processLocationUpdate(
   taskData: LocationUpdatesTaskData | undefined
 ): Promise<void> {
   await serializeLocationCapture(() => captureLocationUpdate(taskData));
+  await applyJobCaptureDecisions();
   await flushLocationEventQueue();
   const { reportTrackingHealth } = require('./TrackingHealth') as typeof import('./TrackingHealth');
   await reportTrackingHealth();
@@ -164,7 +166,8 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
         window.endsAtUtc = new Date(Math.max(Date.parse(window.endsAtUtc), Math.min(
           recordedAtMs + 30 * 60000, Date.parse(window.scheduledStartAtUtc) + 14 * 3600000))).toISOString();
         if (window.captureProtocolVersion === 2) window.captureUntilUtc = new Date(Math.min(
-          recordedAtMs + 90 * 60000, Date.parse(window.endsAtUtc))).toISOString();
+          Math.max(Date.parse(window.expectedCaptureEndsAtUtc ?? window.captureUntilUtc ?? window.endsAtUtc), recordedAtMs + 30 * 60000),
+          Date.parse(window.scheduledStartAtUtc) + 14 * 3600000, Date.parse(window.endsAtUtc))).toISOString();
       }
     }
     const throttle = Object.fromEntries(presenceWindows.map(window => {
@@ -227,7 +230,7 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
 
   // Save the entire downsampled trail before the independently chunked upload.
   // The same transaction advances the SQLite throttle, the only ping throttle.
-  await persistLocationEvents(owner.appUserId, events);
+  await persistLocationEvents(owner.appUserId, await filterJobCaptureEvents(events, windows));
 
   await updateLocationTrackingState((current) => ({
     ...current,

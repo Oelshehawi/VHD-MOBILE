@@ -1,5 +1,13 @@
 import { jest } from '@jest/globals';
 import './mockSqlite';
+jest.mock('@/services/background/clerkBootstrap', () => ({
+  loadBackgroundClerk: async () => ({ session: null })
+}));
+jest.mock('expo/fetch', () => ({ fetch: jest.fn() }));
+jest.mock('@/services/background/BackgroundAuth', () => ({
+  getBackgroundToken: async () => null,
+  refreshBackgroundToken: async () => null
+}));
 
 jest.mock('@/services/location/LocationAccount', () => ({
   getLocationOwner: jest.fn(async () => ({ appUserId: 'app-user-1', fieldStaffId: 'tech-1' }))

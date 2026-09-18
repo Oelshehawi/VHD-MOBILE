@@ -227,7 +227,8 @@ export class LocationTrackingCoordinator {
     const decisions = windows.some(w => w.captureProtocolVersion === 2)
       ? await (require('./TrackingEvidence') as typeof import('./TrackingEvidence')).getTrackingDecisions() : null;
     const liveWindows = windows.filter((window) => window.captureProtocolVersion === 2
-      ? !decisions?.retiredWindowIds.includes(window.id) : !closedScheduleIdSet.has(window.scheduleId));
+      ? !decisions?.captureClosures?.some(c => c.windowId === window.id && c.definitionVersion === (window.definitionVersion ?? 1))
+      : !closedScheduleIdSet.has(window.scheduleId));
     const relevantWindows = getRelevantTrackingWindows(liveWindows.map(window => {
       const saved = existingState.windows.find(item => item.id === window.id && (item.definitionVersion ?? 1) === (window.definitionVersion ?? 1));
       const restored = saved && Date.parse(saved.endsAtUtc) > Date.parse(window.endsAtUtc) ? { ...window, endsAtUtc: saved.endsAtUtc } : window;
@@ -284,7 +285,8 @@ export class LocationTrackingCoordinator {
       // regions never emit presence events outside a window.
       const { regions, metadata } = buildGeofenceRegions([], new Set(), {
         upcomingWindows,
-        standingDepotTarget
+        standingDepotTarget: [...windows, ...(existingState.historicalWindows ?? [])].some(w => w.captureProtocolVersion === 2)
+          ? null : standingDepotTarget
       });
       const keepWakeRegions =
         regions.length > 0 && (await readPermissionStateFromOs()).kind === 'granted';

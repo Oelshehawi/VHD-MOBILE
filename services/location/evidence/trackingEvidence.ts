@@ -11,6 +11,14 @@ import {
 export const RECOVERY_MS = 48 * 3600000;
 export const REPORTING_GAP_MS = 5 * 60000;
 export const NEW_OUTING_GAP_MS = 4 * 3600000;
+export const JOB_EXIT_GRACE_MS = 30 * 60000;
+
+export interface CaptureClosure {
+  windowId: string;
+  definitionVersion: number;
+  closedAt: string;
+  reason: "job_exit" | "capture_timeout";
+}
 
 export interface EvidenceWindow {
   captureProtocolVersion?: number;
@@ -21,6 +29,7 @@ export interface EvidenceWindow {
   startsAtUtc: string;
   scheduledStartAtUtc: string;
   recoveryEndsAtUtc: string;
+  expectedCaptureEndsAtUtc?: string;
   effectiveFrom?: string;
   effectiveUntil?: string;
   jobSite: PresenceRegionTarget;
@@ -77,6 +86,8 @@ export interface TrackingOuting {
     | "depot_first_observed"
     | "next_outing"
     | "recovery_expired"
+    | "job_exit"
+    | "capture_timeout"
     | null;
   depotDepartedAt: string | null;
   depotReturnedAt: string | null;
@@ -129,6 +140,7 @@ export function projectTrackingEvidence(
   events: EvidenceEvent[],
   windows: EvidenceWindow[],
   now = new Date(),
+  jobScopedCapture = false,
 ) {
   type State = {
     presence: WindowPresence;
@@ -143,6 +155,13 @@ export function projectTrackingEvidence(
   const transitions: EvidenceTransition[] = [];
   const outings: TrackingOuting[] = [];
   const gaps: EvidenceGap[] = [];
+  const captureClosures = new Map<string, CaptureClosure>();
+  const keyFor = (w: EvidenceWindow) => `${w.id}:${w.definitionVersion}`;
+  const deadlines = new Map(windows.map(w => [keyFor(w), Math.min(
+    Date.parse(w.expectedCaptureEndsAtUtc ?? new Date(Date.parse(w.scheduledStartAtUtc) + 6 * 3600000).toISOString()),
+    Date.parse(w.scheduledStartAtUtc) + 14 * 3600000,
+    Date.parse(w.recoveryEndsAtUtc),
+  )]));
   let depotContext: EvidenceTransition | undefined;
   let outing: TrackingOuting | undefined;
   let lastFix: number | undefined;
@@ -155,7 +174,7 @@ export function projectTrackingEvidence(
     for (const segment of outing.segments)
       if (!segment.exitedAt) segment.incomplete = true;
     outing.status =
-      reason === "depot_return" && !outing.segments.some((s) => s.incomplete)
+      (reason === "depot_return" || reason === "job_exit") && !outing.segments.some((s) => s.incomplete)
         ? "completed"
         : "incomplete";
     outing = undefined;
@@ -191,8 +210,27 @@ export function projectTrackingEvidence(
     }
     return outing;
   };
+  const expireCapture = (at: number) => {
+    if (!jobScopedCapture) return;
+    for (const w of windows) {
+      const deadline = deadlines.get(keyFor(w))!;
+      if (w.captureProtocolVersion !== 2 || captureClosures.has(keyFor(w)) ||
+        (w.effectiveUntil && Date.parse(w.effectiveUntil) <= deadline) || at <= deadline) continue;
+      captureClosures.set(keyFor(w), { windowId: w.id, definitionVersion: w.definitionVersion,
+        closedAt: new Date(deadline).toISOString(), reason: "capture_timeout" });
+    }
+    if (outing?.windowIds.length && outing.windowIds.every(id => {
+      const current = windows.filter(w => w.id === id && !w.effectiveUntil);
+      return current.length > 0 && current.every(w => captureClosures.has(keyFor(w)));
+    })) {
+      const closedAt = Math.max(...[...captureClosures.values()]
+        .filter(c => outing!.windowIds.includes(c.windowId)).map(c => Date.parse(c.closedAt)));
+      finish(new Date(closedAt).toISOString(), "capture_timeout");
+    }
+  };
   for (const event of normalizeEvidenceEvents(events)) {
     const at = Date.parse(event.recordedAt);
+    expireCapture(at);
     if (outing && at > Date.parse(outing.recoveryEndsAt))
       finish(outing.recoveryEndsAt, "recovery_expired");
     const sampleAt = Date.parse(event.deviceRecordedAt ?? event.recordedAt);
@@ -222,11 +260,13 @@ export function projectTrackingEvidence(
     }
     const eligible = windows.filter(
       (w) =>
+        (!jobScopedCapture || !captureClosures.has(keyFor(w))) &&
         at >= Date.parse(w.startsAtUtc) &&
         at <= Date.parse(w.recoveryEndsAtUtc) &&
         (!w.effectiveFrom || at >= Date.parse(w.effectiveFrom)) &&
         (!w.effectiveUntil || at < Date.parse(w.effectiveUntil)),
     );
+    if (jobScopedCapture && !eligible.length) continue;
     const eventTransitions: EvidenceTransition[] = [];
     const evaluate = (
       w: EvidenceWindow,
@@ -334,6 +374,14 @@ export function projectTrackingEvidence(
           accuracyMeters: event.accuracyMeters,
           recordedAt: new Date(sampleAt),
         };
+        if (jobScopedCapture && w.captureProtocolVersion === 2 && region === "job" &&
+          classifySampleForTarget(sample, w.jobSite) === "inside") {
+          deadlines.set(keyFor(w), Math.min(
+            Math.max(deadlines.get(keyFor(w))!, sampleAt + JOB_EXIT_GRACE_MS),
+            Date.parse(w.scheduledStartAtUtc) + 14 * 3600000,
+            Date.parse(w.recoveryEndsAtUtc),
+          ));
+        }
         // A fresh inside observation can reconnect an interrupted visit for
         // departure evidence, never for measuring the unobserved interval.
         if (
@@ -370,6 +418,7 @@ export function projectTrackingEvidence(
       (a, b) => Number(a.region === "depot") - Number(b.region === "depot"),
     );
     for (const t of eventTransitions) {
+      if (jobScopedCapture && t.region === "depot" && eligible.every(w => captureClosures.has(keyFor(w)))) continue;
       transitions.push(t);
       if (t.region === "job" && t.type === "enter") {
         if (
@@ -397,15 +446,28 @@ export function projectTrackingEvidence(
           .reverse()
           .find((s) => s.windowId === t.windowId && !s.exitedAt);
         if (segment) segment.exitedAt = t.at;
+        if (jobScopedCapture && windows.some(w => w.id === t.windowId &&
+          w.definitionVersion === t.definitionVersion && w.captureProtocolVersion === 2)) {
+          captureClosures.set(`${t.windowId}:${t.definitionVersion}`, {
+            windowId: t.windowId, definitionVersion: t.definitionVersion,
+            closedAt: t.confirmedAt, reason: "job_exit",
+          });
+          if (outing?.segments.length && outing.segments.every(s => s.exitedAt)) {
+            t.outingId = outing.id;
+            finish(t.confirmedAt, "job_exit");
+          }
+        }
       } else if (t.region === "depot" && t.type === "exit") {
         if (outing && gapBeforeCurrent >= NEW_OUTING_GAP_MS)
           finish(t.at, "next_outing");
         const current = open({ ...event, recordedAt: t.at });
         current.depotDepartedAt ??= t.at;
+        if (jobScopedCapture && !current.windowIds.includes(t.windowId)) current.windowIds.push(t.windowId);
       } else if (
         t.region === "depot" &&
         t.type === "enter" &&
-        outing && (outing.segments.length > 0 || outing.depotDepartedAt)
+        outing &&
+        (outing.segments.length > 0 || outing.depotDepartedAt)
       ) {
         const occupied = eligible.some(
           (w) =>
@@ -430,12 +492,14 @@ export function projectTrackingEvidence(
     }
     if (freshFix) lastFix = sampleAt;
   }
+  expireCapture(now.getTime());
   if (outing && now.getTime() > Date.parse(outing.recoveryEndsAt))
     finish(outing.recoveryEndsAt, "recovery_expired");
   return {
     outings,
     transitions,
     gaps,
+    captureClosures: [...captureClosures.values()],
     presence: Object.fromEntries(
       [...states].map(([id, s]) => {
         const definition = windows.find(

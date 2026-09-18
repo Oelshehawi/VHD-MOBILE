@@ -10,6 +10,7 @@ import { debugLogger } from '@/utils/DebugLogger';
 import { enqueueLocationEvent, flushLocationEventQueue } from './LocationEventQueue';
 import { serializeLocationCapture } from './LocationOutbox';
 import { getLocationOwner } from './LocationAccount';
+import { applyJobCaptureDecisions, filterJobCaptureEvents, getTrackingDecisions } from './TrackingEvidence';
 import { withTimeout } from '@/services/background/withTimeout';
 import {
   markWindowArrived,
@@ -349,6 +350,7 @@ async function getDeviceCoords(): Promise<{
 export async function processGeofenceEvent(taskData: GeofenceTaskData | undefined): Promise<void> {
   const recordedAtMs = Date.now();
   const wake = await serializeLocationCapture(() => captureGeofenceEvent(taskData, recordedAtMs));
+  await applyJobCaptureDecisions();
   if (wake) {
     // Upload a job wake crossing first: the refresh (PowerSync connect) can
     // outlast iOS's short background budget.
@@ -391,6 +393,8 @@ if (!region?.identifier || taskData?.eventType === undefined) {
   // A job wake crossing is real evidence once its saved work window is active.
   // Outside that range (including the standing depot), no coordinates are sent.
   if (!window || (window.captureProtocolVersion !== 2 && state.closedScheduleIds.includes(window.scheduleId)) || !isPersistedWindowPingActive(window, new Date(recordedAtMs))) return true;
+  if (window.captureProtocolVersion === 2 && (await getTrackingDecisions())?.captureClosures?.some(c =>
+    c.windowId === window.id && c.definitionVersion === (window.definitionVersion ?? 1) && recordedAtMs > Date.parse(c.closedAt))) return false;
 
   const platform = getEventPlatform();
   if (!platform) {
@@ -438,14 +442,11 @@ if (!region?.identifier || taskData?.eventType === undefined) {
 
   await enqueueLocationEvent(event);
   if (window.captureProtocolVersion === 2) {
-    await updateLocationTrackingState(current => ({ ...current, windows: current.windows.map(w => w.id === window.id ? {
-      ...w, captureUntilUtc: new Date(Math.min(Date.parse(w.endsAtUtc), recordedAtMs + Math.max(90, (w.travelTimeMinutes ?? 60) + 30) * 60000)).toISOString()
-    } : w) }));
     const fix = await getDeviceCoords();
-    if (fix) await enqueueLocationEvent({ captureProtocolVersion: 2, trackingWindowId: window.id,
+    if (fix) for (const captured of await filterJobCaptureEvents([{ captureProtocolVersion: 2, trackingWindowId: window.id,
       windowDefinitionVersion: window.definitionVersion, scheduleId: window.scheduleId, eventType: 'location_ping',
       lat: fix.deviceLat, lng: fix.deviceLng, accuracyMeters: fix.deviceAccuracyMeters,
-      recordedAt: fix.deviceRecordedAt, source: 'background_location', platform });
+      recordedAt: fix.deviceRecordedAt, source: 'background_location', platform }], state.windows)) await enqueueLocationEvent(captured);
   }
   await recordGeofenceTransition({ trackingWindowId: metadata.trackingWindowId, regionType: metadata.regionType, eventType, recordedAt });
   await handleJobGeofenceSideEffects(eventType, metadata.regionType, metadata.trackingWindowId);

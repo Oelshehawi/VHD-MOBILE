@@ -64,6 +64,8 @@ async function refreshInternal(trigger: LocationRefreshTrigger): Promise<void> {
   await flushLocationEventQueue();
   const { refreshTrackingDecisions } = require('./TrackingEvidence') as typeof import('./TrackingEvidence');
   await refreshTrackingDecisions();
+  const { applyJobCaptureDecisions } = require('./TrackingEvidence') as typeof import('./TrackingEvidence');
+  await applyJobCaptureDecisions();
   const { reportTrackingHealth } = require('./TrackingHealth') as typeof import('./TrackingHealth');
   await reportTrackingHealth();
 }

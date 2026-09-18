@@ -14,6 +14,7 @@ import {
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 
 jest.mock('@/services/location/LocationTrackingRefreshRunner', () => ({
+  ...(jest.requireActual('@/services/location/LocationTrackingRefreshRunner') as object),
   refreshLocationTracking: jest.fn(async () => undefined)
 }));
 import {

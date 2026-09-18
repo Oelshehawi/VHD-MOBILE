@@ -1,6 +1,28 @@
 # Mobile Release Workflow
 
-Last updated: 2026-09-16
+Last updated: 2026-09-17
+
+## Job-Scoped Capture OTA
+
+The 2.1.0 JavaScript update stops each technician's completed job monitoring on
+confirmed exit, including offline. It removes completed-job regions and does
+not wait for depot return. Other active assignments continue; future jobs begin
+at their lead-in. Stale synced definitions cannot reopen a completed version.
+Planned capture plus 30-minute grace bounds missing exits; fresh on-site evidence
+extends grace, with a 14-hour hard cap. Missing exits stay unconfirmed.
+
+Deploy the matching backend, then publish from this 2.1.0 checkout:
+
+```sh
+eas update --channel production --environment production --platform all --message "fix: stop job tracking after confirmed departure"
+```
+
+Verify channel mapping and production environment before publication. App-version
+runtime targeting sends this OTA to compatible 2.1.0 binaries only. Git push does
+not publish an OTA. Devices must download and apply/reload it; backend deployment
+alone cannot enforce offline privacy on older JavaScript. Test one device per
+platform for confirmed exit, offline exit, overlapping jobs and the next job's
+lead-in. No native configuration or dependencies changed for this update.
 
 ## Choose The Release Type
 
