@@ -325,7 +325,6 @@ export function ReportCloseoutContent({
 
     setIsSaving(true);
     try {
-      await (await import('@/services/location/WorkTrackingGate')).assertTrackingReadyForWork();
       const completedAt = new Date();
       const scheduleSource = schedule || {
         scheduledStartAtUtc: fallbackScheduledStartAtUtc,

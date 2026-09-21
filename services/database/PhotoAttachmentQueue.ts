@@ -200,7 +200,6 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
   }
 
   async queuePhotos(photos: QueuePhotoInput[], options?: QueuePhotosOptions): Promise<string[]> {
-    await (await import('@/services/location/WorkTrackingGate')).assertTrackingReadyForWork();
     if (!photos || photos.length === 0) return [];
 
     const startedAt = Date.now();

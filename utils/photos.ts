@@ -29,6 +29,9 @@ export const showToast = (message: string) => {
 };
 
 export const requestMediaPermission = async (type: 'camera' | 'gallery'): Promise<boolean> => {
+  // The iOS system photo picker (with editing disabled) grants access to selected photos itself.
+  if (Platform.OS === 'ios' && type === 'gallery') return true;
+
   if (Platform.OS !== 'web') {
     const permissionResult =
       type === 'camera'

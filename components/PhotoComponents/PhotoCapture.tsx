@@ -338,7 +338,6 @@ export function PhotoCapture({
       setIsDeleting(true);
       const photoId = photoToDelete.id;
 
-      await (await import('@/services/location/WorkTrackingGate')).assertTrackingReadyForWork();
       await powerSync.writeTransaction(async (tx) => {
         await tx.execute(`DELETE FROM photos WHERE id = ?`, [photoId]);
 

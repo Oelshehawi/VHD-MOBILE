@@ -245,7 +245,6 @@ export function JobDetailModal({
     try {
       setIsMarkingCheque(true);
       setChequeError(null);
-      await (await import('@/services/location/WorkTrackingGate')).assertTrackingReadyForWork();
 
       await powerSync.execute(
         `UPDATE invoices SET status = ?, paymentMethod = ?, paymentDatePaid = ? WHERE id = ?`,
@@ -284,7 +283,6 @@ export function JobDetailModal({
       setSendInvoiceError(null);
       setSendInvoiceMessage(null);
 
-      await (await import('@/services/location/WorkTrackingGate')).assertTrackingReadyForWork();
       const result = await new ApiClient().sendInvoice(scheduleId, technicianId);
       if (!result.success) {
         setSendInvoiceError(result.error || 'Failed to send invoice. Please try again.');
