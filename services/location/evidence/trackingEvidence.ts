@@ -12,6 +12,7 @@ export const RECOVERY_MS = 48 * 3600000;
 export const REPORTING_GAP_MS = 5 * 60000;
 export const NEW_OUTING_GAP_MS = 4 * 3600000;
 export const JOB_EXIT_GRACE_MS = 30 * 60000;
+export const MIN_JOB_VISIT_MS = 2 * 60000;
 
 export interface CaptureClosure {
   windowId: string;
@@ -73,6 +74,7 @@ export interface VisitSegment {
   exitedAt: string | null;
   arrivalQuality: EvidenceTransition["quality"];
   incomplete: boolean;
+  briefStop?: boolean;
 }
 export interface TrackingOuting {
   contextStartedAt?: string;
@@ -87,6 +89,7 @@ export interface TrackingOuting {
     | "next_outing"
     | "recovery_expired"
     | "job_exit"
+    | "brief_stop"
     | "capture_timeout"
     | null;
   depotDepartedAt: string | null;
@@ -446,6 +449,21 @@ export function projectTrackingEvidence(
           .reverse()
           .find((s) => s.windowId === t.windowId && !s.exitedAt);
         if (segment) segment.exitedAt = t.at;
+        // A crossing of a large job boundary is not necessarily a work visit.
+        // Keep the definition eligible so a later arrival can still be tracked.
+        if (
+          segment &&
+          Date.parse(t.at) - Date.parse(segment.enteredAt) < MIN_JOB_VISIT_MS
+        ) {
+          segment.briefStop = true;
+          segment.incomplete = true;
+          t.outingId = outing?.id ?? null;
+          if (outing?.segments.every((s) => s.exitedAt)) {
+            t.outingId = outing.id;
+            finish(t.confirmedAt, "brief_stop");
+          }
+          continue;
+        }
         if (jobScopedCapture && windows.some(w => w.id === t.windowId &&
           w.definitionVersion === t.definitionVersion && w.captureProtocolVersion === 2)) {
           captureClosures.set(`${t.windowId}:${t.definitionVersion}`, {

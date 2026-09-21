@@ -138,6 +138,7 @@ const reports = new Table(
     invoiceId: column.text,
     technicianId: column.text,
     dateCompleted: column.text,
+    submittedAt: column.text,
     reportStatus: column.text, // Writes draft/completed; reads legacy in_progress rows.
     jobTitle: column.text,
     location: column.text,

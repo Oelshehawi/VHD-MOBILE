@@ -1,6 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
 
-import { calculateActualServiceDurationMinutes } from './scheduleTime';
 import { resolveReportDateCompleted } from './reportCompletion';
 
 describe('resolveReportDateCompleted', () => {
@@ -16,8 +15,6 @@ describe('resolveReportDateCompleted', () => {
     expect(resolveReportDateCompleted(scheduleSource, completedAt)).toBe(
       '2026-06-25T00:00:00.000Z'
     );
-    // Duration is measured from the true scheduled start (no double-shift).
-    expect(calculateActualServiceDurationMinutes(scheduleSource, completedAt)).toBe(120);
   });
 
   it('keeps the submission-day date for an ordinary daytime job', () => {

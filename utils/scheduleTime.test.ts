@@ -1,7 +1,6 @@
 import { describe, expect, it } from '@jest/globals';
 
 import {
-  calculateActualServiceDurationMinutes,
   formatScheduleArrivalTime,
   formatScheduleDateReadable,
   formatScheduleTime,
@@ -113,29 +112,6 @@ describe('schedule service-day time helpers (true-instant storage)', () => {
     expect(isPostMidnightServiceTime(threeAm)).toBe(false);
   });
 
-  it('measures duration from the true start without double-shift', () => {
-    const midnight = {
-      scheduledStartAtUtc: '2026-06-26T07:00:00.000Z', // 00:00 Vancouver
-      timeZone: 'America/Vancouver'
-    };
-
-    // Completed at 02:00 Vancouver (2026-06-26T09:00:00Z) → 120 minutes.
-    expect(
-      calculateActualServiceDurationMinutes(midnight, new Date('2026-06-26T09:00:00.000Z'))
-    ).toBe(120);
-  });
-
-  it('clamps duration to zero (never negative) when completion precedes start', () => {
-    const midnight = {
-      scheduledStartAtUtc: '2026-06-26T07:00:00.000Z',
-      timeZone: 'America/Vancouver'
-    };
-
-    expect(
-      calculateActualServiceDurationMinutes(midnight, new Date('2026-06-26T06:30:00.000Z'))
-    ).toBe(0);
-  });
-
   it('leaves ordinary daytime jobs unchanged', () => {
     const schedule = {
       scheduledStartAtUtc: '2026-06-25T16:30:00.000Z', // 09:30 Vancouver
@@ -147,9 +123,6 @@ describe('schedule service-day time helpers (true-instant storage)', () => {
     expect(formatScheduleTime(schedule)).toBe('9:30 AM');
     expect(getScheduleHour(schedule)).toBe(9);
     expect(isPostMidnightServiceTime(schedule)).toBe(false);
-    expect(
-      calculateActualServiceDurationMinutes(schedule, new Date('2026-06-25T18:30:00.000Z'))
-    ).toBe(120);
   });
 
   it('resolves current app today to the active service day before 3 AM', () => {

@@ -5,7 +5,7 @@ import type * as Location from 'expo-location';
 import {
   processLocationUpdate
 } from '@/services/location/LocationUpdatesTask';
-import { persistLocationEvents, readThrottle } from '@/services/location/LocationOutbox';
+import { persistLocationEvents, readThrottle, setLocationMeta } from '@/services/location/LocationOutbox';
 import { resetLocationTestDatabase } from './__testSupport__/mockSqlite';
 import { writeLocationTrackingState } from '@/services/location/LocationTrackingState';
 import type { PersistedTrackingWindow } from '@/services/location/LocationTrackingState';
@@ -87,6 +87,33 @@ describe('processLocationUpdate', () => {
     expect(events).toHaveLength(1);
     expect(events[0].captureProtocolVersion).toBe(2);
     expect(events[0].physicalSampleId).toBeTruthy();
+  });
+  it('uses one cadence across separate callbacks with overlapping V2 jobs', async () => {
+    await seedState(['a', 'b'].map(id => persistedWindow({ id, captureProtocolVersion: 2, pingIntervalSeconds: 60 })));
+    for (let second = -125; second <= 0; second++) {
+      await processLocationUpdate({ locations: [fix(second)] });
+    }
+    const events = postedEvents();
+    expect(events).toHaveLength(4);
+    expect(new Set(events.map(event => event.recordedAt)).size).toBe(4);
+  });
+  it('does not let a closed historical job bypass the active physical cadence', async () => {
+    const windows = ['closed', 'active'].map(id => persistedWindow({ id, captureProtocolVersion: 2, pingIntervalSeconds: 60,
+      depotLat: 49.2, depotLng: -123, depotRadiusMeters: 150 }));
+    await seedState(windows);
+    await setLocationMeta('app-user-1:jobCaptureClosures', [{ windowId: 'closed', definitionVersion: 1,
+      closedAt: new Date(T0 - 180000).toISOString(), reason: 'job_exit' }]);
+    for (let second = -125; second <= 0; second++) await processLocationUpdate({ locations: [fix(second)] });
+    expect(postedEvents()).toHaveLength(4);
+    expect(postedEvents().every(event => event.trackingWindowId === 'active')).toBe(true);
+  });
+  it('keeps rapid boundary fixes between ordinary pings and ignores repeat delivery', async () => {
+    await seedState([persistedWindow({ id: 'v2', captureProtocolVersion: 2, pingIntervalSeconds: 60 })]);
+    for (const [second, latitude] of [[-100, 49.1], [-99, 49.1], [-90, JOB_SITE.lat], [-89, JOB_SITE.lat], [-80, 49.1]]) {
+      await processLocationUpdate({ locations: [fix(second, { latitude })] });
+    }
+    await processLocationUpdate({ locations: [fix(-80, { latitude: 49.1 })] });
+    expect(postedEvents()).toHaveLength(5);
   });
   beforeEach(async () => {
     jest.clearAllMocks();

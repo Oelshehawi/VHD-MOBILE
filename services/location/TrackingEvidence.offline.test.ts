@@ -16,6 +16,27 @@ beforeEach(async () => {
     geofenceRegions: [], activeLocationWindowIds: [], locationUpdatesStartedAt: undefined });
   jest.clearAllMocks();
 });
+it('keeps a brief stop eligible offline and closes only after a later work visit', async () => {
+  const base = Date.now() - 15 * 60000;
+  const at = (minute: number) => new Date(base + minute * 60000).toISOString();
+  const window = { id: 'w', scheduleId: 's', serviceJobId: 'j', captureProtocolVersion: 2,
+    definitionVersion: 1, startsAtUtc: at(-30), scheduledStartAtUtc: at(0), endsAtUtc: at(2880),
+    expectedCaptureEndsAtUtc: at(120), pingIntervalSeconds: 60,
+    jobSiteLat: 49, jobSiteLng: -123, jobSiteRadiusMeters: 175,
+    depotLat: 49.02, depotLng: -123, depotRadiusMeters: 150 };
+  await writeLocationTrackingState({ ...await readLocationTrackingState(), windows: [window] });
+  const capture = async (points: number[][]) => persistLocationEvents('app-user-1', points.map(([minute, lat]) => ({
+    captureProtocolVersion: 2, trackingWindowId: 'w', windowDefinitionVersion: 1,
+    eventType: 'location_ping', source: 'background_location', platform: 'ios', recordedAt: at(minute), lat, lng: -123, accuracyMeters: 5,
+  })));
+  await capture([[-1, 49.01], [0, 49], [0.1, 49], [0.4, 49.01], [3.4, 49.01]]);
+  expect((await getTrackingDecisions())?.retiredWindowIds).not.toContain('w');
+  await applyJobCaptureDecisions();
+  expect((await readLocationTrackingState()).windows.map(w => w.id)).toContain('w');
+  await capture([[4, 49], [5, 49], [6, 49], [7, 49.01], [10, 49.01]]);
+  expect((await getTrackingDecisions())?.captureClosures).toEqual([expect.objectContaining({ windowId: 'w', reason: 'job_exit', closedAt: at(10) })]);
+});
+
 it('keeps local evidence after upload acknowledgement and reconciles a depot return offline', async () => {
   const base = Date.now() - 600000;
   const at = (m: number) => new Date(base + m * 60000).toISOString();

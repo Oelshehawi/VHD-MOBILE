@@ -24,8 +24,10 @@ import type {
   ReportSavePayload,
   TriState
 } from '@/types/report';
-import { calculateActualServiceDurationMinutes } from '@/utils/scheduleTime';
-import { resolveReportDateCompleted } from '@/utils/reportCompletion';
+import {
+  resolveReportDateCompleted,
+  resolveReportSubmittedAt
+} from '@/utils/reportCompletion';
 import {
   resolveReportStatusForSave,
   type ReportSaveIntent
@@ -106,6 +108,7 @@ type ReportRow = {
   id: string;
   scheduleId: string;
   reportStatus: string | null;
+  submittedAt: string | null;
   jobTitle: string | null;
   location: string | null;
   recommendedCleaningFrequency: number | null;
@@ -337,12 +340,6 @@ export function ReportCloseoutContent({
         intent,
         resolveReportDateCompleted(scheduleSource, completedAt)
       );
-      // Duration is measured from the true scheduled start instant (no
-      // day-early compensation), so a midnight start never goes negative.
-      const actualServiceDurationMinutes = calculateActualServiceDurationMinutes(
-        scheduleSource,
-        completedAt
-      );
 
       const reportId = scheduleId;
       await powerSync.writeTransaction(async (tx) => {
@@ -353,6 +350,7 @@ export function ReportCloseoutContent({
                     invoiceId,
                     technicianId,
                     dateCompleted,
+                    submittedAt,
                     reportStatus,
                     jobTitle,
                     location,
@@ -360,13 +358,14 @@ export function ReportCloseoutContent({
                     greaseLevel,
                     deficiencies,
                     recommendations
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
           [
             reportId,
             payload.scheduleId,
             invoiceId || null,
             payload.technicianId,
             payload.dateCompleted,
+            resolveReportSubmittedAt(intent, existingReport, completedAt),
             payload.reportStatus,
             payload.jobTitle,
             payload.location,
@@ -376,16 +375,6 @@ export function ReportCloseoutContent({
             payload.recommendations ?? null
           ]
         );
-
-        if (intent === 'submit' && actualServiceDurationMinutes !== null) {
-          await tx.execute(
-            `UPDATE schedules
-             SET actualServiceDurationMinutes = ?
-             WHERE id = ?
-             AND actualServiceDurationMinutes IS NULL`,
-            [actualServiceDurationMinutes, scheduleId]
-          );
-        }
       });
       onClose();
     } catch (error) {

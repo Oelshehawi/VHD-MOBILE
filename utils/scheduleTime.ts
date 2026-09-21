@@ -126,22 +126,6 @@ export function getScheduleStartDate(schedule: ScheduleTimeSource): Date | null 
   return Number.isFinite(date.getTime()) ? date : null;
 }
 
-/**
- * Actual on-site duration: true submission instant minus the true scheduled
- * start. With true-instant storage there is no day-early compensation — a
- * June 26 00:00 start completed at June 26 02:00 is a clean 120 minutes.
- */
-export function calculateActualServiceDurationMinutes(
-  schedule: ScheduleTimeSource,
-  completedAt: Date
-): number | null {
-  const startDate = getScheduleStartDate(schedule);
-  if (!startDate || !Number.isFinite(completedAt.getTime())) return null;
-
-  const elapsedMinutes = Math.round((completedAt.getTime() - startDate.getTime()) / (1000 * 60));
-  return Math.max(0, elapsedMinutes);
-}
-
 export function getScheduleSortTime(schedule: ScheduleTimeSource): number {
   const parts = getScheduleClockParts(schedule);
   if (!parts) return Number.POSITIVE_INFINITY;

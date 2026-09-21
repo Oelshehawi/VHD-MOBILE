@@ -4,7 +4,9 @@ import type { MobileLocationEvent } from '@/types/locationTracking';
 import { debugLogger } from '@/utils/DebugLogger';
 import { flushLocationEventQueue } from './LocationEventQueue';
 import { getLocationOwner } from './LocationAccount';
-import { locationThrottleKey, persistLocationEvents, readCapturedBuckets, readThrottle, serializeLocationCapture } from './LocationOutbox';
+import { getLocationDatabase, getLocationMeta, locationThrottleKey, persistLocationEvents, readCapturedBuckets, readThrottle, serializeLocationCapture } from './LocationOutbox';
+import { shouldRetainPhysicalFix } from './locationSampling';
+import type { CaptureClosure } from './evidence/trackingEvidence';
 import { windowsAtSampleTime } from './locationWindowHistory';
 import { applyJobCaptureDecisions, filterJobCaptureEvents } from './TrackingEvidence';
 import {
@@ -89,14 +91,15 @@ function selectDueWindows(args: {
 export async function processLocationUpdate(
   taskData: LocationUpdatesTaskData | undefined
 ): Promise<void> {
-  await serializeLocationCapture(() => captureLocationUpdate(taskData));
+  const captured = await serializeLocationCapture(() => captureLocationUpdate(taskData));
+  if (!captured) return;
   await applyJobCaptureDecisions();
   await flushLocationEventQueue();
   const { reportTrackingHealth } = require('./TrackingHealth') as typeof import('./TrackingHealth');
   await reportTrackingHealth();
 }
 
-async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefined): Promise<void> {
+async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefined): Promise<boolean> {
   const locations = (taskData?.locations ?? [])
     .filter((location): location is Location.LocationObject => Boolean(location?.coords))
     // The presence engine drops out-of-order samples (presence.job.lastSampleAt),
@@ -105,17 +108,17 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
 
   if (locations.length === 0) {
     debugLogger.warn('LOCATION', 'Background location update task invoked without locations');
-    return;
+    return false;
   }
 
   const platform = getEventPlatform();
   if (!platform) {
-    return;
+    return false;
   }
 
   const state = await readLocationTrackingState();
   const owner = await getLocationOwner();
-  if (!owner || (state.ownerAppUserId && state.ownerAppUserId !== owner.appUserId)) return;
+  if (!owner || (state.ownerAppUserId && state.ownerAppUserId !== owner.appUserId)) return false;
   const windows = [...(state.historicalWindows ?? []), ...state.windows].map(window => ({ ...window }));
 
   const now = Date.now();
@@ -123,6 +126,12 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
   // its own emissions; persisted once at the end via the serialized writer.
   const lastLocationPingAtByWindowId = await readThrottle(owner.appUserId);
   const capturedBuckets = await readCapturedBuckets(owner.appUserId);
+  const closures = await getLocationMeta<CaptureClosure[]>(`${owner.appUserId}:jobCaptureClosures`) ?? [];
+  const previousRows = await (await getLocationDatabase()).getAllAsync<{ payload: string }>(
+    `SELECT payload FROM location_evidence WHERE owner = ? AND recorded_at <= ?
+     AND json_extract(payload, '$.eventType') = 'location_ping'
+     ORDER BY recorded_at DESC, id DESC LIMIT 2`, owner.appUserId, locations[0].timestamp);
+  let physicalHistory = previousRows.reverse().map(row => JSON.parse(row.payload) as MobileLocationEvent);
   const pings: ReconstructedPing[] = [];
   let skippedNonFiniteCoords = 0;
   let skippedStaleFix = 0;
@@ -148,7 +157,9 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
     }
 
     const recordedAtMs = Date.parse(recordedAt);
-    const sampleWindows = windowsAtSampleTime(windows, recordedAtMs);
+    const sampleWindows = windowsAtSampleTime(windows, recordedAtMs).filter(window =>
+      !closures.some(closure => closure.windowId === window.id &&
+        closure.definitionVersion === (window.definitionVersion ?? 1) && recordedAtMs > Date.parse(closure.closedAt)));
     // Retain delivered recovery fixes even after continuous capture grace.
     // An accurate on-site recovery fix can then extend capture below.
     const selectedWindow = getActivePersistedPingWindows(sampleWindows, [], new Date(recordedAtMs))[0]
@@ -175,13 +186,24 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
       return [window.id, last && Date.parse(last) <= recordedAtMs ? last : ''];
     }));
     const dueWindows = selectDueWindows({
-      presenceWindows,
+      presenceWindows: presenceWindows.filter(window => window.captureProtocolVersion !== 2),
       selectedWindow,
       arrivedWindowIds: [],
       exitedWindowIds: [],
       lastLocationPingAtByWindowId: throttle,
       recordedAtMs
-    }).filter(window => !capturedBuckets.has(`${locationThrottleKey(window.id, window.definitionVersion)}:${Math.floor(recordedAtMs / 60000)}`));
+    }).filter(window => window.captureProtocolVersion !== 2 && !capturedBuckets.has(`${locationThrottleKey(window.id, window.definitionVersion)}:${Math.floor(recordedAtMs / 60000)}`));
+    const physicalWindows = presenceWindows.filter(window => window.captureProtocolVersion === 2);
+    const physicalFix: MobileLocationEvent = {
+      eventType: 'location_ping', source: 'background_location', recordedAt, platform,
+      lat: location.coords.latitude, lng: location.coords.longitude,
+      accuracyMeters: location.coords.accuracy == null || location.coords.accuracy < 0 ? undefined : location.coords.accuracy,
+    };
+    if (physicalWindows.length && shouldRetainPhysicalFix(physicalFix, physicalHistory, physicalWindows,
+      Math.min(...physicalWindows.map(window => getPingIntervalSecondsForState(window, false))))) {
+      dueWindows.push(physicalWindows.find(window => window.id === selectedWindow.id) ?? physicalWindows[0]);
+      physicalHistory = [...physicalHistory, physicalFix].slice(-2);
+    }
 
     if (dueWindows.length === 0) {
       throttled += 1;
@@ -204,7 +226,7 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
       skippedStaleFix
     });
     await stopLocationUpdatesIfNoActivePersistedWindow('no-emittable-fix');
-    return;
+    return false;
   }
 
   const retained = pings;
@@ -252,6 +274,7 @@ async function captureLocationUpdate(taskData: LocationUpdatesTaskData | undefin
     });
   }
   await stopLocationUpdatesIfNoActivePersistedWindow('captured-buffered-trail');
+  return true;
 }
 
 if (!TaskManager.isTaskDefined(LOCATION_UPDATES_TASK_NAME)) {
