@@ -1,4 +1,5 @@
 import { debugLogger } from '@/utils/DebugLogger';
+import type { InvoiceSendResult } from './invoiceSending';
 import { getPersistentClerk } from './background/clerkBootstrap';
 import { refreshBackgroundToken } from './background/BackgroundAuth';
 import type { FetchLike, TokenProvider } from './network/types';
@@ -427,61 +428,31 @@ export class ApiClient {
 
   // ============ INVOICE OPERATIONS ============
 
-  async sendInvoice(
-    scheduleId: string,
-    technicianId: string
-  ): Promise<{ success: boolean; error?: string }> {
+  async sendInvoice(scheduleId: string, technicianId: string, requestId: string): Promise<InvoiceSendResult> {
     try {
-      if (!scheduleId || !technicianId) {
-        return { success: false, error: 'Missing required fields' };
-      }
-
-      const headers = await this.ensureAuthHeaders();
       const response = await this.fetchImpl(`${this.baseUrl}/api/send-invoice`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          scheduleId,
-          technicianId
-        })
+        method: 'POST', headers: await this.ensureAuthHeaders(),
+        body: JSON.stringify({ scheduleId, technicianId, requestId, contractVersion: 2 })
       });
+      const result = await response.json() as InvoiceSendResult;
+      if (!response.ok) return { ...result, success: false, error: result.message || result.error || 'Unable to send invoice' };
+      return result;
+    } catch {
+      return { success: false, outcome: 'needs_review', error: 'Connection lost. Check the send status before trying again.' };
+    }
+  }
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorData;
-        try {
-          errorData = JSON.parse(errorText);
-        } catch {
-          errorData = {
-            error: errorText || `HTTP status ${response.status}`
-          };
-        }
-
-        return {
-          success: false,
-          error:
-            errorData.message ||
-            errorData.error ||
-            errorData.details ||
-            `Send failed with status ${response.status}`
-        };
-      }
-
-      const result = await response.json();
-      return { success: true, ...result };
-    } catch (error) {
-      // For network errors, indicate retry
-      if (error instanceof TypeError && error.message.includes('Network request failed')) {
-        return {
-          success: false,
-          error: 'Network error, will retry later'
-        };
-      }
-
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Unknown error'
-      };
+  async getInvoiceSend(requestId: string): Promise<InvoiceSendResult> {
+    try {
+      const response = await this.fetchImpl(`${this.baseUrl}/api/send-invoice?requestId=${encodeURIComponent(requestId)}`, {
+        headers: await this.ensureAuthHeaders()
+      });
+      const result = await response.json() as InvoiceSendResult;
+      if (response.status === 404) return { success: false, code: 'NOT_RECEIVED', message: 'The server has not received this send. Retry when connected.' };
+      if (!response.ok) return { ...result, success: false, error: result.message || 'Unable to check send status' };
+      return result;
+    } catch {
+      return { success: false, error: 'Connect to check the send status.' };
     }
   }
 

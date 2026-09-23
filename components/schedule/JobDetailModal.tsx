@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useUser } from '@clerk/clerk-expo';
+import { checkInvoiceSend, sendInvoiceOnline, invoiceSendMessage } from '@/services/invoiceSending';
 import {
   ActivityIndicator,
   Alert,
@@ -26,7 +28,6 @@ import { invoiceLinksToSchedule } from '@/utils/invoices';
 import { useLocationPermissionState } from '@/components/location/useLocationPermissionState';
 import { canMarkChequeReceived } from '@/utils/invoicePayment';
 import { formatStoredDateReadable, formatVancouverDateAsUtcDateOnly } from '@/utils/date';
-import { ApiClient } from '@/services/ApiClient';
 import { ServiceReportModal } from './ServiceReportModal';
 import { openPhone, parseOnSiteContact } from '@/utils/contact';
 import { getAssignedTechnicianDisplays } from '@/utils/scheduleAssignments';
@@ -165,6 +166,22 @@ export function JobDetailModal({
   const [isSendingInvoice, setIsSendingInvoice] = useState(false);
   const [sendInvoiceMessage, setSendInvoiceMessage] = useState<string | null>(null);
   const [sendInvoiceError, setSendInvoiceError] = useState<string | null>(null);
+  const { user } = useUser();
+  const [hasPendingInvoiceSend, setHasPendingInvoiceSend] = useState(false);
+  useEffect(() => {
+    setHasPendingInvoiceSend(false);
+    setSendInvoiceMessage(null);
+    setSendInvoiceError(null);
+    if (!visible || !user?.id) return;
+    let active = true;
+    void checkInvoiceSend(user.id, scheduleId).then(result => {
+      if (!active || !result) return;
+      setHasPendingInvoiceSend(result.outcome !== 'sent' && !result.reviewClosed);
+      setSendInvoiceMessage(result.outcome === 'sent' ? invoiceSendMessage(result) : null);
+      setSendInvoiceError(result.outcome !== 'sent' ? invoiceSendMessage(result) : null);
+    }).catch(() => { if (active) setSendInvoiceError('Unable to load the previous send.'); });
+    return () => { active = false; };
+  }, [visible, user?.id, scheduleId]);
   const [reportVisible, setReportVisible] = useState(false);
   const { resolveTechnicianName } = useTechnicianDirectory();
 
@@ -283,13 +300,15 @@ export function JobDetailModal({
       setSendInvoiceError(null);
       setSendInvoiceMessage(null);
 
-      const result = await new ApiClient().sendInvoice(scheduleId, technicianId);
+      const result = await sendInvoiceOnline(user?.id || '', scheduleId, technicianId);
+      setHasPendingInvoiceSend(result.outcome !== 'sent' && !result.reviewClosed);
       if (!result.success) {
-        setSendInvoiceError(result.error || 'Failed to send invoice. Please try again.');
+        setSendInvoiceError(invoiceSendMessage(result));
         return;
       }
 
-      setSendInvoiceMessage('Invoice sent successfully.');
+      if (result.outcome === 'partial') setSendInvoiceError(invoiceSendMessage(result));
+      else setSendInvoiceMessage(invoiceSendMessage(result));
     } catch (error) {
       setSendInvoiceError(
         error instanceof Error ? error.message : 'Failed to send invoice. Please try again.'
@@ -721,7 +740,7 @@ export function JobDetailModal({
                             <Ionicons name='send-outline' size={18} color={invertedIconColor} />
                           )}
                           <Text className='font-bold text-white dark:text-[#14110F]'>
-                            {isSendingInvoice ? 'Sending...' : 'Send invoice'}
+                            {isSendingInvoice ? 'Checking...' : hasPendingInvoiceSend ? 'Check / retry invoice send' : 'Send invoice'}
                           </Text>
                         </Pressable>
 
