@@ -2,19 +2,15 @@ import { useMemo, useState } from 'react';
 import { Modal, Pressable, ScrollView, useColorScheme, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { File } from 'expo-file-system';
-import { ImageManipulator } from 'expo-image-manipulator';
 import { Text } from '@/components/ui/text';
 import { ToastViewport } from '@/components/common/Toast';
 import type { PhotoCategoryKind } from '@/types';
-import { useSystem } from '@/services/database/System';
 import {
   selectCategoryPhotos,
   useEquipmentProfile,
   useSchedulePhotoCounts,
   useSchedulePhotos
 } from '@/services/data/photos';
-import { describeImportResult, importAssignments } from '@/services/photos/photoImporter';
 import {
   buildDocumentationCategories,
   getAdjacentCategoryKey,
@@ -22,13 +18,12 @@ import {
   type CaptureTarget,
   type CaptureType
 } from '@/utils/equipmentCategories';
-import { captureTypeLabel, type ImportCandidate, type PhotoJobContext } from '@/utils/photoImport';
-import { showToast } from '@/utils/photos';
+import { captureTypeLabel, type PhotoJobContext } from '@/utils/photoImport';
 import { JobPhotoHistory } from './JobPhotoHistory';
 import { EquipmentPhotoScreen } from './EquipmentPhotoScreen';
 import { VisitPhotoImport } from './VisitPhotoImport';
 import { CameraCaptureModal } from './CameraCaptureModal';
-import { LoadingModal } from './LoadingModal';
+import { BeforeAfterCompare } from './BeforeAfterCompare';
 
 interface PhotoDocumentationModalProps {
   visible: boolean;
@@ -84,7 +79,6 @@ export function PhotoDocumentationModal({
   const isDark = useColorScheme() === 'dark';
   const iconColor = isDark ? '#F2EFEA' : '#14110F';
   const chevronColor = isDark ? '#C9C3BA' : '#76706A';
-  const system = useSystem();
 
   const [captureType, setCaptureType] = useState<CaptureType>(initialMode);
   // Keys, not category objects: categories are rebuilt whenever the profile row re-emits.
@@ -92,7 +86,7 @@ export function PhotoDocumentationModal({
   const [showUncategorized, setShowUncategorized] = useState(false);
   const [importTarget, setImportTarget] = useState<{ preset: CaptureTarget | null } | null>(null);
   const [cameraTarget, setCameraTarget] = useState<CaptureTarget | null>(null);
-  const [cameraSaving, setCameraSaving] = useState<{ done: number; total: number } | null>(null);
+  const [showCompare, setShowCompare] = useState(false);
 
   const profile = useEquipmentProfile(serviceJobId);
   const categories = useMemo(() => buildDocumentationCategories(profile), [profile]);
@@ -126,51 +120,10 @@ export function PhotoDocumentationModal({
     return next ? () => setSelectedCategoryKey(next) : null;
   };
 
-  // Phase-1 bridge: the existing review-then-upload camera hands back file URIs.
-  const handleCameraPhotosConfirmed = async (uris: string[]) => {
-    const target = cameraTarget;
-    setCameraTarget(null);
-    const queue = system?.attachmentQueue;
-    if (!target || uris.length === 0 || !queue) return;
-
-    setCameraSaving({ done: 0, total: uris.length });
-    try {
-      const takenAt = new Date().toISOString();
-      const candidates: ImportCandidate[] = await Promise.all(
-        uris.map(async (uri) => {
-          const context = ImageManipulator.manipulate(uri);
-          const image = await context.renderAsync();
-          const { width, height } = image;
-          image.release();
-          context.release();
-          return {
-            id: uri,
-            uri,
-            assetId: null,
-            takenAt,
-            width,
-            height,
-            fileSize: new File(uri).size ?? null,
-            mimeType: 'image/jpeg',
-            fileName: uri.split('/').pop() ?? null,
-            source: 'camera' as const
-          };
-        })
-      );
-      const result = await importAssignments(
-        queue,
-        candidates.map((candidate) => ({ candidate, target })),
-        ctx,
-        categories,
-        { onProgress: setCameraSaving }
-      );
-      const { message, isError } = describeImportResult(result);
-      showToast(message, { tone: isError ? 'error' : 'success' });
-    } catch {
-      showToast('Failed to save photos. Please try again.', { tone: 'error' });
-    } finally {
-      setCameraSaving(null);
-    }
+  // From the list, aim the camera at the first equipment still missing this side.
+  const openHeaderCamera = () => {
+    const missing = categories.find((category) => counts.get(captureType, category.key) === 0);
+    setCameraTarget({ type: captureType, categoryKey: (missing ?? categories[0])?.key ?? null });
   };
 
   if (!visible) return null;
@@ -191,13 +144,13 @@ export function PhotoDocumentationModal({
             position={selectedCategory ? { index: selectedIndex, total: categories.length } : null}
             beforePhotos={selectCategoryPhotos(photos, 'before', detailKey)}
             afterPhotos={selectCategoryPhotos(photos, 'after', detailKey)}
-            busy={!!cameraSaving}
             onBack={showList}
             onClose={handleClose}
             onPrev={selectedCategory ? stepCategory(-1) : null}
             onNext={selectedCategory ? stepCategory(1) : null}
             onCamera={(type) => setCameraTarget({ type, categoryKey: detailKey })}
             onGallery={(type) => setImportTarget({ preset: { type, categoryKey: detailKey } })}
+            onCompare={() => setShowCompare(true)}
           />
         ) : (
           <>
@@ -241,8 +194,7 @@ export function PhotoDocumentationModal({
 
               <View className='mt-3 flex-row gap-3'>
                 <Pressable
-                  onPress={() => setCameraTarget({ type: captureType, categoryKey: null })}
-                  disabled={!!cameraSaving}
+                  onPress={openHeaderCamera}
                   className='min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-[#14110F] active:opacity-80 dark:bg-white'
                 >
                   <Ionicons name='camera' size={20} color={isDark ? '#14110F' : '#FFFFFF'} />
@@ -250,7 +202,6 @@ export function PhotoDocumentationModal({
                 </Pressable>
                 <Pressable
                   onPress={() => setImportTarget({ preset: null })}
-                  disabled={!!cameraSaving}
                   className='min-h-12 flex-1 flex-row items-center justify-center gap-2 rounded-xl bg-blue-600 active:bg-blue-700'
                 >
                   <Ionicons name='images' size={20} color='#FFFFFF' />
@@ -339,25 +290,26 @@ export function PhotoDocumentationModal({
             </ScrollView>
           </>
         )}
-
-        {cameraSaving && (
-          <LoadingModal
-            visible
-            type={captureType}
-            title='Saving photos'
-            detail='Preparing photos for background upload.'
-            current={cameraSaving.done}
-            total={cameraSaving.total}
-          />
-        )}
       </View>
 
       {cameraTarget && (
         <CameraCaptureModal
           visible
           onClose={() => setCameraTarget(null)}
-          onPhotosConfirmed={handleCameraPhotosConfirmed}
-          type={cameraTarget.type}
+          ctx={ctx}
+          categories={categories}
+          initialTarget={cameraTarget}
+          photos={photos}
+        />
+      )}
+
+      {showCompare && detailKey !== undefined && (
+        <BeforeAfterCompare
+          visible
+          onClose={() => setShowCompare(false)}
+          title={selectedCategory?.label ?? 'Uncategorized'}
+          beforePhotos={selectCategoryPhotos(photos, 'before', detailKey)}
+          afterPhotos={selectCategoryPhotos(photos, 'after', detailKey)}
         />
       )}
 

@@ -18,7 +18,6 @@ interface EquipmentPhotoSectionProps {
   photos: ReadonlyArray<DocumentationPhoto>;
   jobTitle: string;
   categoryLabel: string;
-  disabled?: boolean;
   onCamera: () => void;
   onGallery: () => void;
 }
@@ -28,7 +27,6 @@ export function EquipmentPhotoSection({
   photos,
   jobTitle,
   categoryLabel,
-  disabled = false,
   onCamera,
   onGallery
 }: EquipmentPhotoSectionProps) {
@@ -103,18 +101,14 @@ export function EquipmentPhotoSection({
       <View className='flex-row gap-3'>
         <Pressable
           onPress={onCamera}
-          disabled={disabled}
           accessibilityLabel={`Take ${label.toLowerCase()} photos of ${categoryLabel}`}
-          className={`min-h-14 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${
-            disabled ? 'bg-gray-300 dark:bg-[#2A261D]' : accent
-          }`}
+          className={`min-h-14 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${accent}`}
         >
           <Ionicons name='camera' size={20} color='#FFFFFF' />
           <Text className='text-base font-bold text-white'>Camera</Text>
         </Pressable>
         <Pressable
           onPress={onGallery}
-          disabled={disabled}
           accessibilityLabel={`Add ${label.toLowerCase()} photos of ${categoryLabel} from gallery`}
           className='min-h-14 flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-black/15 bg-white active:bg-gray-50 dark:border-white/20 dark:bg-[#16140F]'
         >

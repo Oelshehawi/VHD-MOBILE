@@ -13,7 +13,6 @@ interface EquipmentPhotoScreenProps {
   position: { index: number; total: number } | null;
   beforePhotos: ReadonlyArray<DocumentationPhoto>;
   afterPhotos: ReadonlyArray<DocumentationPhoto>;
-  busy?: boolean;
   onBack: () => void;
   onClose: () => void;
   onPrev: (() => void) | null;
@@ -55,7 +54,6 @@ export function EquipmentPhotoScreen({
   position,
   beforePhotos,
   afterPhotos,
-  busy = false,
   onBack,
   onClose,
   onPrev,
@@ -102,7 +100,6 @@ export function EquipmentPhotoScreen({
           photos={beforePhotos}
           jobTitle={jobTitle}
           categoryLabel={title}
-          disabled={busy}
           onCamera={() => onCamera('before')}
           onGallery={() => onGallery('before')}
         />
@@ -111,7 +108,6 @@ export function EquipmentPhotoScreen({
           photos={afterPhotos}
           jobTitle={jobTitle}
           categoryLabel={title}
-          disabled={busy}
           onCamera={() => onCamera('after')}
           onGallery={() => onGallery('after')}
         />

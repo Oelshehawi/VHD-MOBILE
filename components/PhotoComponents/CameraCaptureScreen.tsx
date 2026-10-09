@@ -1,88 +1,102 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { View, Alert, TouchableOpacity, Text as RNText, Dimensions } from 'react-native';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { Text } from '@/components/ui/text';
+import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
-import { useSharedValue } from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withSequence,
+  withTiming
+} from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
+import type {
+  CaptureTarget,
+  CaptureType,
+  DocumentationCategory
+} from '@/utils/equipmentCategories';
+import { CaptureTargetChips } from './CaptureTargetChips';
+import { GhostControls, GhostOverlay, type GhostOption } from './GhostOverlay';
 
-interface CameraCaptureScreenProps {
-  onPhotoCaptured: (uri: string) => void;
-  capturedCount: number;
-  onDone: () => void;
-  onClose: () => void;
-  type: 'before' | 'after';
+export interface CapturedPicture {
+  uri: string;
+  width: number;
+  height: number;
 }
 
-const SCREEN_WIDTH = Dimensions.get('window').width;
-const CAMERA_HEIGHT = SCREEN_WIDTH * (4 / 3);
+export interface GhostState {
+  uri: string | null;
+  options: readonly GhostOption[];
+  selectedId: string | null;
+  opacity: number;
+  onSelect: (id: string) => void;
+  onCycleOpacity: () => void;
+}
+
+interface CameraCaptureScreenProps {
+  categories: readonly DocumentationCategory[];
+  target: CaptureTarget;
+  countFor: (type: CaptureType, categoryKey: string | null) => number;
+  onTargetChange: (target: CaptureTarget) => void;
+  onCaptured: (picture: CapturedPicture) => void;
+  onClose: () => void;
+  lastShot: { uri: string; busy: boolean; failed: boolean } | null;
+  sessionCount: number;
+  onOpenSession: () => void;
+  ghost: GhostState | null;
+  /** Extra top-bar control, e.g. the camera-roll backup toggle. */
+  topAccessory?: ReactNode;
+}
+
+const BOTTOM_BAR_HEIGHT = 112;
 
 export function CameraCaptureScreen({
-  onPhotoCaptured,
-  capturedCount,
-  onDone,
+  categories,
+  target,
+  countFor,
+  onTargetChange,
+  onCaptured,
   onClose,
-  type
+  lastShot,
+  sessionCount,
+  onOpenSession,
+  ghost,
+  topAccessory
 }: CameraCaptureScreenProps) {
+  const insets = useSafeAreaInsets();
+  const [permission, requestPermission] = useCameraPermissions();
   const [facing, setFacing] = useState<'front' | 'back'>('back');
   const [flash, setFlash] = useState<'off' | 'on' | 'auto'>('off');
-  const [permission, requestPermission] = useCameraPermissions();
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [zoom, setZoom] = useState(0);
-  const zoomShared = useSharedValue(0); // Shared value for worklet access
-  const startZoom = useSharedValue(0); // Track zoom at pinch start
+  const zoomShared = useSharedValue(0);
+  const startZoom = useSharedValue(0);
+  const flashOpacity = useSharedValue(0);
   const cameraRef = useRef<CameraView>(null);
-  const insets = useSafeAreaInsets();
+  const isCapturingRef = useRef(false);
 
-  // Use ref to track capture state without causing re-renders
-  const captureStateRef = useRef({
-    isCameraReady: false,
-    capturedCount: 0,
-    isCapturing: false
-  });
-
-  // Keep ref in sync with state
-  useEffect(() => {
-    captureStateRef.current.isCameraReady = isCameraReady;
-    captureStateRef.current.capturedCount = capturedCount;
-  }, [isCameraReady, capturedCount]);
+  const flashStyle = useAnimatedStyle(() => ({ opacity: flashOpacity.value }));
 
   const handleTakePicture = useCallback(async () => {
-    const { isCameraReady: ready, isCapturing } = captureStateRef.current;
+    if (!cameraRef.current || !isCameraReady || isCapturingRef.current) return;
 
-    if (!cameraRef.current || !ready) {
-      return;
-    }
-
-    if (isCapturing) {
-      return;
-    }
-
+    isCapturingRef.current = true;
+    flashOpacity.value = withSequence(withTiming(0.6, { duration: 40 }), withTiming(0, { duration: 180 }));
     try {
-      captureStateRef.current.isCapturing = true;
-
-      const photo = await cameraRef.current.takePictureAsync({
-        quality: 1,
-        exif: true,
-        skipProcessing: false
-      });
-
-      if (photo?.uri) {
-        onPhotoCaptured(photo.uri);
+      // Width/height come back with the result, so no decode is needed to size the upload.
+      const picture = await cameraRef.current.takePictureAsync({ quality: 0.9 });
+      if (picture?.uri) {
+        onCaptured({ uri: picture.uri, width: picture.width, height: picture.height });
       }
     } catch (error) {
       console.error('Capture error:', error);
-      Alert.alert('Capture Failed', 'Unable to take photo.', [{ text: 'OK' }]);
+      Alert.alert('Capture Failed', 'Unable to take photo.');
     } finally {
-      captureStateRef.current.isCapturing = false;
+      isCapturingRef.current = false;
     }
-  }, [onPhotoCaptured]);
-
-  const handleCameraReady = () => {
-    setIsCameraReady(true);
-  };
+  }, [isCameraReady, onCaptured, flashOpacity]);
 
   const toggleFacing = () => {
     setFacing((current) => (current === 'back' ? 'front' : 'back'));
@@ -91,18 +105,13 @@ export function CameraCaptureScreen({
   };
 
   const toggleFlash = () => {
-    setFlash((current) => {
-      if (current === 'off') return 'on';
-      if (current === 'on') return 'auto';
-      return 'off';
-    });
+    setFlash((current) => (current === 'off' ? 'on' : current === 'on' ? 'auto' : 'off'));
   };
 
-  // Pinch to zoom - maintains state between pinches
   const updateZoom = useCallback(
     (newZoom: number) => {
       setZoom(newZoom);
-      zoomShared.value = newZoom; // Keep shared value in sync
+      zoomShared.value = newZoom;
     },
     [zoomShared]
   );
@@ -110,173 +119,146 @@ export function CameraCaptureScreen({
   const pinchGesture = Gesture.Pinch()
     .onStart(() => {
       'worklet';
-      // Capture current zoom when pinch starts
       startZoom.value = zoomShared.value;
     })
     .onUpdate((event) => {
       'worklet';
-      // Add scale delta to starting zoom, clamped 0-1
       const newZoom = Math.min(Math.max(startZoom.value + (event.scale - 1) * 0.5, 0), 1);
       scheduleOnRN(updateZoom, newZoom);
     });
 
-  // Loading state
   if (!permission) {
     return (
-      <View className='flex-1 justify-center items-center bg-black p-6'>
-        <RNText className='text-white text-2xl font-semibold text-center'>Loading Camera...</RNText>
+      <View className='flex-1 items-center justify-center bg-black p-6'>
+        <ActivityIndicator color='#FFFFFF' />
       </View>
     );
   }
 
-  // Permission not granted - FIX: Use explicit styling for buttons
   if (!permission.granted) {
     return (
-      <View className='flex-1 justify-center items-center bg-black p-6'>
+      <View className='flex-1 items-center justify-center bg-black p-6'>
         <Ionicons name='camera-outline' size={64} color='#9CA3AF' />
-        <RNText className='text-white text-2xl font-semibold text-center mb-4 mt-6'>
+        <Text className='mb-4 mt-6 text-center text-2xl font-semibold text-white'>
           Camera Permission Required
-        </RNText>
-        <RNText className='text-gray-400 text-sm text-center mb-8 px-4'>
+        </Text>
+        <Text className='mb-8 px-4 text-center text-sm text-gray-400'>
           Enable camera access to capture photos of work completed.
-        </RNText>
-        {/* FIX: Explicit background color instead of relying on Button variant */}
-        <TouchableOpacity
-          onPress={requestPermission}
-          style={{ backgroundColor: '#3B82F6' }}
-          className='px-8 py-3 rounded-lg mb-3'
-        >
-          <RNText className='text-white font-semibold text-base'>Enable Camera</RNText>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={onClose} className='px-8 py-3 rounded-lg border border-gray-600'>
-          <RNText className='text-gray-300 font-semibold text-base'>Cancel</RNText>
-        </TouchableOpacity>
+        </Text>
+        <Pressable onPress={requestPermission} style={{ backgroundColor: '#3B82F6' }} className='mb-3 rounded-lg px-8 py-3'>
+          <Text className='text-base font-semibold text-white'>Enable Camera</Text>
+        </Pressable>
+        <Pressable onPress={onClose} className='rounded-lg border border-gray-600 px-8 py-3'>
+          <Text className='text-base font-semibold text-gray-300'>Cancel</Text>
+        </Pressable>
       </View>
     );
   }
 
   return (
-    <GestureHandlerRootView style={{ flex: 1, backgroundColor: 'black' }}>
-      <View style={{ flex: 1, backgroundColor: 'black' }}>
-        {/* Top Controls */}
-        <View
-          style={{
-            height: insets.top + 60,
-            paddingTop: insets.top,
-            backgroundColor: 'black',
-            zIndex: 10
-          }}
-          className='flex-row justify-between items-center px-4'
-        >
-          {/* Close Button */}
-          <TouchableOpacity onPress={onClose} className='w-10 h-10 items-center justify-center'>
-            <Ionicons name='close' size={28} color='white' />
-          </TouchableOpacity>
-
-          {/* Flash Toggle */}
-          <TouchableOpacity
+    <View className='flex-1 bg-black'>
+      <View style={{ paddingTop: insets.top }} className='flex-row items-center justify-between px-3 pb-1'>
+        <Pressable onPress={onClose} hitSlop={8} accessibilityLabel='Close camera' className='h-11 w-11 items-center justify-center'>
+          <Ionicons name='close' size={28} color='white' />
+        </Pressable>
+        <View className='flex-row items-center gap-2'>
+          {topAccessory}
+          <Pressable
             onPress={toggleFlash}
-            className='flex-row items-center px-3 py-2 rounded-full'
-            style={{ backgroundColor: 'rgba(255,255,255,0.1)' }}
+            accessibilityLabel={`Flash ${flash}`}
+            className='flex-row items-center rounded-full bg-white/10 px-3 py-2'
           >
             <Ionicons
               name={flash === 'on' ? 'flash' : flash === 'auto' ? 'flash-outline' : 'flash-off'}
-              size={20}
+              size={18}
               color={flash === 'off' ? '#9CA3AF' : '#FFD700'}
             />
-            <RNText
-              className='text-white text-xs ml-1 font-medium'
-              style={{ textTransform: 'uppercase' }}
-            >
-              {flash}
-            </RNText>
-          </TouchableOpacity>
-
-          {/* Photo Count + Review */}
-          <View className='flex-row items-center gap-2'>
-            {capturedCount > 0 && (
-              <>
-                <View
-                  className={`px-2.5 py-1 rounded-full ${
-                    type === 'before' ? 'bg-blue-500' : 'bg-green-500'
-                  }`}
-                >
-                  <Text className='text-white font-bold text-sm'>{capturedCount}</Text>
-                </View>
-                <TouchableOpacity onPress={onDone} className='bg-white px-3 py-1.5 rounded-full'>
-                  <RNText className='text-black font-semibold text-sm'>Review</RNText>
-                </TouchableOpacity>
-              </>
-            )}
-            {capturedCount === 0 && <View style={{ width: 80 }} />}
-          </View>
-        </View>
-
-        {/* Camera Preview */}
-        <View
-          style={{
-            width: SCREEN_WIDTH,
-            height: CAMERA_HEIGHT,
-            overflow: 'hidden',
-            backgroundColor: '#1a1a1a',
-            alignSelf: 'center'
-          }}
-        >
-          <GestureDetector gesture={pinchGesture}>
-            <View style={{ flex: 1 }}>
-              <CameraView
-                ref={cameraRef}
-                facing={facing}
-                flash={flash}
-                zoom={zoom}
-                onCameraReady={handleCameraReady}
-                responsiveOrientationWhenOrientationLocked={true}
-                style={{ flex: 1 }}
-                ratio='4:3'
-              />
-            </View>
-          </GestureDetector>
-        </View>
-
-        {/* Bottom Controls */}
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: 'black',
-            paddingBottom: insets.bottom + 20,
-            justifyContent: 'flex-end',
-            alignItems: 'center'
-          }}
-        >
-          <View className='w-full flex-row justify-around items-center px-8 mb-6'>
-            <View style={{ width: 48 }} />
-            {/* Capture Button */}
-            <TouchableOpacity
-              onPress={handleTakePicture}
-              disabled={!isCameraReady}
-              style={{
-                width: 80,
-                height: 80,
-                borderRadius: 40,
-                backgroundColor: isCameraReady ? '#FFFFFF' : '#666666',
-                borderWidth: 4,
-                borderColor: '#D1D5DB'
-              }}
-              activeOpacity={0.7}
-            />
-            {/* Camera Flip */}
-            <TouchableOpacity
-              onPress={toggleFacing}
-              style={{ backgroundColor: '#1f2937' }}
-              className='w-12 h-12 rounded-full items-center justify-center opacity-80'
-            >
-              <Ionicons name='camera-reverse' size={24} color='#FFF' />
-            </TouchableOpacity>
-          </View>
-
-          <RNText className='text-gray-500 text-xs mb-2'>Pinch to zoom</RNText>
+            <Text className='ml-1 text-xs font-medium uppercase text-white'>{flash}</Text>
+          </Pressable>
         </View>
       </View>
-    </GestureHandlerRootView>
+
+      <CaptureTargetChips categories={categories} target={target} countFor={countFor} onChange={onTargetChange} />
+
+      <View className='flex-1 overflow-hidden bg-[#1a1a1a]'>
+        <GestureDetector gesture={pinchGesture}>
+          <View style={{ flex: 1 }}>
+            <CameraView
+              ref={cameraRef}
+              facing={facing}
+              flash={flash}
+              zoom={zoom}
+              onCameraReady={() => setIsCameraReady(true)}
+              responsiveOrientationWhenOrientationLocked
+              style={{ flex: 1 }}
+              ratio='4:3'
+            />
+            {ghost && <GhostOverlay uri={ghost.uri} opacity={ghost.opacity} />}
+            <Animated.View pointerEvents='none' className='absolute inset-0 bg-white' style={flashStyle} />
+          </View>
+        </GestureDetector>
+        {ghost && (
+          <GhostControls
+            options={ghost.options}
+            selectedId={ghost.selectedId}
+            opacity={ghost.opacity}
+            onSelect={ghost.onSelect}
+            onCycleOpacity={ghost.onCycleOpacity}
+          />
+        )}
+      </View>
+
+      <View
+        style={{ height: BOTTOM_BAR_HEIGHT + insets.bottom, paddingBottom: insets.bottom }}
+        className='flex-row items-center justify-between px-8'
+      >
+        <Pressable
+          onPress={onOpenSession}
+          disabled={!lastShot}
+          accessibilityLabel={`Review ${sessionCount} photos from this session`}
+          className='h-14 w-14 overflow-hidden rounded-xl border-2 border-white/80 bg-white/10'
+        >
+          {lastShot && (
+            <>
+              <Image source={{ uri: lastShot.uri }} contentFit='cover' transition={0} style={{ flex: 1 }} />
+              {(lastShot.busy || lastShot.failed) && (
+                <View className={`absolute inset-0 items-center justify-center ${lastShot.failed ? 'bg-red-700/70' : 'bg-black/40'}`}>
+                  {lastShot.failed ? (
+                    <Ionicons name='alert' size={22} color='#FFFFFF' />
+                  ) : (
+                    <ActivityIndicator size='small' color='#FFFFFF' />
+                  )}
+                </View>
+              )}
+              <View className='absolute bottom-0 right-0 rounded-tl-md bg-black/70 px-1'>
+                <Text className='text-[10px] font-bold text-white'>{sessionCount}</Text>
+              </View>
+            </>
+          )}
+        </Pressable>
+
+        <Pressable
+          onPress={handleTakePicture}
+          disabled={!isCameraReady}
+          accessibilityLabel='Take photo'
+          style={{
+            width: 78,
+            height: 78,
+            borderRadius: 39,
+            backgroundColor: isCameraReady ? '#FFFFFF' : '#666666',
+            borderWidth: 4,
+            borderColor: target.type === 'before' ? '#3B82F6' : '#10B981'
+          }}
+        />
+
+        <Pressable
+          onPress={toggleFacing}
+          accessibilityLabel='Flip camera'
+          className='h-14 w-14 items-center justify-center rounded-full bg-gray-800/90'
+        >
+          <Ionicons name='camera-reverse' size={24} color='#FFF' />
+        </Pressable>
+      </View>
+    </View>
   );
 }
