@@ -18,6 +18,21 @@ const sync_quarantine = new Table(
   { localOnly: true }
 );
 
+// Local-only ledger: which camera-roll asset became which photo, so import can
+// badge photos already imported (here or to another job). Not on `attachments`:
+// that table is local-only too and expireCache() prunes it past 100 rows.
+const photo_import_sources = new Table(
+  {
+    assetId: column.text,
+    photoId: column.text,
+    scheduleId: column.text,
+    source: column.text, // 'camera' | 'picker' | 'library'
+    takenAt: column.text, // ISO
+    importedAt: column.text // ISO
+  },
+  { localOnly: true, indexes: { assets: ['assetId'], schedules: ['scheduleId'] } }
+);
+
 const invoices = new Table(
   {
     // id column (text) is automatically included
@@ -309,6 +324,7 @@ export const AppSchema = new Schema({
   courseassignments,
   courseprogress,
   sync_quarantine,
+  photo_import_sources,
   attachments: new AttachmentTable({
     name: 'attachments',
     additionalColumns: [
@@ -373,3 +389,4 @@ export type TechnicianTrackingWindow = Database['techniciantrackingwindows'];
 export type CourseAssignmentRow = Database['courseassignments'];
 export type CourseProgressRow = Database['courseprogress'];
 export type SyncQuarantineRow = Database['sync_quarantine'];
+export type PhotoImportSourceRow = Database['photo_import_sources'];

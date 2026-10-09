@@ -18,6 +18,7 @@ import { Text } from '@/components/ui/text';
 import type { InvoiceType, Schedule } from '@/types';
 import type { ReportStatus } from '@/types/report';
 import { PhotoDocumentationModal } from '@/components/PhotoComponents/PhotoDocumentationModal';
+import { ToastViewport } from '@/components/common/Toast';
 import { SignatureCapture } from './SignatureCapture';
 import { TechnicianNotes } from './TechnicianNotes';
 import { EquipmentProfilePanel } from './EquipmentProfilePanel';
@@ -810,6 +811,8 @@ export function JobDetailModal({
           />
         )}
       </View>
+      {/* Only while shown: a hidden-but-mounted viewport would take the top of the stack. */}
+      {visible && <ToastViewport />}
     </Modal>
   );
 }

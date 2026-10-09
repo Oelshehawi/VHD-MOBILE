@@ -1,26 +1,22 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { Alert } from 'react-native';
-import { usePowerSync, useQuery } from '@powersync/react-native';
+import { usePowerSync } from '@powersync/react-native';
 import { useSystem } from '@/services/database/System';
 import { readTrackingReadiness } from '@/services/location/TrackingReadiness';
-import { PhotoCapture } from './PhotoCapture';
+import { EquipmentPhotoSection } from './EquipmentPhotoSection';
 import { PhotoGrid } from './PhotoGrid';
 import { DeletePhotoModal } from './DeletePhotoModal';
 
 const { act, create } = require('react-test-renderer');
 
-jest.mock('@powersync/react-native', () => ({ usePowerSync: jest.fn(), useQuery: jest.fn() }));
+jest.mock('@powersync/react-native', () => ({ usePowerSync: jest.fn() }));
 jest.mock('@/services/database/System', () => ({ useSystem: jest.fn() }));
 jest.mock('@/services/location/TrackingReadiness', () => ({ readTrackingReadiness: jest.fn() }));
-jest.mock('expo-image-picker', () => ({}));
-jest.mock('expo-image-manipulator', () => ({}));
 jest.mock('expo-file-system', () => ({}));
+jest.mock('@/utils/photoUri', () => ({ resolvePhotoUri: jest.fn(() => '') }));
 jest.mock('@expo/vector-icons/Ionicons', () => 'Ionicons');
 jest.mock('./PhotoGrid', () => ({ PhotoGrid: jest.fn(() => null) }));
-jest.mock('./PhotoCaptureModal', () => ({ PhotoCaptureModal: () => null }));
-jest.mock('./CameraCaptureModal', () => ({ CameraCaptureModal: () => null }));
 jest.mock('./DeletePhotoModal', () => ({ DeletePhotoModal: jest.fn(() => null) }));
-jest.mock('./LoadingModal', () => ({ LoadingModal: () => null }));
 jest.mock('@/components/common/FastImageViewer', () => ({ FastImageViewer: () => null }));
 
 beforeEach(() => { jest.clearAllMocks(); });
@@ -39,7 +35,6 @@ describe('photo deletion without location readiness', () => {
       jest.mocked(usePowerSync).mockReturnValue({
         writeTransaction: async (callback: (transaction: typeof tx) => Promise<void>) => callback(tx)
       } as unknown as ReturnType<typeof usePowerSync>);
-      jest.mocked(useQuery).mockReturnValue({ data: [], isLoading: false } as unknown as ReturnType<typeof useQuery>);
       jest.mocked(useSystem).mockReturnValue({
         attachmentQueue: { delete: deleteAttachment }
       } as unknown as ReturnType<typeof useSystem>);
@@ -47,8 +42,8 @@ describe('photo deletion without location readiness', () => {
       let renderer: ReturnType<typeof create>;
       try {
         await act(async () => {
-          renderer = create(<PhotoCapture technicianId='technician-id' type='before'
-            scheduleId='schedule-id' jobTitle='Test job' scheduledStartAtUtc='2026-09-21T17:00:00.000Z' />);
+          renderer = create(<EquipmentPhotoSection type='before' photos={[]} jobTitle='Test job'
+            categoryLabel='Hood 1' onCamera={jest.fn()} onGallery={jest.fn()} />);
         });
         await act(async () => {
           renderer.root.findByType(PhotoGrid).props.onDeletePhoto('photo-id');

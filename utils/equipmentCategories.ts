@@ -159,3 +159,25 @@ export function getCategoryIcon(kind: PhotoCategoryKind): string {
   return 'camera-outline';
 }
 
+
+export type CaptureType = 'before' | 'after';
+
+/** Where a new photo goes. `categoryKey: null` is the Uncategorized bucket. */
+export type CaptureTarget = { type: CaptureType; categoryKey: string | null };
+
+/**
+ * Key of the category before/after `current` in `keys`, or null at either end.
+ * An unknown `current` steps onto the first (next) or last (previous) key.
+ */
+export function getAdjacentCategoryKey(
+  keys: readonly string[],
+  current: string | null,
+  dir: 1 | -1
+): string | null {
+  if (keys.length === 0) return null;
+
+  const index = current === null ? -1 : keys.indexOf(current);
+  if (index === -1) return dir === 1 ? keys[0] : keys[keys.length - 1];
+
+  return keys[index + dir] ?? null;
+}

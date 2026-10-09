@@ -1,14 +1,11 @@
 import { TouchableOpacity, View, Text, ActivityIndicator, Alert } from 'react-native';
 import { PhotoType } from '@/utils/photos';
-import { memo, useCallback, useEffect, useState } from 'react';
+import { memo, useCallback, useMemo, useState } from 'react';
 import { FastImageWrapper } from '@/components/common/FastImageWrapper';
 import { useSystem } from '@/services/database/System';
-import { File, Paths } from 'expo-file-system';
 import { Image } from 'react-native';
-import { buildCloudinaryUrlMobile } from '@/utils/cloudinaryUrl.native';
-import { AppConfig } from '@/services/database/AppConfig';
+import { resolvePhotoUri } from '@/utils/photoUri';
 
-const CLOUD_NAME = AppConfig.cloudinaryCloudName || '';
 const THUMBNAIL_WIDTH = 240;
 
 interface PhotoItemProps {
@@ -20,8 +17,7 @@ interface PhotoItemProps {
 }
 
 function PhotoItemComponent({ photo, index, onPhotoPress, onDelete, isDeleting }: PhotoItemProps) {
-  const [imageError, setImageError] = useState(false);
-  const [resolvedUrl, setResolvedUrl] = useState<string>('');
+  const [failedUrl, setFailedUrl] = useState<string | null>(null);
   const system = useSystem();
 
   const isFailed = !!photo.failedAt && photo.cloudinaryUrl === null;
@@ -56,42 +52,14 @@ function PhotoItemComponent({ photo, index, onPhotoPress, onDelete, isDeleting }
     );
   }, [onDelete, photo.id, photo.lastError, system?.attachmentQueue]);
 
-  useEffect(() => {
-    const resolveUrl = async () => {
-      setImageError(false);
+  const resolvedUrl = useMemo(
+    () => resolvePhotoUri(photo, system?.attachmentQueue, { width: THUMBNAIL_WIDTH }),
+    [photo, system?.attachmentQueue]
+  );
 
-      if (isLoading && system?.attachmentQueue) {
-        if (photo.local_uri) {
-          const localUri = system.attachmentQueue.getLocalUri(photo.local_uri);
-          setResolvedUrl(localUri);
-          return;
-        }
-
-        if (photo.filename) {
-          const directPath = new File(Paths.document, 'attachments', photo.filename).uri;
-          setResolvedUrl(directPath);
-          return;
-        }
-
-        setResolvedUrl('');
-        return;
-      }
-
-      if (photo.cloudinaryUrl) {
-        const transformedUrl = buildCloudinaryUrlMobile({
-          urlOrPublicId: photo.cloudinaryUrl,
-          cloudName: CLOUD_NAME,
-          width: THUMBNAIL_WIDTH
-        });
-        setResolvedUrl(transformedUrl);
-        return;
-      }
-
-      setResolvedUrl('');
-    };
-
-    resolveUrl();
-  }, [photo.cloudinaryUrl, photo.local_uri, photo.filename, isLoading, system?.attachmentQueue]);
+  // Keyed to the URL so the local-file → Cloudinary switch gets a fresh attempt.
+  const imageError = failedUrl === resolvedUrl;
+  const handleImageError = useCallback(() => setFailedUrl(resolvedUrl), [resolvedUrl]);
 
   return (
     <View className='w-1/3 aspect-square p-1'>
@@ -109,7 +77,7 @@ function PhotoItemComponent({ photo, index, onPhotoPress, onDelete, isDeleting }
           <Image
             source={{ uri: resolvedUrl }}
             style={{ width: '100%', height: '100%' }}
-            onError={() => setImageError(true)}
+            onError={handleImageError}
             resizeMode='cover'
           />
         ) : (
@@ -117,7 +85,7 @@ function PhotoItemComponent({ photo, index, onPhotoPress, onDelete, isDeleting }
             uri={resolvedUrl}
             style={{ width: '100%', height: '100%' }}
             showLoader={true}
-            onError={() => setImageError(true)}
+            onError={handleImageError}
           />
         )}
 

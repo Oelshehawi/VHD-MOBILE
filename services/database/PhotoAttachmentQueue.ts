@@ -16,7 +16,9 @@ import { getPersistentClerk } from '@/services/background/clerkBootstrap';
 import type { FetchLike, TokenProvider } from '../network/types';
 import type { PhotoCategoryKind } from '@/types';
 
-interface QueuePhotoInput {
+export type PhotoCaptureSource = 'camera' | 'picker' | 'library';
+
+export interface QueuePhotoInput {
   sourceUri: string;
   scheduleId: string;
   type: 'before' | 'after' | 'signature' | 'estimate';
@@ -33,6 +35,29 @@ interface QueuePhotoInput {
   sourceSize?: number;
   mediaType?: string | null;
   fileName?: string | null;
+  /** When the photo was taken (ISO). Becomes photos.timestamp; defaults to queue time. */
+  takenAt?: string | null;
+  /** Camera-roll asset id; recorded in photo_import_sources so imports can badge it. */
+  sourceAssetId?: string | null;
+  captureSource?: PhotoCaptureSource;
+}
+
+export interface ImportSourceEntry {
+  assetId: string;
+  photoId: string;
+  scheduleId: string;
+  source: PhotoCaptureSource;
+  takenAt?: string | null;
+}
+
+interface SqlExecutor {
+  execute(sql: string, params?: unknown[]): Promise<unknown>;
+}
+
+function toValidIso(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const time = Date.parse(value);
+  return Number.isFinite(time) ? new Date(time).toISOString() : null;
 }
 
 interface SignedUploadUrl {
@@ -203,7 +228,6 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     if (!photos || photos.length === 0) return [];
 
     const startedAt = Date.now();
-    const timestamp = new Date().toISOString();
     const total = photos.length;
     const preparedFiles: Array<{
       id: string;
@@ -211,6 +235,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
       localPath: string;
       mediaType: string;
       size?: number;
+      timestamp: string;
       photo: QueuePhotoInput;
     }> = [];
 
@@ -265,6 +290,9 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
         localPath,
         mediaType: photo.type === 'signature' ? 'image/png' : 'image/jpeg',
         size,
+        // Taken time when known; otherwise offset by index so a batch keeps its
+        // pick order instead of sharing one identical timestamp.
+        timestamp: toValidIso(photo.takenAt) ?? new Date(startedAt + index).toISOString(),
         photo
       });
 
@@ -286,7 +314,7 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     });
 
     await this.powersync.writeTransaction(async (tx) => {
-      for (const { id, filename, localPath, mediaType, size, photo } of preparedFiles) {
+      for (const { id, filename, localPath, mediaType, size, timestamp, photo } of preparedFiles) {
         await tx.execute(
           `INSERT INTO photos (
              id,
@@ -337,6 +365,16 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
             }) || photo.scheduledStartAtUtc
           ]
         );
+
+        if (photo.sourceAssetId) {
+          await this.writeImportSource(tx, {
+            assetId: photo.sourceAssetId,
+            photoId: id,
+            scheduleId: photo.scheduleId,
+            source: photo.captureSource ?? 'picker',
+            takenAt: timestamp
+          });
+        }
       }
     });
 
@@ -348,8 +386,37 @@ export class PhotoAttachmentQueue extends AbstractAttachmentQueue<PhotoAttachmen
     return preparedFiles.map((file) => file.id);
   }
 
+  /** Records a camera-roll asset for a photo that was queued without one (in-app camera saves). */
+  async insertImportSource(entry: ImportSourceEntry): Promise<void> {
+    await this.powersync.writeTransaction(async (tx) => {
+      await this.writeImportSource(tx, entry);
+    });
+  }
+
+  private async writeImportSource(tx: SqlExecutor, entry: ImportSourceEntry): Promise<void> {
+    await tx.execute(
+      `INSERT INTO photo_import_sources (id, assetId, photoId, scheduleId, source, takenAt, importedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [
+        generateObjectId(),
+        entry.assetId,
+        entry.photoId,
+        entry.scheduleId,
+        entry.source,
+        toValidIso(entry.takenAt),
+        new Date().toISOString()
+      ]
+    );
+  }
+
   private shouldCopyOriginal(photo: QueuePhotoInput): boolean {
     if (photo.type === 'signature') {
+      return false;
+    }
+
+    // ph:// and content:// sources can't be stat'd or copied as files; the
+    // image manipulator can read them, so always take the prepare path.
+    if (!photo.sourceUri.startsWith('file:')) {
       return false;
     }
 

@@ -26,6 +26,7 @@ import { LocationTrackingInitializer } from '@/components/location/LocationTrack
 import { LocationPermissionGate } from '@/components/location/LocationPermissionGate';
 import { refreshLocationTracking } from '@/services/location/LocationTrackingRefreshRunner';
 import { SyncToastListener } from '@/components/sync/SyncToastListener';
+import { ToastViewport } from '@/components/common/Toast';
 import { resourceCache } from '@clerk/clerk-expo/resource-cache';
 import Animated, { FadeInDown, FadeOutUp } from 'react-native-reanimated';
 import { PortalHost } from '@rn-primitives/portal';
@@ -450,6 +451,7 @@ export default function RootLayout() {
                         />
                       </Stack>
                       <PortalHost />
+                      <ToastViewport />
                     </BottomSheetModalProvider>
                   </PowerSyncProvider>
                 </ThemeProvider>

@@ -55,7 +55,7 @@ export function PhotoGrid({ photos, onDeletePhoto, onPhotoPress }: PhotoGridProp
           No photos yet
         </Text>
         <Text className='text-center text-xs font-medium text-gray-500 dark:text-[#C9C3BA]'>
-          Tap Add Photos to get started
+          Use Camera or Gallery to add photos
         </Text>
       </View>
     ),

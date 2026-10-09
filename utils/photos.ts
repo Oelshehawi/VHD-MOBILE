@@ -1,6 +1,7 @@
 import type { PhotoCategoryKind } from '@/types';
 import * as ImagePicker from 'expo-image-picker';
 import { Platform, Alert, ToastAndroid } from 'react-native';
+import { toastBus, type ToastTone } from '@/utils/toastBus';
 
 export interface PhotoType {
   id: string;
@@ -20,11 +21,15 @@ export interface PhotoType {
   errorCategory?: string | null;
 }
 
-export const showToast = (message: string) => {
+export const showToast = (message: string, options?: { tone?: ToastTone }) => {
+  if (toastBus.hasViewport()) {
+    toastBus.show(message, options);
+    return;
+  }
+
+  // Before any viewport mounts, fall back to the platform toast; never block with an Alert.
   if (Platform.OS === 'android') {
     ToastAndroid.show(message, ToastAndroid.SHORT);
-  } else {
-    Alert.alert('Success', message);
   }
 };
 
