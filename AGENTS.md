@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
+Repository guidance for AI coding assistants working on VHD-App.
 
 ## Tech Stack
 

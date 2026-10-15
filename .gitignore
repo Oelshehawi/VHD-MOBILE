@@ -55,3 +55,6 @@ android/.idea/
 
 # Docker / pnpm
 .pnpm-store/
+
+modules/*/android/build/
+modules/*/android/.gradle/
