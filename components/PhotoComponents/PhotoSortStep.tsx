@@ -3,10 +3,11 @@ import { FlatList, Pressable, ScrollView, useWindowDimensions, View } from 'reac
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Text } from '@/components/ui/text';
-import type {
-  CaptureTarget,
-  CaptureType,
-  DocumentationCategory
+import {
+  isOptionalCategory,
+  type CaptureTarget,
+  type CaptureType,
+  type DocumentationCategory
 } from '@/utils/equipmentCategories';
 import {
   buildGridRows,
@@ -131,6 +132,9 @@ export function PhotoSortStep({
     });
   };
 
+  // Photos without equipment land in the always-present Other bucket.
+  const otherKey = useMemo(() => categories.find(isOptionalCategory)?.key ?? null, [categories]);
+
   const { assignments, unsortedCount } = useMemo(() => {
     const result: ImportAssignment[] = [];
     let unsorted = 0;
@@ -139,13 +143,13 @@ export function PhotoSortStep({
       if (entry === 'skip') continue;
       const target: CaptureTarget = {
         type: entry?.type ?? activeType,
-        categoryKey: entry?.categoryKey ?? null
+        categoryKey: entry?.categoryKey ?? otherKey
       };
       if (!entry?.categoryKey) unsorted += 1;
       result.push({ candidate, target });
     }
     return { assignments: result, unsortedCount: unsorted };
-  }, [candidates, entries, activeType]);
+  }, [candidates, entries, activeType, otherKey]);
 
   const captionFor = (entry: SortEntry | undefined): string | null => {
     if (!entry) return null;
@@ -284,13 +288,6 @@ export function PhotoSortStep({
           ))}
           <Pressable
             disabled={!hasSelection}
-            onPress={() => assignSelected({ type: activeType, categoryKey: null })}
-            className={`${chipBase} border-dashed border-black/25 dark:border-white/25 ${hasSelection ? '' : 'opacity-50'}`}
-          >
-            <Text className='text-sm font-semibold text-gray-600 dark:text-gray-300'>Uncategorized</Text>
-          </Pressable>
-          <Pressable
-            disabled={!hasSelection}
             onPress={() => assignSelected('skip')}
             className={`${chipBase} border-red-300 dark:border-red-800 ${hasSelection ? '' : 'opacity-50'}`}
           >
@@ -320,7 +317,7 @@ export function PhotoSortStep({
             </Text>
             {unsortedCount > 0 && (
               <Text className='text-[11px] font-medium text-white/85'>
-                {unsortedCount} without equipment → Uncategorized
+                {unsortedCount} without equipment → Other
               </Text>
             )}
           </Pressable>

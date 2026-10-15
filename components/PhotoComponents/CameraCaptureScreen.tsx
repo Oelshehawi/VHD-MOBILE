@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { ActivityIndicator, Alert, Pressable, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, Pressable, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { Image } from 'expo-image';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -17,6 +17,7 @@ import type {
   CaptureType,
   DocumentationCategory
 } from '@/utils/equipmentCategories';
+import { pickUltraWideLens } from '@/utils/cameraLens';
 import { CaptureTargetChips } from './CaptureTargetChips';
 import { GhostControls, GhostOverlay, type GhostOption } from './GhostOverlay';
 
@@ -73,6 +74,9 @@ export function CameraCaptureScreen({
   const [flash, setFlash] = useState<'off' | 'on' | 'auto'>('off');
   const [isCameraReady, setIsCameraReady] = useState(false);
   const [zoom, setZoom] = useState(0);
+  // iOS only: expo-camera can switch to the ultra-wide lens; Android caps zoom at 1×.
+  const [ultraWideLens, setUltraWideLens] = useState<string | null>(null);
+  const [useUltraWide, setUseUltraWide] = useState(false);
   const zoomShared = useSharedValue(0);
   const startZoom = useSharedValue(0);
   const flashOpacity = useSharedValue(0);
@@ -100,11 +104,24 @@ export function CameraCaptureScreen({
     }
   }, [isCameraReady, onCaptured, flashOpacity]);
 
-  const toggleFacing = () => {
-    setFacing((current) => (current === 'back' ? 'front' : 'back'));
+  const resetZoom = () => {
     setZoom(0);
     zoomShared.value = 0;
   };
+
+  const toggleFacing = () => {
+    setFacing((current) => (current === 'back' ? 'front' : 'back'));
+    setUseUltraWide(false);
+    resetZoom();
+  };
+
+  const selectLens = (ultraWide: boolean) => {
+    if (ultraWide === useUltraWide) return;
+    setUseUltraWide(ultraWide);
+    resetZoom();
+  };
+
+  const showLensToggle = Platform.OS === 'ios' && facing === 'back' && !!ultraWideLens;
 
   const toggleFlash = () => {
     setFlash((current) => (current === 'off' ? 'on' : current === 'on' ? 'auto' : 'off'));
@@ -191,6 +208,12 @@ export function CameraCaptureScreen({
               flash={flash}
               zoom={zoom}
               onCameraReady={() => setIsCameraReady(true)}
+              selectedLens={useUltraWide && ultraWideLens ? ultraWideLens : undefined}
+              onAvailableLensesChanged={({ lenses }) => {
+                // Lenses are re-reported per selected camera; keep the back ultra-wide once found.
+                const lens = pickUltraWideLens(lenses);
+                if (lens) setUltraWideLens(lens);
+              }}
               responsiveOrientationWhenOrientationLocked
               style={{ flex: 1 }}
               ratio='4:3'
@@ -200,6 +223,35 @@ export function CameraCaptureScreen({
           </View>
         </GestureDetector>
         <SaveStatusBadge sessionCount={sessionCount} status={saveStatus} />
+        {showLensToggle && (
+          <View
+            pointerEvents='box-none'
+            className='absolute left-0 right-0 items-center'
+            style={{ bottom: ghost ? 64 : 12 }}
+          >
+            <View className='flex-row items-center gap-1 rounded-full bg-black/50 p-1'>
+              {[
+                { ultraWide: true, label: '.5' },
+                { ultraWide: false, label: '1×' }
+              ].map((option) => {
+                const active = option.ultraWide === useUltraWide;
+                return (
+                  <Pressable
+                    key={option.label}
+                    onPress={() => selectLens(option.ultraWide)}
+                    accessibilityLabel={option.ultraWide ? 'Ultra-wide lens' : 'Standard lens'}
+                    accessibilityState={{ selected: active }}
+                    className={`h-9 w-9 items-center justify-center rounded-full ${active ? 'bg-black/70' : ''}`}
+                  >
+                    <Text className={`text-xs font-bold ${active ? 'text-amber-300' : 'text-white'}`}>
+                      {option.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+        )}
         {ghost && (
           <GhostControls
             options={ghost.options}

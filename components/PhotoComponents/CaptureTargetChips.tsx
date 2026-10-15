@@ -14,13 +14,11 @@ interface CaptureTargetChipsProps {
   onChange: (target: CaptureTarget) => void;
 }
 
-const UNCATEGORIZED = { key: null, label: 'Uncategorized' } as const;
-
 /** Before/After toggle plus an equipment strip with live counts, for the camera. */
 export function CaptureTargetChips({ categories, target, countFor, onChange }: CaptureTargetChipsProps) {
   const scrollRef = useRef<ScrollView>(null);
   const chipX = useRef(new Map<string, number>());
-  const options = [...categories.map(({ key, label }) => ({ key, label })), UNCATEGORIZED];
+  const options = categories.map(({ key, label }) => ({ key, label }));
 
   // Keep the selected chip in view when the target changes from outside.
   useEffect(() => {
@@ -60,8 +58,8 @@ export function CaptureTargetChips({ categories, target, countFor, onChange }: C
           const count = countFor(target.type, option.key);
           return (
             <Pressable
-              key={option.key ?? 'uncategorized'}
-              onLayout={(event) => chipX.current.set(option.key ?? '', event.nativeEvent.layout.x)}
+              key={option.key}
+              onLayout={(event) => chipX.current.set(option.key, event.nativeEvent.layout.x)}
               onPress={() => onChange({ ...target, categoryKey: option.key })}
               accessibilityRole='button'
               accessibilityState={{ selected: active }}

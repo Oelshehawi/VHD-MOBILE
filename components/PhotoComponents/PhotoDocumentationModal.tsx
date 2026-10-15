@@ -147,6 +147,8 @@ export function PhotoDocumentationModal({
   const shownIndex = shownKey ? categoryKeys.indexOf(shownKey) : -1;
   const shownCategory = shownIndex >= 0 ? categories[shownIndex] : null;
   const uncategorizedCount = counts.get('before', null) + counts.get('after', null);
+  // New photos never go to the legacy Uncategorized bucket; they land in Other.
+  const addKey = shownKey ?? categories.find(isOptionalCategory)?.key ?? null;
 
   const handleClose = () => {
     setDetailKey(undefined);
@@ -362,10 +364,8 @@ export function PhotoDocumentationModal({
             onClose={() => setDetailKey(undefined)}
             onPrev={shownCategory ? stepCategory(-1) : null}
             onNext={shownCategory ? stepCategory(1) : null}
-            onCamera={(type) => setCameraTarget({ type, categoryKey: shownKey ?? null })}
-            onGallery={(type) =>
-              setImportTarget({ preset: { type, categoryKey: shownKey ?? null }, type })
-            }
+            onCamera={(type) => setCameraTarget({ type, categoryKey: addKey })}
+            onGallery={(type) => setImportTarget({ preset: { type, categoryKey: addKey }, type })}
             onCompare={() => setShowCompare(true)}
           />
         </View>
