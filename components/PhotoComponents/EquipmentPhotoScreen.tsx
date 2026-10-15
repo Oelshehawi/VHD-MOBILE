@@ -5,15 +5,19 @@ import { Text } from '@/components/ui/text';
 import type { DocumentationPhoto } from '@/services/data/photos';
 import type { CaptureType } from '@/utils/equipmentCategories';
 import { EquipmentPhotoSection } from './EquipmentPhotoSection';
+import { NoTechnicianNotice } from './NoTechnicianNotice';
 
 interface EquipmentPhotoScreenProps {
   title: string;
   jobTitle: string;
   /** Position in the equipment list; null for the Uncategorized bucket. */
   position: { index: number; total: number } | null;
+  /** Optional buckets (Other, Uncategorized) never show "needs photo". */
+  optional: boolean;
+  /** False when the account has no technician record to own new photos. */
+  canAdd: boolean;
   beforePhotos: ReadonlyArray<DocumentationPhoto>;
   afterPhotos: ReadonlyArray<DocumentationPhoto>;
-  onBack: () => void;
   onClose: () => void;
   onPrev: (() => void) | null;
   onNext: (() => void) | null;
@@ -28,7 +32,7 @@ function HeaderButton({
   label,
   color
 }: {
-  icon: 'chevron-back' | 'chevron-forward' | 'close' | 'arrow-back';
+  icon: 'chevron-back' | 'chevron-forward' | 'close';
   onPress: (() => void) | null;
   label: string;
   color: string;
@@ -52,9 +56,10 @@ export function EquipmentPhotoScreen({
   title,
   jobTitle,
   position,
+  optional,
+  canAdd,
   beforePhotos,
   afterPhotos,
-  onBack,
   onClose,
   onPrev,
   onNext,
@@ -71,7 +76,6 @@ export function EquipmentPhotoScreen({
     <View className='flex-1'>
       <View className='border-b border-black/10 bg-[#F7F5F1] px-4 py-3 dark:border-white/10 dark:bg-gray-950'>
         <View className='flex-row items-center gap-2'>
-          <HeaderButton icon='arrow-back' onPress={onBack} label='Back to equipment list' color={iconColor} />
           <View className='flex-1 px-1'>
             <Text className='text-xl font-bold text-[#14110F] dark:text-white' numberOfLines={1}>
               {title}
@@ -83,11 +87,26 @@ export function EquipmentPhotoScreen({
           </View>
           {position && (
             <>
-              <HeaderButton icon='chevron-back' onPress={onPrev} label='Previous equipment' color={iconColor} />
-              <HeaderButton icon='chevron-forward' onPress={onNext} label='Next equipment' color={iconColor} />
+              <HeaderButton
+                icon='chevron-back'
+                onPress={onPrev}
+                label='Previous equipment'
+                color={iconColor}
+              />
+              <HeaderButton
+                icon='chevron-forward'
+                onPress={onNext}
+                label='Next equipment'
+                color={iconColor}
+              />
             </>
           )}
-          <HeaderButton icon='close' onPress={onClose} label='Close photos' color={iconColor} />
+          <HeaderButton
+            icon='close'
+            onPress={onClose}
+            label='Back to equipment list'
+            color={iconColor}
+          />
         </View>
       </View>
 
@@ -95,9 +114,16 @@ export function EquipmentPhotoScreen({
         className='flex-1 px-4 pt-4'
         contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}
       >
+        {!canAdd && (
+          <View className='mb-4'>
+            <NoTechnicianNotice />
+          </View>
+        )}
         <EquipmentPhotoSection
           type='before'
           photos={beforePhotos}
+          optional={optional}
+          canAdd={canAdd}
           jobTitle={jobTitle}
           categoryLabel={title}
           onCamera={() => onCamera('before')}
@@ -106,6 +132,8 @@ export function EquipmentPhotoScreen({
         <EquipmentPhotoSection
           type='after'
           photos={afterPhotos}
+          optional={optional}
+          canAdd={canAdd}
           jobTitle={jobTitle}
           categoryLabel={title}
           onCamera={() => onCamera('after')}

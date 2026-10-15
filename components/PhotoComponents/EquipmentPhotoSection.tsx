@@ -18,6 +18,10 @@ interface EquipmentPhotoSectionProps {
   photos: ReadonlyArray<DocumentationPhoto>;
   jobTitle: string;
   categoryLabel: string;
+  /** Optional buckets (Other, Uncategorized) never show "needs photo". */
+  optional?: boolean;
+  /** Hides Camera/Gallery when the account can't own new photos. */
+  canAdd?: boolean;
   onCamera: () => void;
   onGallery: () => void;
 }
@@ -27,6 +31,8 @@ export function EquipmentPhotoSection({
   photos,
   jobTitle,
   categoryLabel,
+  optional = false,
+  canAdd = true,
   onCamera,
   onGallery
 }: EquipmentPhotoSectionProps) {
@@ -83,41 +89,53 @@ export function EquipmentPhotoSection({
   return (
     <View className='mb-6'>
       <View className='mb-3 flex-row items-center gap-2'>
-        <View className={`rounded-xl px-2 py-1 ${isBefore ? 'bg-blue-100' : 'bg-green-100'}`}>
-          <Text className={`text-xs font-semibold ${isBefore ? 'text-blue-800' : 'text-green-800'}`}>
+        <View
+          className={`rounded-xl px-2 py-1 ${isBefore ? 'bg-blue-100 dark:bg-blue-500/20' : 'bg-green-100 dark:bg-green-500/20'}`}
+        >
+          <Text
+            className={`text-xs font-semibold ${isBefore ? 'text-blue-800 dark:text-blue-200' : 'text-green-800 dark:text-green-200'}`}
+          >
             {label}
           </Text>
         </View>
         <Text className='text-base font-semibold text-[#14110F] dark:text-white'>
           {photos.length} photo{photos.length === 1 ? '' : 's'}
         </Text>
-        {photos.length === 0 && (
-          <View className='rounded-full bg-amber-100 px-2 py-0.5'>
-            <Text className='text-xs font-semibold text-amber-900'>needs photo</Text>
+        {photos.length === 0 && !optional && (
+          <View className='rounded-full bg-amber-100 px-2 py-0.5 dark:bg-amber-500/20'>
+            <Text className='text-xs font-semibold text-amber-900 dark:text-amber-200'>
+              needs photo
+            </Text>
           </View>
         )}
       </View>
 
-      <View className='flex-row gap-3'>
-        <Pressable
-          onPress={onCamera}
-          accessibilityLabel={`Take ${label.toLowerCase()} photos of ${categoryLabel}`}
-          className={`min-h-14 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${accent}`}
-        >
-          <Ionicons name='camera' size={20} color='#FFFFFF' />
-          <Text className='text-base font-bold text-white'>Camera</Text>
-        </Pressable>
-        <Pressable
-          onPress={onGallery}
-          accessibilityLabel={`Add ${label.toLowerCase()} photos of ${categoryLabel} from gallery`}
-          className='min-h-14 flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-black/15 bg-white active:bg-gray-50 dark:border-white/20 dark:bg-[#16140F]'
-        >
-          <Ionicons name='images-outline' size={20} color={isBefore ? '#2563EB' : '#059669'} />
-          <Text className='text-base font-bold text-[#14110F] dark:text-white'>Gallery</Text>
-        </Pressable>
-      </View>
+      {canAdd && (
+        <View className='flex-row gap-3'>
+          <Pressable
+            onPress={onCamera}
+            accessibilityLabel={`Take ${label.toLowerCase()} photos of ${categoryLabel}`}
+            className={`min-h-14 flex-1 flex-row items-center justify-center gap-2 rounded-xl ${accent}`}
+          >
+            <Ionicons name='camera' size={20} color='#FFFFFF' />
+            <Text className='text-base font-bold text-white'>Camera</Text>
+          </Pressable>
+          <Pressable
+            onPress={onGallery}
+            accessibilityLabel={`Add ${label.toLowerCase()} photos of ${categoryLabel} from gallery`}
+            className='min-h-14 flex-1 flex-row items-center justify-center gap-2 rounded-xl border border-black/15 bg-white active:bg-gray-50 dark:border-white/20 dark:bg-[#16140F]'
+          >
+            <Ionicons name='images-outline' size={20} color={isBefore ? '#2563EB' : '#059669'} />
+            <Text className='text-base font-bold text-[#14110F] dark:text-white'>Gallery</Text>
+          </Pressable>
+        </View>
+      )}
 
-      <PhotoGrid photos={photos} onDeletePhoto={handleDeleteRequest} onPhotoPress={setGalleryIndex} />
+      <PhotoGrid
+        photos={photos}
+        onDeletePhoto={handleDeleteRequest}
+        onPhotoPress={setGalleryIndex}
+      />
 
       {photoToDelete !== null && (
         <DeletePhotoModal

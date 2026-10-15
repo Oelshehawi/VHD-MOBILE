@@ -9,7 +9,7 @@ export interface GhostOption {
 }
 
 // Remembered for the app session: last-used opacity, and the chosen Before per category.
-let lastOpacity: number = 0.4;
+let lastOpacity: number = 0;
 const chosenGhostByCategory = new Map<string, string>();
 
 export function getGhostOpacity() {
@@ -61,7 +61,9 @@ export function GhostControls({ options, selectedId, opacity, onSelect, onCycleO
         className='h-12 items-center justify-center rounded-xl bg-black/60 px-3'
       >
         <Text className='text-[10px] font-semibold uppercase text-white/70'>Ghost</Text>
-        <Text className='text-sm font-bold text-white'>{Math.round(opacity * 100)}%</Text>
+        <Text className='text-sm font-bold text-white'>
+          {opacity === 0 ? 'Off' : `${Math.round(opacity * 100)}%`}
+        </Text>
       </Pressable>
       {opacity > 0 && options.length > 1 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>

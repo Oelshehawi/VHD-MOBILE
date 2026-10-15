@@ -181,3 +181,8 @@ export function getAdjacentCategoryKey(
 
   return keys[index + dir] ?? null;
 }
+
+/** The catch-all "Other" bucket is optional: nothing is missing when it has no photos. */
+export function isOptionalCategory(category: Pick<DocumentationCategory, 'key'>): boolean {
+  return category.key === 'other:other' || category.key === 'fallback:other';
+}

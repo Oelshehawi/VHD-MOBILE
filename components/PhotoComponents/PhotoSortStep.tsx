@@ -316,7 +316,7 @@ export function PhotoSortStep({
             }`}
           >
             <Text className='text-base font-bold text-white'>
-              Import {assignments.length} photo{assignments.length === 1 ? '' : 's'}
+              Add {assignments.length} photo{assignments.length === 1 ? '' : 's'}
             </Text>
             {unsortedCount > 0 && (
               <Text className='text-[11px] font-medium text-white/85'>

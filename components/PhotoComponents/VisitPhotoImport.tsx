@@ -138,7 +138,7 @@ export function VisitPhotoImport({
   };
 
   const title =
-    step === 'sort' ? 'Sort photos' : presetTarget ? describeTarget(presetTarget, categories) : 'Import photos';
+    step === 'sort' ? 'Sort photos' : presetTarget ? describeTarget(presetTarget, categories) : 'Gallery';
 
   return (
     <Modal
@@ -163,7 +163,7 @@ export function VisitPhotoImport({
             <Pressable
               onPress={requestClose}
               hitSlop={10}
-              accessibilityLabel='Cancel import'
+              accessibilityLabel='Cancel adding photos'
               className='h-10 w-10 items-center justify-center rounded-xl border border-black/15 bg-white dark:border-white/20 dark:bg-[#16140F]'
             >
               <Ionicons name='close' size={22} color={isDark ? '#F2EFEA' : '#14110F'} />

@@ -31,8 +31,6 @@ import { canMarkChequeReceived } from '@/utils/invoicePayment';
 import { formatStoredDateReadable, formatVancouverDateAsUtcDateOnly } from '@/utils/date';
 import { ServiceReportModal } from './ServiceReportModal';
 import { openPhone, parseOnSiteContact } from '@/utils/contact';
-import { getAssignedTechnicianDisplays } from '@/utils/scheduleAssignments';
-import { useTechnicianDirectory } from '@/services/data/technicians';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -159,7 +157,7 @@ export function JobDetailModal({
   const isDark = colorScheme === 'dark';
   const iconColor = isDark ? '#F2EFEA' : '#14110F';
   const invertedIconColor = isDark ? '#14110F' : '#F7F5F1';
-  const [photoMode, setPhotoMode] = useState<'before' | 'after' | null>(null);
+  const [photosVisible, setPhotosVisible] = useState(false);
   const [signatureVisible, setSignatureVisible] = useState(false);
   const [invoiceDetailsVisible, setInvoiceDetailsVisible] = useState(false);
   const [isMarkingCheque, setIsMarkingCheque] = useState(false);
@@ -184,7 +182,6 @@ export function JobDetailModal({
     return () => { active = false; };
   }, [visible, user?.id, scheduleId]);
   const [reportVisible, setReportVisible] = useState(false);
-  const { resolveTechnicianName } = useTechnicianDirectory();
 
   useEffect(() => {
     if (visible) {
@@ -365,9 +362,6 @@ export function JobDetailModal({
         ? `Received ${paymentDate}`
         : 'Invoice is marked paid'
       : 'Mark cheque once it is in hand';
-  const assignedWorkers = schedule
-    ? getAssignedTechnicianDisplays(schedule.assignedTechnicians, technicianId, resolveTechnicianName)
-    : [];
 
   return (
     <Modal visible={visible} onRequestClose={onClose} animationType='slide' presentationStyle='fullScreen'>
@@ -426,57 +420,16 @@ export function JobDetailModal({
 
             <View className='px-4 pt-5'>
               <Text className='mb-3 text-xs font-bold uppercase tracking-widest text-gray-500'>
-                {isManager ? 'Assigned Workers' : 'Crew'}
-              </Text>
-              <View className='rounded-2xl border border-black/10 bg-white p-4 dark:border-white/10 dark:bg-[#16140F]'>
-                {assignedWorkers.length === 0 ? (
-                  <Text className='text-sm font-medium text-gray-500 dark:text-gray-400'>
-                    No workers assigned.
-                  </Text>
-                ) : (
-                  <View className='gap-3'>
-                    {assignedWorkers.map((worker) => (
-                      <View key={worker.id} className='flex-row items-center gap-3'>
-                        <View className='h-9 w-9 items-center justify-center rounded-xl bg-[#F0EDE6] dark:bg-gray-800'>
-                          <Ionicons name='person-outline' size={18} color={iconColor} />
-                        </View>
-                        <View className='flex-1'>
-                          <Text className='text-base font-semibold text-[#14110F] dark:text-white'>
-                            {worker.name}
-                          </Text>
-                          {worker.isCurrentUser && (
-                            <Text className='mt-0.5 text-xs font-semibold text-gray-500 dark:text-gray-400'>
-                              You
-                            </Text>
-                          )}
-                        </View>
-                      </View>
-                    ))}
-                  </View>
-                )}
-              </View>
-            </View>
-
-            <View className='px-4 pt-5'>
-              <Text className='mb-3 text-xs font-bold uppercase tracking-widest text-gray-500'>
                 Documentation
               </Text>
               <View className='gap-3'>
                 <DetailRow
                   icon='camera-outline'
-                  label='Before photos'
-                  detail={`${beforeCount} captured for this visit`}
-                  done={beforeCount > 0}
-                  warn={beforeCount === 0}
-                  onPress={() => setPhotoMode('before')}
-                />
-                <DetailRow
-                  icon='camera-outline'
-                  label='After photos'
-                  detail={afterCount > 0 ? `${afterCount} captured for this visit` : 'Pending'}
-                  done={afterCount > 0}
-                  warn={afterCount === 0}
-                  onPress={() => setPhotoMode('after')}
+                  label='Photos'
+                  detail={`${beforeCount} before · ${afterCount} after`}
+                  done={beforeCount > 0 && afterCount > 0}
+                  warn={beforeCount === 0 || afterCount === 0}
+                  onPress={() => setPhotosVisible(true)}
                 />
                 <DetailRow
                   icon='create-outline'
@@ -775,17 +728,16 @@ export function JobDetailModal({
           </ScrollView>
         )}
 
-        {schedule && photoMode && (
+        {schedule && photosVisible && (
           <PhotoDocumentationModal
-            visible={!!photoMode}
-            onClose={() => setPhotoMode(null)}
+            visible={photosVisible}
+            onClose={() => setPhotosVisible(false)}
             scheduleId={scheduleId}
             serviceJobId={schedule.serviceJobId}
             jobTitle={schedule.jobTitle}
             scheduledStartAtUtc={startAtUtc}
             timeZone={schedule.timeZone}
             technicianId={technicianId}
-            initialMode={photoMode}
           />
         )}
 

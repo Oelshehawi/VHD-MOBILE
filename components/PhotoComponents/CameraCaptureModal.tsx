@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, Text, View } from 'react-native';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -56,17 +56,35 @@ export function CameraCaptureModal({
   const sessionJobs = useMemo(() => allJobs.filter((job) => job.sessionId === sessionId), [allJobs, sessionId]);
   const counts = useSchedulePhotoCounts(photos);
 
+  // A saved shot's row reaches the photos query a moment after the save
+  // resolves. Count it until the row first appears, so chips never dip back.
+  const seenPhotoIdsRef = useRef(new Set<string>());
+  const photoIds = useMemo(() => new Set(photos.map((photo) => photo.id)), [photos]);
+  photoIds.forEach((id) => seenPhotoIdsRef.current.add(id));
+
   const countFor = useCallback(
     (type: CaptureType, categoryKey: string | null) =>
       counts.get(type, categoryKey) +
-      // Shots still saving have no photo row yet; count them so chips update instantly.
-      sessionJobs.filter(
-        (job) =>
-          (job.status === 'pending' || job.status === 'saving') &&
-          job.target.type === type &&
-          job.target.categoryKey === categoryKey
-      ).length,
-    [counts, sessionJobs]
+      sessionJobs.filter((job) => {
+        if (job.target.type !== type || job.target.categoryKey !== categoryKey) return false;
+        if (job.status === 'pending' || job.status === 'saving') return true;
+        return (
+          job.status === 'saved' &&
+          !!job.photoId &&
+          !photoIds.has(job.photoId) &&
+          !seenPhotoIdsRef.current.has(job.photoId)
+        );
+      }).length,
+    [counts, sessionJobs, photoIds]
+  );
+
+  const saveStatus = useMemo(
+    () => ({
+      saved: sessionJobs.filter((job) => job.status === 'saved').length,
+      saving: sessionJobs.filter((job) => job.status === 'pending' || job.status === 'saving').length,
+      failed: sessionJobs.filter((job) => job.status === 'failed').length
+    }),
+    [sessionJobs]
   );
 
   const ghostScope = `${ctx.scheduleId}:${target.categoryKey ?? ''}`;
@@ -176,6 +194,7 @@ export function CameraCaptureModal({
               : null
           }
           sessionCount={sessionJobs.length}
+          saveStatus={saveStatus}
           onOpenSession={() => setShowSession(true)}
           ghost={ghost}
         />

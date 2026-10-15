@@ -44,6 +44,7 @@ interface CameraCaptureScreenProps {
   onClose: () => void;
   lastShot: { uri: string; busy: boolean; failed: boolean } | null;
   sessionCount: number;
+  saveStatus: { saved: number; saving: number; failed: number };
   onOpenSession: () => void;
   ghost: GhostState | null;
   /** Extra top-bar control, e.g. the camera-roll backup toggle. */
@@ -61,6 +62,7 @@ export function CameraCaptureScreen({
   onClose,
   lastShot,
   sessionCount,
+  saveStatus,
   onOpenSession,
   ghost,
   topAccessory
@@ -197,6 +199,7 @@ export function CameraCaptureScreen({
             <Animated.View pointerEvents='none' className='absolute inset-0 bg-white' style={flashStyle} />
           </View>
         </GestureDetector>
+        <SaveStatusBadge sessionCount={sessionCount} status={saveStatus} />
         {ghost && (
           <GhostControls
             options={ghost.options}
@@ -258,6 +261,33 @@ export function CameraCaptureScreen({
         >
           <Ionicons name='camera-reverse' size={24} color='#FFF' />
         </Pressable>
+      </View>
+    </View>
+  );
+}
+
+/** Tells the tech every shot is kept, so closing the camera never feels risky. */
+function SaveStatusBadge({
+  sessionCount,
+  status
+}: {
+  sessionCount: number;
+  status: { saved: number; saving: number; failed: number };
+}) {
+  const { label, icon, tone } =
+    status.failed > 0
+      ? { label: `${status.failed} not saved – tap the thumbnail`, icon: 'alert-circle' as const, tone: 'bg-red-700/90' }
+      : status.saving > 0
+        ? { label: `Saving ${status.saving}…`, icon: 'sync' as const, tone: 'bg-black/60' }
+        : sessionCount > 0
+          ? { label: `${status.saved} saved to this job`, icon: 'checkmark-circle' as const, tone: 'bg-black/60' }
+          : { label: 'Photos save automatically', icon: 'information-circle' as const, tone: 'bg-black/40' };
+
+  return (
+    <View pointerEvents='none' className='absolute left-0 right-0 top-3 items-center'>
+      <View className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 ${tone}`}>
+        <Ionicons name={icon} size={14} color='#FFFFFF' />
+        <Text className='text-xs font-semibold text-white'>{label}</Text>
       </View>
     </View>
   );
