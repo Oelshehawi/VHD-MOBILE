@@ -56,6 +56,12 @@ const invoices = new Table(
   { indexes: { visits: ['visitIds'] } }
 );
 
+// Read-only slim projection of backend ServiceJob (sync rules select only these).
+const servicejobs = new Table({
+  // id column (text) is automatically included
+  frequencyPerYear: column.integer
+});
+
 const equipmentprofiles = new Table(
   {
     // id column (text) is automatically included
@@ -312,6 +318,7 @@ const courseprogress = new Table(
 export const AppSchema = new Schema({
   invoices,
   equipmentprofiles,
+  servicejobs,
   schedules,
   payrollperiods,
   availabilities,

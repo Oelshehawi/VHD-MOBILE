@@ -31,6 +31,8 @@ import { canMarkChequeReceived } from '@/utils/invoicePayment';
 import { formatStoredDateReadable, formatVancouverDateAsUtcDateOnly } from '@/utils/date';
 import { ServiceReportModal } from './ServiceReportModal';
 import { openPhone, parseOnSiteContact } from '@/utils/contact';
+import { formatServiceFrequency } from '@/utils/serviceFrequency';
+import { useServiceJobFrequency } from '@/services/data/serviceJobs';
 
 interface JobDetailModalProps {
   visible: boolean;
@@ -254,6 +256,9 @@ export function JobDetailModal({
     { rowComparator: DEFAULT_ROW_COMPARATOR }
   );
 
+  const serviceFrequency = useServiceJobFrequency(schedule?.serviceJobId);
+  const serviceFrequencyLabel = formatServiceFrequency(serviceFrequency);
+
   const markChequeAsPaid = async () => {
     if (!invoice?.id || !canMarkChequeReceived(invoice)) return;
 
@@ -375,6 +380,14 @@ export function JobDetailModal({
               <Text className='mt-1 text-xs font-medium text-gray-500' numberOfLines={2}>
                 {schedule ? `${formatScheduleArrivalTime(schedule)} - ${schedule.location}` : 'Loading...'}
               </Text>
+              {serviceFrequencyLabel && (
+                <View className='mt-1 flex-row items-center gap-1'>
+                  <Ionicons name='repeat' size={13} color='#6B7280' />
+                  <Text className='text-xs font-medium text-gray-500' numberOfLines={1}>
+                    {serviceFrequencyLabel}
+                  </Text>
+                </View>
+              )}
             </View>
             <Pressable
               onPress={onClose}
